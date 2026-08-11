@@ -39,6 +39,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sections, setSections] = useState(null); // rendered-statement links for the newest 10-K
   const [copied, setCopied] = useState("");
+  const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(setTickers).catch(() => setErr("couldn't load the company list")); }, []);
 
@@ -74,7 +75,11 @@ export default function App() {
   const grid = useMemo(() => {
     if (!data) return null;
     const facts = data.facts || {};
-    const periods = annualPeriods(facts, REV_TAGS, 8);
+    // annualPeriods returns newest-first because "the most recent 8 years" is the natural way to
+    // take a slice. Models read the other way — oldest on the left, this year on the right, so a
+    // growth row reads forward — so the columns are flipped once, here, and everything downstream
+    // (the sheet, the Excel copy) inherits the right order rather than each fixing it separately.
+    const periods = annualPeriods(facts, REV_TAGS, 8).reverse();
     if (!periods.length) return { periods: [], rows: [], empty: true };
 
     // Column at a time: fetch every tagged line, then derive, so derived lines can read the ones
@@ -90,9 +95,10 @@ export default function App() {
       for (const [k, fn] of Object.entries(DERIVED)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
       return { period: p, v, meta };
     });
-    // Growth lines need the column to their right, so they run once the grid exists.
+    // Growth lines need the PRIOR year, which now sits to the LEFT. Getting this index backwards
+    // would invert every growth rate silently — the number would still look plausible.
     cols.forEach((c, i) => {
-      const prev = cols[i + 1];
+      const prev = cols[i - 1];
       for (const [k, src] of Object.entries(YOY)) {
         const a = c.v[src], b = prev && prev.v[src];
         c.v[k] = a != null && b != null && b !== 0 ? a / b - 1 : null;
@@ -100,6 +106,13 @@ export default function App() {
       }
     });
     return { periods, cols };
+  }, [data]);
+
+  // After the grid paints, jump to the newest year. Runs on the data rather than on mount, because
+  // the table does not exist yet when the fetch is still in flight.
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
   }, [data]);
 
   const sectionLink = kind => {
@@ -172,7 +185,10 @@ export default function App() {
 
         {grid.empty && <p style={{ color: C.bronze, fontFamily: MONO, fontSize: 12 }}>No annual XBRL periods on file — this filer may report under IFRS (20-F) or predate tagging.</p>}
 
-        {grid.cols && <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+        {/* Opens pinned to the right-hand edge — the current year, which is what you came to see —
+            and scrolling left walks back through history. Model order without making the newest
+            year the one you have to go looking for. */}
+        {grid.cols && <div ref={scroller} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
             <thead><tr style={{ background: "#f6eee1" }}>
               <th style={{ ...S.label, textAlign: "left", padding: "10px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 230 }}>Line item</th>
