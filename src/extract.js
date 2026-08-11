@@ -85,6 +85,21 @@ export function annualPeriods(facts, tags, limit = 8) {
   return [...seen.values()].sort((a, b) => b.end.localeCompare(a.end)).slice(0, limit);
 }
 
+// Some facts are "as of the latest filing", not "as of a fiscal period". The cover-page share
+// count is the one that matters: its date is the COVER date — 2025-10-17 for a year ending
+// 2025-09-27 — so matching it against period ends finds nothing, ever. That silently emptied book
+// value per share, tangible book, market cap and every multiple built on them. Take the newest.
+export function latestFact(facts, tags) {
+  let best = null;
+  for (const tag of tags || []) {
+    const all = factsFor(facts, tag);
+    if (!all) continue;
+    for (const f of all) if (!best || f.end > best.end) best = { ...f, tag };
+  }
+  return best ? { value: best.val, unit: best.unit, tag: best.tag, accn: best.accn, form: best.form, filed: best.filed, end: best.end, status: "reported" }
+              : { value: null, status: "never-tagged" };
+}
+
 // Latest year-to-date period in a 10-Q, used to roll an LTM figure forward from the last 10-K.
 export function latestYtd(facts, tags) {
   let best = null;

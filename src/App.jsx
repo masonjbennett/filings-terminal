@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { SECTIONS } from "./template.js";
-import { annualPeriods, pickFact, DERIVED, YOY } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, DERIVED, YOY } from "./extract.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -25,8 +25,11 @@ const fmtNum = (v, unit) => {
 };
 const fmtPct = v => (v == null ? null : (v * 100).toFixed(1) + "%");
 const fmtX = v => (v == null ? null : v.toFixed(2) + "x");
-const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap"]);
-const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn"]);
+// Yields are rates and read as percentages; valuation ratios are multiples and read with an x. Left
+// out of these sets a number renders bare — a 3% FCF yield printed "0.03" and 26.7x EBITDA printed
+// "26.74", which are the two figures most likely to be read off this page out loud.
+const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d"]);
+const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb"]);
 const DAYS = new Set(["dso","dio","dpo","ccc"]);
 const display = (k, v, unit) => v == null ? null : PCT.has(k) ? fmtPct(v) : MULT.has(k) ? fmtX(v) : DAYS.has(k) ? Math.round(v) + "d" : fmtNum(v, unit);
 
@@ -39,6 +42,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sections, setSections] = useState(null); // rendered-statement links for the newest 10-K
   const [copied, setCopied] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [quoteNote, setQuoteNote] = useState("");
   const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(setTickers).catch(() => setErr("couldn't load the company list")); }, []);
@@ -59,7 +64,7 @@ export default function App() {
   }, [tickers, q]);
 
   const load = async (cik, ticker, title) => {
-    setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null);
+    setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null); setQuote(null); setQuoteNote("");
     try {
       const r = await fetch(`/api/facts?cik=${cik}`);
       const d = await r.json();
@@ -67,6 +72,14 @@ export default function App() {
       setData(d);
       const k10 = (d.filings || []).find(f => f.form === "10-K");
       if (k10) fetch(`/api/sections?cik=${cik}&accn=${k10.accn}`).then(r => r.json()).then(setSections).catch(() => {});
+      // The price is a nice-to-have on top of the filings, so it never blocks the sheet and never
+      // fails it: no key, no coverage, no answer — the valuation rows just stay "needs price".
+      const sym = (d.tickers && d.tickers[0]) || ticker;
+      if (sym) fetch(`/api/quote?symbol=${encodeURIComponent(sym)}`).then(async r => {
+        const q = await r.json();
+        if (r.ok) setQuote(q);
+        else setQuoteNote(q.needsKey ? "valuation rows need FINNHUB_KEY on this deployment" : q.error || "no quote available");
+      }).catch(() => setQuoteNote("couldn't reach the quote desk"));
     } catch { setErr("couldn't reach the filing desk"); }
     setBusy(false);
   };
@@ -89,7 +102,7 @@ export default function App() {
       for (const sec of SECTIONS) for (const line of sec.lines) {
         if (line.how !== "fetched" || !line.tags) continue;
         const inst = isInstant(sec.id, line.k);
-        const got = pickFact(facts, line.tags, inst ? { end: p.end } : p);
+        const got = line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p);
         v[line.k] = got.value; meta[line.k] = got;
       }
       for (const [k, fn] of Object.entries(DERIVED)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
@@ -105,8 +118,30 @@ export default function App() {
         c.meta[k] = { status: "computed" };
       }
     });
+    // Valuation lands on the NEWEST column only, and that restraint is the point. There is one
+    // price — today's — so an EV/EBITDA against FY2019 would be today's enterprise value over a
+    // six-year-old profit: a number that looks like a multiple and means nothing. Historical
+    // multiples need historical prices, which the free quote tier does not carry.
+    if (quote && quote.price && cols.length) {
+      const c = cols[cols.length - 1], v = c.v;
+      const mark = (k, val) => { v[k] = val == null || !isFinite(val) ? null : val; c.meta[k] = { status: "market" }; };
+      mark("price", quote.price);
+      const mktCap = v.sharesOut != null ? quote.price * v.sharesOut : null;
+      mark("mktCap", mktCap);
+      const ev = mktCap == null || v.totalDebt == null ? null
+        : mktCap + v.totalDebt + (v.preferred || 0) + (v.nciBs || 0) - (v.cash || 0) - (v.sti || 0);
+      mark("ev", ev);
+      mark("evRev", ev && v.revenue ? ev / v.revenue : null);
+      mark("evEbitda", ev && v.ebitda ? ev / v.ebitda : null);
+      mark("evEbit", ev && v.ebit ? ev / v.ebit : null);
+      mark("evFcf", ev && v.fcf ? ev / v.fcf : null);
+      mark("pe", v.epsDil ? quote.price / v.epsDil : null);
+      mark("pb", mktCap && v.equity ? mktCap / v.equity : null);
+      mark("fcfYield", mktCap && v.fcf != null ? v.fcf / mktCap : null);
+      mark("divYield", v.dps ? v.dps / quote.price : null);
+    }
     return { periods, cols };
-  }, [data]);
+  }, [data, quote]);
 
   // After the grid paints, jump to the newest year. Runs on the data rather than on mount, because
   // the table does not exist yet when the fetch is still in flight.
@@ -180,6 +215,8 @@ export default function App() {
         </div>
         <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 18 }}>
           {data.meta.tagsKept} tagged concepts kept · {data.meta.tagsDropped} outside the template · {(data.filings || []).length} filings on file
+          {quote && <span style={{ color: C.teal, marginLeft: 12 }}>${quote.price.toFixed(2)} — valuation on the newest year only, one price to divide with</span>}
+          {quoteNote && <span style={{ color: C.bronze, marginLeft: 12 }}>{quoteNote}</span>}
           {copied && <span style={{ color: C.teal, marginLeft: 12 }}>{copied}</span>}
         </p>
 

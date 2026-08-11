@@ -108,7 +108,9 @@ export const SECTIONS = [
   { k: "epsDil", label: "EPS, diluted", how: "fetched", tags: ["EarningsPerShareDiluted"] },
   { k: "wasoBasic", label: "Weighted avg shares, basic", how: "fetched", tags: ["WeightedAverageNumberOfSharesOutstandingBasic"] },
   { k: "wasoDil", label: "Weighted avg shares, diluted", how: "fetched", tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"] },
-  { k: "sharesOut", label: "Shares outstanding (cover)", how: "fetched", tags: ["dei:EntityCommonStockSharesOutstanding"], note: "From the filing cover page — the count for market cap" },
+  // `latest` because the cover-page count is dated the day the filing went out, not the fiscal
+  // year end — it matches no period and must be taken as the most recent value instead.
+  { k: "sharesOut", label: "Shares outstanding (cover)", how: "fetched", latest: true, tags: ["dei:EntityCommonStockSharesOutstanding"], note: "Cover page of the most recent filing — the count market cap is built on" },
   { k: "dps", label: "Dividends per share", how: "fetched", tags: ["CommonStockDividendsPerShareDeclared"] },
 ]},
 // ─────────────────────────────────────────────────────────────── DERIVED
