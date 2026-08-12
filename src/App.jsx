@@ -222,6 +222,8 @@ export default function App() {
 
         {grid.empty && <p style={{ color: C.bronze, fontFamily: MONO, fontSize: 12 }}>No annual XBRL periods on file — this filer may report under IFRS (20-F) or predate tagging.</p>}
 
+        {grid.cols && <ValuationCard grid={grid} quote={quote} note={quoteNote} S={S} />}
+
         {/* Opens pinned to the right-hand edge — the current year, which is what you came to see —
             and scrolling left walks back through history. Model order without making the newest
             year the one you have to go looking for. */}
@@ -232,7 +234,10 @@ export default function App() {
               {grid.cols.map(c => <th key={c.period.end} style={{ ...S.label, textAlign: "right", padding: "10px 14px", whiteSpace: "nowrap" }}>FY{c.period.fy || c.period.end.slice(0, 4)}<div style={{ fontSize: 8, opacity: .6, letterSpacing: 1 }}>{c.period.end}</div></th>)}
             </tr></thead>
             <tbody>
-              {SECTIONS.map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))} />)}
+              {/* Valuation is lifted out into its own card above. There is ONE price, so it produces
+                  one column of figures — spreading it across eight year-columns printed seven blanks
+                  and hid the only real value off the right-hand edge of the scroll. */}
+              {SECTIONS.filter(s => s.id !== "ev").map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))} />)}
             </tbody>
           </table>
         </div>}
@@ -245,6 +250,33 @@ export default function App() {
           <span><b style={{ color: C.teal }}>judgement</b> — never auto-filled</span>
         </div>
       </>}
+    </div>
+  </div>;
+}
+
+// One price divided into one year, so it reads as one block. Says out loud which year it divided
+// into, because "EV/EBITDA 26.7x" is meaningless without knowing whether the EBITDA is FY2025 or
+// a stale year — and that ambiguity is exactly what a valuation row buried in a year grid creates.
+function ValuationCard({ grid, quote, note, S }) {
+  const sec = SECTIONS.find(s => s.id === "ev");
+  const c = grid.cols[grid.cols.length - 1];
+  const rows = sec.lines.map(l => ({ k: l.k, label: l.label, v: c.v[l.k] })).filter(r => r.v != null);
+  if (!rows.length) return <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card, padding: "14px 18px", marginBottom: 16 }}>
+    <span style={{ ...S.label, color: C.teal }}>Current Valuation</span>
+    <p style={{ fontSize: 12, color: C.bronze, margin: "8px 0 0", fontFamily: MONO }}>{note || "no price available, so nothing to divide with"}</p>
+  </div>;
+  return <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card, padding: "14px 18px", marginBottom: 16 }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+      <span style={{ ...S.label, color: C.teal }}>Current Valuation</span>
+      <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>
+        {quote ? `$${quote.price.toFixed(2)} today` : ""} · against FY{c.period.fy} ({c.period.end})
+      </span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: "9px 22px" }}>
+      {rows.map(r => <div key={r.k} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: `1px solid ${C.hair2}`, paddingBottom: 5 }}>
+        <span style={{ fontSize: 12, color: C.mute }}>{r.label}</span>
+        <span style={{ fontSize: 13, fontFamily: MONO, color: C.ink2, fontWeight: 600 }}>{display(r.k, r.v)}</span>
+      </div>)}
     </div>
   </div>;
 }
