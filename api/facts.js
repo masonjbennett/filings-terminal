@@ -55,6 +55,8 @@ const KEEP = new Set(["RevenueFromContractWithCustomerExcludingAssessedTax","Rev
 // Health plans. Both spellings of the medical-cost line — UnitedHealth uses the HealthCare one
 // through 2021 and the generic one from 2022.
 "PolicyholderBenefitsAndClaimsIncurredHealthCare","HealthCareOrganizationPremiumRevenue",
+// Broker-dealers, boutiques and alternative managers — the compensation ratio.
+"LaborAndRelatedExpense","EmployeeBenefitsAndShareBasedCompensation",
 // ── REIT ─────────────────────────────────────────────────────────────────────────────────────────
 // SECScheduleIII...DepreciationExpense is filed by all ten REITs tested — the only universally
 // tagged real-estate-only depreciation figure. NotesPayable/LongTermDebt carry the debt total that

@@ -97,6 +97,15 @@ export const SECTIONS = [
   // which reported $1.1bn of total debt — its short-term borrowings alone — against a real $52bn.
   // Both of the last two are LONG-TERM debt including current maturities, not all-in totals, so
   // adding `stDebt` on top of them is correct rather than double counting.
+  // The filer's OWN all-in debt total, believed outright where it exists rather than added to
+  // anything. It lives here, in the corporate balance sheet, rather than in an industry overlay,
+  // because the filers that need it are not one industry: Progressive tags LongTermDebtCurrent as
+  // literally 0 and puts its real $6.9bn here (the three-way sum below returned "Total debt 0",
+  // "Debt / equity 0.00x" and a net debt of MINUS $10.1bn); UnitedHealth files $77.7bn here against
+  // the $69.5bn its long-term tag alone reports; and Goldman Sachs files $356bn here and nothing at
+  // all in the three tags below it. Confining this to the carrier overlays left every broker-dealer
+  // unable to reach it.
+  { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
   { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations"] },
   { k: "olNon", label: "Operating lease liability, non-current", how: "fetched", tags: ["OperatingLeaseLiabilityNoncurrent"] },
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
@@ -294,6 +303,12 @@ export const INDUSTRY = sic => {
   if (n >= 6311 && n <= 6321) return "life";      // life, accident & health carriers
   if ((n >= 6300 && n <= 6310) || (n >= 6331 && n <= 6399)) return "pc";  // fire/marine/casualty, surety, title
   if (n === 6411) return "corporate";             // agents & brokers — fee businesses, see above
+  // Security brokers/dealers (6211), investment advice (6282) and the rest of 6200-6299. One code
+  // range, three businesses — bulge-bracket broker-dealers, advisory boutiques, and alternative
+  // asset managers — but they share the metric that decides all of them: what share of revenue is
+  // paid to the people who produced it. Goldman runs a 32% compensation ratio, Evercore 64%, PJT
+  // 68%, and no reader of this sector looks at anything else first.
+  if (n >= 6200 && n <= 6299) return "advisory";
   if (n === 6798) return "reit";
   return "corporate";
 };
@@ -302,6 +317,7 @@ export const INDUSTRY = sic => {
 // a reader has to decode is worse than no label.
 export const INDUSTRY_LABEL = {
   bank: "bank", pc: "P&C insurer", life: "life insurer", health: "health plan", reit: "REIT",
+  advisory: "broker-dealer",
 };
 
 // Which tags the fiscal CALENDAR is derived from — how many columns the sheet has, and what each
@@ -323,6 +339,7 @@ export const PERIOD_TAGS = {
   pc: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
   life: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
   health: [...REV, "PremiumsEarnedNet"],
+  advisory: REV,
   reit: REV,
 };
 // Last resort for any filer whose whole top line is a company extension. Net income is a duration
@@ -359,6 +376,10 @@ export const NOT_APPLICABLE = {
   // care genuinely trades on EV/EBITDA and P/E. Blanking what the other two carriers blank would
   // delete most of a sheet that is correct as it stands.
   health: ["inventory", "dio", "ccc"],
+  // Deliberately short, like the health plans. A broker-dealer has no inventory and no working
+  // capital cycle, but Goldman's balance sheet is real and the boutiques tag operating income, so
+  // blanking the corporate apparatus wholesale would delete a sheet that is largely correct.
+  advisory: ["inventory", "dio", "dpo", "ccc"],
   reit: ["inventory", "dio", "dpo", "ccc"],
 };
 
@@ -473,13 +494,6 @@ export const OVERLAY_SECTIONS = {
       // in the meantime. Every component is tagged, so this is the rare famous metric that can be
       // computed exactly rather than approximated.
       { k: "float", label: "Insurance float", how: "computed", formula: "(lossReservesNet or lossReserves - reinsRecov) + unearnedPrem - dac", note: "Policyholder money held and invested before it is paid out. Blank unless reserves NET of reinsurance are known" },
-      // Carriers commonly file one all-in debt figure instead of the corporate short/current/long
-      // split, and the split then reads as zero. Progressive tags LongTermDebtCurrent as literally
-      // 0 and puts its real $6.9bn here, so the three-way sum returned 0 — printing "Total debt 0",
-      // "Debt / equity 0.00x" and a net debt of MINUS $10.1bn for a company with seven billion of
-      // notes outstanding. Travelers had the same shape. This is the filer's own all-in total, so
-      // where it exists it is believed outright rather than added to anything.
-      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
       { k: "investments", label: "Total investments", how: "fetched", tags: ["Investments", "InvestmentsFairValueDisclosure"] },
       { k: "fixedMaturities", label: "Fixed maturities, available for sale", how: "fetched", tags: ["DebtSecuritiesAvailableForSaleExcludingAccruedInterest", "AvailableForSaleSecuritiesDebtSecurities", "AvailableForSaleSecurities"] },
       { k: "equitySec", label: "Equity securities", how: "fetched", tags: ["EquitySecuritiesFvNi", "EquitySecuritiesFvNiCurrentAndNoncurrent", "AvailableForSaleSecuritiesEquitySecurities"] },
@@ -526,13 +540,6 @@ export const OVERLAY_SECTIONS = {
       { k: "policyholderAccounts", label: "Policyholder account balances", how: "fetched", tags: ["PolicyholderFunds", "PolicyholderContractDeposits"] },
       { k: "separateAccounts", label: "Separate account assets", how: "fetched", tags: ["SeparateAccountAssets"], note: "Policyholder-directed — the carrier takes fees, not investment risk" },
       { k: "dac", label: "Deferred policy acquisition costs", how: "fetched", tags: ["DeferredPolicyAcquisitionCosts", "DeferredPolicyAcquisitionCostsNet", "SupplementaryInsuranceInformationDeferredPolicyAcquisitionCosts"] },
-      // Carriers commonly file one all-in debt figure instead of the corporate short/current/long
-      // split, and the split then reads as zero. Progressive tags LongTermDebtCurrent as literally
-      // 0 and puts its real $6.9bn here, so the three-way sum returned 0 — printing "Total debt 0",
-      // "Debt / equity 0.00x" and a net debt of MINUS $10.1bn for a company with seven billion of
-      // notes outstanding. Travelers had the same shape. This is the filer's own all-in total, so
-      // where it exists it is believed outright rather than added to anything.
-      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
       { k: "investments", label: "Total investments", how: "fetched", tags: ["Investments", "InvestmentsFairValueDisclosure"] },
       { k: "fixedMaturities", label: "Fixed maturities, available for sale", how: "fetched", tags: ["DebtSecuritiesAvailableForSaleExcludingAccruedInterest", "AvailableForSaleSecuritiesDebtSecurities", "AvailableForSaleSecurities"] },
       { k: "reinsRecov", label: "Reinsurance recoverable", how: "fetched", tags: ["ReinsuranceRecoverables", "ReinsuranceRecoverableForUnpaidClaimsAndClaimsAdjustments"] },
@@ -578,15 +585,31 @@ export const OVERLAY_SECTIONS = {
       // section, and splitting it into a section of its own for two rows would read worse than
       // declaring it here.
       { k: "medicalClaimsPayable", label: "Medical claims payable", how: "fetched", instant: true, tags: ["LiabilityForClaimsAndClaimsAdjustmentExpense"], note: "A balance at the year end, not a flow — the reserve held against claims already incurred" },
-      // Same all-in debt story as the carriers — UnitedHealth files $77.7bn here against the $69.5bn
-      // its long-term-debt tag alone reports.
-      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", instant: true, tags: ["DebtLongtermAndShorttermCombinedAmount"] },
     ]},
     { id: "health_ratios", title: "Health Plan Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
       { k: "mlr", label: "Medical loss ratio", how: "computed", formula: "medicalCosts / premiums", note: "The benefit ratio — the first number a managed-care analyst reads" },
       { k: "healthSgaRatio", label: "Operating cost ratio", how: "computed", formula: "sga / revenue" },
       { k: "daysClaimsPayable", label: "Days in claims payable", how: "computed", formula: "medicalClaimsPayable / medicalCosts * 365", note: "Reserve adequacy — a falling trend is where a miss shows up first" },
       { k: "premiumMix", label: "Premiums / total revenue", how: "computed", formula: "premiums / revenue", note: "How much of the top line is insured risk rather than services" },
+    ]},
+  ],
+
+  // ── BROKER-DEALER / ADVISORY / ALT MANAGER (SIC 6200-6299) ───────────────────────────────────
+  // Small on purpose. These filers are already well served by the corporate sheet — the top line
+  // now resolves via RevenuesNetOfInterestExpense, and equity, net income and ROE all populate.
+  // What was missing is the one ratio the sector actually trades and recruits on.
+  advisory: [
+    { id: "adv_is", title: "Compensation", feeds: "Historicals", tab: "statements", after: "is", kind: "is", lines: [
+      // 13 of the 15 firms tested file the first tag; Moelis is the reason for the second.
+      { k: "compExpense", label: "Compensation & benefits", how: "fetched", tags: ["LaborAndRelatedExpense", "EmployeeBenefitsAndShareBasedCompensation"] },
+    ]},
+    { id: "adv_ratios", title: "Broker-Dealer Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      { k: "compRatio", label: "Compensation ratio", how: "computed", formula: "compExpense / revenue", note: "Comp as a share of net revenue — the number this sector is run on. ~32% at a bulge bracket, 60-70% at an advisory boutique, and the gap IS the business model" },
+      { k: "pretaxMargin", label: "Pre-tax margin", how: "computed", formula: "pretax / revenue" },
+      // Tangible equity, because goodwill from acquired advisory teams is not capital that can
+      // absorb a loss. ROTE is what a broker-dealer sets targets against, not ROE.
+      { k: "tangibleEquity", label: "Tangible common equity", how: "computed", formula: "equity - goodwill - intangibles" },
+      { k: "rote", label: "Return on tangible equity", how: "computed", formula: "netIncome / tangibleEquity" },
     ]},
   ],
 

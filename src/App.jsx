@@ -56,7 +56,7 @@ const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfM
   // number on this page to be read out loud, so these matter more than the count suggests.
   "lossRatio","expenseRatio","combinedRatio","pyDevRatio","cededRatio","investmentYield",
   "benefitRatio","creditingRate","mlr","healthSgaRatio","premiumMix",
-  "ffoPayout","noiMargin","accumDepPct","debtToGrossRE"]);
+  "ffoPayout","noiMargin","accumDepPct","debtToGrossRE","compRatio","pretaxMargin","rote"]);
 const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb","loansToDeposits",
   "premiumLeverage","reserveLeverage"]);
 const DAYS = new Set(["dso","dio","dpo","ccc","daysClaimsPayable"]);

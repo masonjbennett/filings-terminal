@@ -183,6 +183,15 @@ export const DERIVED = {
   // netMargin, revGrowth, assetTurn and EV/Revenue read it. Same reason `totalDebt` is overridden
   // in place rather than added.
   revenue: () => null,
+  // Net income cannot be SMALLER than net income available to common — the second is the first
+  // less preferred dividends. Where that invariant breaks, the `NetIncomeLoss` fact is a
+  // dimensionless residual rather than the consolidated figure, and the tag list cannot tell:
+  // Charles Schwab tags it at $8.85m against $8.4bn available to common, which printed a 0.0% net
+  // margin and a 0.0% ROE for a company earning eight billion dollars. Repairing from the line
+  // directly beneath it is safe because both are already on the sheet and visibly disagree.
+  // Runs before netMargin, ROE and ROA read it — hence the position.
+  netIncome: v => (v.netIncome != null && v.niToCommon != null && v.netIncome < v.niToCommon
+    ? v.niToCommon : null),
   // EBIT is required, not summed. `sum` treats a missing input as zero, so a filer that tagged D&A
   // but no operating income reported its D&A AS its EBITDA: VICI Properties printed EBITDA of $4m
   // against $4.0bn of revenue, and Net debt/EBITDA came out at 4,041x. Its leases are sales-type,
@@ -203,7 +212,7 @@ export const DERIVED = {
   // missing rather than zero, and reporting the stub as the total is the Progressive failure in a
   // quieter register — Equinix printed $1.3bn against $33.8bn of real estate, a 3.8% debt load for
   // one of the most leveraged names in the sector. Blank instead.
-  totalDebt: v => corpDebt(v),
+  totalDebt: v => (v.debtAllIn != null ? v.debtAllIn : corpDebt(v)),
   debtLikeTotal: v => sum(v.olCur, v.olNon, v.flCur, v.flNon, v.pensionUnderfunded, v.deferredComp, v.assetRetirement),
   totalDebtLeases: v => sum(v.totalDebt, v.olCur, v.olNon, v.flCur, v.flNon),
   netDebt: v => (v.totalDebt == null ? null : v.totalDebt - (v.cash || 0) - (v.sti || 0)),
@@ -276,15 +285,7 @@ const all = (...xs) => xs.every(x => x != null);
 // every filer the ratio is most reliable for.
 const pcLosses = v => (v.lossesIncurred == null ? null : v.lossesIncurred + (v.lifeBenefits || 0));
 
-// Overrides DERIVED.totalDebt for every carrier type, and must therefore keep the same key: the
-// merge is `{...DERIVED, ...DERIVED_PC}`, so the entry stays in DERIVED's insertion slot and still
-// runs before netDebt, debtEquity and debtCap read it. See the debtAllIn note in the template —
-// where a filer publishes one all-in figure the three-way corporate sum is not merely incomplete,
-// it can resolve to a confident zero.
-const carrierDebt = v => (v.debtAllIn != null ? v.debtAllIn : corpDebt(v));
-
 export const DERIVED_PC = {
-  totalDebt: carrierDebt,
   lossesTotal: pcLosses,
   lossRatio: v => div(pcLosses(v), v.npe),
   expenseRatio: v => (all(v.dacAmort, v.otherUwExp) ? div(v.dacAmort + v.otherUwExp, v.npe) : null),
@@ -312,7 +313,6 @@ export const DERIVED_PC = {
 };
 
 export const DERIVED_LIFE = {
-  totalDebt: carrierDebt,
   benefitRatio: v => div(v.benefits, v.premiums),
   creditingRate: v => div(v.interestCredited, v.policyholderAccounts),
   investmentYield: v => div(v.invIncome, v.investments),
@@ -325,7 +325,6 @@ export const DERIVED_LIFE = {
 };
 
 export const DERIVED_HEALTH = {
-  totalDebt: carrierDebt,
   mlr: v => div(v.medicalCosts, v.premiums),
   healthSgaRatio: v => div(v.sga, v.revenue),
   daysClaimsPayable: v => (div(v.medicalClaimsPayable, v.medicalCosts) == null ? null
@@ -348,6 +347,13 @@ const reitFfo = v => {
   return v.niToCommon + v.da - (v.gainOnPropertySale || 0) + (v.reImpairment || 0);
 };
 
+export const DERIVED_ADVISORY = {
+  compRatio: v => div(v.compExpense, v.revenue),
+  pretaxMargin: v => div(v.pretax, v.revenue),
+  tangibleEquity: v => (v.equity == null ? null : v.equity - (v.goodwill || 0) - (v.intangibles || 0)),
+  rote: v => (v.equity == null ? null : div(v.netIncome, v.equity - (v.goodwill || 0) - (v.intangibles || 0))),
+};
+
 export const DERIVED_REIT = {
   // Same all-in-debt override as the carriers, different tag names. See reitDebt in the template.
   totalDebt: v => (v.reitDebt != null ? v.reitDebt : corpDebt(v)),
@@ -365,6 +371,7 @@ export const DERIVED_REIT = {
 // the component, so adding a set is one line here and nothing in App.
 export const DERIVED_BY_INDUSTRY = {
   bank: DERIVED_BANK, pc: DERIVED_PC, life: DERIVED_LIFE, health: DERIVED_HEALTH, reit: DERIVED_REIT,
+  advisory: DERIVED_ADVISORY,
 };
 
 // Year-over-year lines need the column beside them, so they are computed after the grid is built.

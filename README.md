@@ -127,6 +127,23 @@ which tags are present — a corporate with a finance arm reports loans too.
   slice problem as MetLife.
 - **Insurance** (SIC 6300–6411) — DONE, as **four** overlays rather than one. See below.
 - **REIT** (SIC 6798) — DONE. Property operations, FFO, real estate and REIT ratios. See below.
+- **Broker-dealer / advisory / alt manager** (SIC 6200–6299) — DONE. One code range, three
+  businesses: bulge-bracket broker-dealers (GS, MS, JEF, SCHW, RJF, IBKR), advisory boutiques (EVR,
+  LAZ, PJT, HLI, MC) and alternative managers (BX, KKR, APO). Deliberately the smallest overlay —
+  the corporate sheet already serves them once the top line resolves — adding only the compensation
+  ratio, pre-tax margin, tangible common equity and ROTE.
+
+  **The compensation ratio is the point.** It is what the sector is run, valued and recruited on,
+  and the spread across the three business models is the business model: computed **GS 32.4% ·
+  MS 41.4% · JEF 35.7% · SCHW 27.1% · EVR 64.5% · LAZ 65.4% · PJT 67.6% · HLI 61.5% · BX 38.9%**.
+  `LaborAndRelatedExpense` covers 13 of the 15 firms tested; Moelis is why
+  `EmployeeBenefitsAndShareBasedCompensation` is the fallback. ROTE rather than ROE because goodwill
+  from acquired advisory teams is not capital that absorbs a loss — Goldman's reads 14.5%, which is
+  the figure it sets targets against.
+
+  Two blanks that are correct: KKR and Apollo tag no compensation figure, and Moelis tags no
+  standard revenue concept at all (only `RevenueFromRelatedParties`), so its revenue and comp ratio
+  stay empty rather than guessed.
 
 Verified against JPM and BAC: deposits $2.56tn/$2.02tn, NII $95.4bn/$60.1bn, efficiency 52.4%,
 ROE 15.7%, equity/assets 8.2%. Test any overlay on **at least three filers** — the bank work looked
@@ -229,23 +246,14 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Broker-dealer sweep (SIC 6211).** Goldman, Morgan Stanley, Schwab and Raymond James fall
-   *outside* the bank range and take the corporate sheet. The revenue fix above gave them a top
-   line, but two known gaps remain, both found in the bank sweep and neither fixed:
-   **Goldman and Raymond James show no total debt** (Goldman's sits under
-   `DebtLongtermAndShorttermCombinedAmount`, an all-in tag that would double-count against its
-   $72bn of short-term borrowings, so it needs the `debtAllIn` override pattern the carriers use —
-   and there is no 6211 overlay to hang it on); and **Schwab's net margin reads ~0%** because it
-   never tags `NetIncomeLoss`, only `…AvailableToCommonStockholdersBasic`. These are the tickers an
-   IB reader is most likely to type, so this is the highest-value next pass.
-2. **Corporate cross-sector sweep.** The corporate template carries ~10,000 of the 10,387 tickers
+1. **Corporate cross-sector sweep.** The corporate template carries ~10,000 of the 10,387 tickers
    and has only ever been checked against a handful. Every shared-engine change in the insurance/
    REIT session — revenue tag order, the calendar rule, EBITDA, total debt — lands hardest here.
    Sample across energy, retail, pharma, industrials and software.
-3. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+2. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
-4. **Multi-company comps** — metric definitions already exist in the template; needs a second
+3. **Multi-company comps** — metric definitions already exist in the template; needs a second
    fetch path and a column-per-company layout.
 
 ## A note on how this got built
