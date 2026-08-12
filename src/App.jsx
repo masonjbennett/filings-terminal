@@ -191,7 +191,10 @@ export default function App() {
 
       {/* ── Search ── */}
       <div style={{ position: "relative", marginBottom: 22 }}>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Company name or ticker — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
+        {/* Ticker leads, and the examples follow the same order. It is what the search actually
+            privileges — an exact ticker hit is ranked first — and it is the unambiguous input:
+            "Apple" matches three filers, AAPL matches one. */}
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Ticker or company name — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
           style={{ width: "100%", background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "13px 16px", fontSize: 15, fontFamily: MONO, color: C.ink2, outline: "none" }} />
         {hits.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 34px rgba(64,52,32,.13)" }}>
           {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => load(cik, tic, title)}
