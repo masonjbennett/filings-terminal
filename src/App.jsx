@@ -191,7 +191,7 @@ export default function App() {
 
       {/* ── Search ── */}
       <div style={{ position: "relative", marginBottom: 22 }}>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Company name or ticker — try APPLE" : "Loading company list…"} disabled={!tickers}
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Company name or ticker — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
           style={{ width: "100%", background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "13px 16px", fontSize: 15, fontFamily: MONO, color: C.ink2, outline: "none" }} />
         {hits.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 34px rgba(64,52,32,.13)" }}>
           {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => load(cik, tic, title)}
@@ -284,10 +284,17 @@ function ValuationCard({ grid, quote, note, S }) {
 function SectionRows({ sec, grid, S, link }) {
   const anyValue = sec.lines.some(l => grid.cols.some(c => c.v[l.k] != null));
   return <>
-    <tr><td colSpan={grid.cols.length + 1} style={{ padding: "14px 14px 6px", borderTop: `1px solid ${C.hair}` }}>
-      <span style={{ ...S.label, color: C.teal }}>{sec.title}</span>
-      <span style={{ fontSize: 9, color: C.faint, fontFamily: MONO, marginLeft: 10 }}>feeds {sec.feeds}</span>
-      {link && !anyValue && <a href={link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: C.bronze, fontFamily: MONO, marginLeft: 10 }}>open this statement ↗</a>}
+    {/* The cell spans the whole table, so its contents scroll away with the years — and since the
+        sheet opens pinned to the newest year, the section titles were off-screen from the moment it
+        loaded. The inner div sticks to the left edge of the scroll container instead, so the title
+        stays put exactly like the line-item column beside it. Sticky has to go on the DIV: a
+        full-width td has nowhere to stick to. */}
+    <tr><td colSpan={grid.cols.length + 1} style={{ padding: 0, borderTop: `1px solid ${C.hair}` }}>
+      <div style={{ position: "sticky", left: 0, display: "inline-block", padding: "14px 14px 6px", whiteSpace: "nowrap" }}>
+        <span style={{ ...S.label, color: C.teal }}>{sec.title}</span>
+        <span style={{ fontSize: 9, color: C.faint, fontFamily: MONO, marginLeft: 10 }}>feeds {sec.feeds}</span>
+        {link && !anyValue && <a href={link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: C.bronze, fontFamily: MONO, marginLeft: 10 }}>open this statement ↗</a>}
+      </div>
     </td></tr>
     {sec.lines.map(line => {
       const cells = grid.cols.map(c => ({ v: c.v[line.k], m: c.meta[line.k] || {} }));
