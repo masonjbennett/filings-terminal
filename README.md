@@ -111,10 +111,20 @@ EV/EBITDA against FY2019 would be today's enterprise value over a six-year-old p
 Detected from the **SIC code SEC assigns** (`api/facts.js` returns `sicCode`), never inferred from
 which tags are present — a corporate with a finance arm reports loans too.
 
-- **Bank** (SIC 6020–6199) — DONE. Bank income statement, loans/deposits/securities, and bank
-  ratios (efficiency, loans/deposits, allowance coverage, equity/assets). `NOT_APPLICABLE.bank`
-  blanks the lines a depository does not have, including every EBITDA-based leverage ratio: a bank
-  is levered on capital ratios, so Net debt/EBITDA is a category error rather than a gap.
+- **Bank** (SIC 6020–6199) — DONE, and **swept across 10 filers** (Aug 2026) after shipping on two.
+  Bank income statement, loans/deposits/securities, and bank ratios (efficiency, loans/deposits,
+  allowance coverage, equity/assets). `NOT_APPLICABLE.bank` blanks the lines a depository does not
+  have, including every EBITDA-based leverage ratio: a bank is levered on capital ratios, so Net
+  debt/EBITDA is a category error rather than a gap.
+
+  The sweep held up better than the record suggested — money-centres, regionals, a card issuer and a
+  custody bank all populate, and State Street's 0.17 loans/deposits is correct for a custodian
+  rather than a bug. Three things it did find: **Capital One reported $1.1bn of total debt** (its
+  short-term borrowings alone) against a real $52bn, because it files neither long-term tag the
+  chain knew; **Truist had no revenue line at all**, now reconstructed as NII + fees, an identity
+  that holds exactly at JPMorgan; and Wells Fargo's and American Express's loan balances are
+  company extensions, so they stay blank. Amex's revenue also moved $41bn → $72bn, the same ASC 606
+  slice problem as MetLife.
 - **Insurance** (SIC 6300–6411) — DONE, as **four** overlays rather than one. See below.
 - **REIT** (SIC 6798) — DONE. Property operations, FFO, real estate and REIT ratios. See below.
 
@@ -219,10 +229,23 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+1. **Broker-dealer sweep (SIC 6211).** Goldman, Morgan Stanley, Schwab and Raymond James fall
+   *outside* the bank range and take the corporate sheet. The revenue fix above gave them a top
+   line, but two known gaps remain, both found in the bank sweep and neither fixed:
+   **Goldman and Raymond James show no total debt** (Goldman's sits under
+   `DebtLongtermAndShorttermCombinedAmount`, an all-in tag that would double-count against its
+   $72bn of short-term borrowings, so it needs the `debtAllIn` override pattern the carriers use —
+   and there is no 6211 overlay to hang it on); and **Schwab's net margin reads ~0%** because it
+   never tags `NetIncomeLoss`, only `…AvailableToCommonStockholdersBasic`. These are the tickers an
+   IB reader is most likely to type, so this is the highest-value next pass.
+2. **Corporate cross-sector sweep.** The corporate template carries ~10,000 of the 10,387 tickers
+   and has only ever been checked against a handful. Every shared-engine change in the insurance/
+   REIT session — revenue tag order, the calendar rule, EBITDA, total debt — lands hardest here.
+   Sample across energy, retail, pharma, industrials and software.
+3. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
-2. **Multi-company comps** — metric definitions already exist in the template; needs a second
+4. **Multi-company comps** — metric definitions already exist in the template; needs a second
    fetch path and a column-per-company layout.
 
 ## A note on how this got built

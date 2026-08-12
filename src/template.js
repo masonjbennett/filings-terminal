@@ -29,7 +29,13 @@ export const SECTIONS = [
   // Reordering costs nothing where `Revenues` is stale or absent: pickFact skips a tag with no fact
   // for the period, so Apple (which never files it) and Equinix (which stopped in 2020) fall
   // straight through to the 606 tag exactly as before.
-  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["Revenues","RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet"] },
+  // `RevenuesNetOfInterestExpense` sits second because it is how every broker-dealer and several
+  // banks state their top line, and it must outrank the ASC 606 tag for the same reason `Revenues`
+  // does — at a financial the 606 figure is the fee slice, not the total. Without it Goldman Sachs
+  // and Morgan Stanley rendered with NO revenue line whatsoever (they are SIC 6211, so they take
+  // the corporate sheet and get no bank overlay to fall back on), and Wells Fargo lost its top line
+  // in 2019 when it stopped tagging `Revenues`. GS $58bn, MS $71bn, WFC $84bn.
+  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["Revenues","RevenuesNetOfInterestExpense","RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet"] },
   { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"] },
   { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"], fallback: "revenue - cogs" },
   { k: "rnd", label: "Research & development", how: "fetched", tags: ["ResearchAndDevelopmentExpense"] },
@@ -86,9 +92,12 @@ export const SECTIONS = [
   // The third tag is last on purpose — it is only reached when a filer uses neither of the usual
   // two, which is the case for MetLife ($14.2bn) and JPMorgan ($460.5bn). Both were reporting total
   // debt as their short-term borrowings alone. It carries current maturities inside it, so a filer
-  // that tagged `ltdCur` AND only this would double-count that slice; none of the fifteen tested
-  // does, and the two eras above cover everything that does tag `ltdCur`.
-  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"] },
+  // that tagged `ltdCur` AND only this would double-count that slice; none of those tested does,
+  // and the two eras above cover everything that does tag `ltdCur`. The fourth is Capital One's,
+  // which reported $1.1bn of total debt — its short-term borrowings alone — against a real $52bn.
+  // Both of the last two are LONG-TERM debt including current maturities, not all-in totals, so
+  // adding `stDebt` on top of them is correct rather than double counting.
+  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations"] },
   { k: "olNon", label: "Operating lease liability, non-current", how: "fetched", tags: ["OperatingLeaseLiabilityNoncurrent"] },
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },
@@ -309,6 +318,8 @@ const REV = SECTIONS[0].lines[0].tags;
 export const PERIOD_TAGS = {
   corporate: REV,
   bank: [...REV, "InterestAndDividendIncomeOperating", "InterestIncomeExpenseNet", "NoninterestIncome"],
+  // Broker-dealers (SIC 6211) take the corporate sheet, so their calendar comes from REV — which
+  // now includes RevenuesNetOfInterestExpense, the tag Goldman and Morgan Stanley actually file.
   pc: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
   life: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
   health: [...REV, "PremiumsEarnedNet"],

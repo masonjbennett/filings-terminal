@@ -176,6 +176,13 @@ const corpDebt = v => (v.ltdCur != null && v.ltDebt == null ? null : sum(v.stDeb
 // propagates into EBITDA, three margins, NOPAT, ROIC and EV/EBITDA. A filer that never tags
 // OperatingIncomeLoss now shows a blank EBIT and a blank EBITDA, which is the true answer.
 export const DERIVED = {
+  // A no-op that exists purely to RESERVE THE SLOT. Industry overrides are merged as
+  // `{...DERIVED, ...DERIVED_BANK}`, so a key only present in the industry set is appended at the
+  // END — after every margin and multiple that divides by it has already run and seen a null.
+  // Occupying the first position here means DERIVED_BANK's `revenue` reconstruction lands before
+  // netMargin, revGrowth, assetTurn and EV/Revenue read it. Same reason `totalDebt` is overridden
+  // in place rather than added.
+  revenue: () => null,
   // EBIT is required, not summed. `sum` treats a missing input as zero, so a filer that tagged D&A
   // but no operating income reported its D&A AS its EBITDA: VICI Properties printed EBITDA of $4m
   // against $4.0bn of revenue, and Net debt/EBITDA came out at 4,041x. Its leases are sales-type,
@@ -234,6 +241,12 @@ export const DERIVED = {
 // ratio for Apple would produce a number, and a number that means nothing is worse than a blank.
 export const DERIVED_BANK = {
   nii: v => (v.nii != null ? v.nii : v.intIncTotal == null ? null : v.intIncTotal - (v.intExpTotal || 0)),
+  // A bank's total revenue IS net interest income plus fees — the identity holds exactly at
+  // JPMorgan, whose `Revenues` tag ($182.4bn) equals NII $95.4bn + noninterest income $87.0bn. So
+  // where a bank tags no revenue total at all this reconstructs it rather than leaving the top line
+  // of the income statement blank: Truist files neither `Revenues` nor `RevenuesNetOfInterestExpense`.
+  // Returns null when the filer did tag one, leaving the reported figure untouched.
+  revenue: v => (v.revenue != null ? null : sum(v.nii, v.noninterestIncome)),
   totalRevenueBank: v => sum(v.nii, v.noninterestIncome),
   efficiency: v => div(v.noninterestExpense, sum(v.nii, v.noninterestIncome)),
   niiOnAssets: v => div(v.nii, v.totalAssets),
