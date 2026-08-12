@@ -62,6 +62,35 @@ const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","curren
 const DAYS = new Set(["dso","dio","dpo","ccc","daysClaimsPayable"]);
 const display = (k, v, unit) => v == null ? null : PCT.has(k) ? fmtPct(v) : MULT.has(k) ? fmtX(v) : DAYS.has(k) ? Math.round(v) + "d" : fmtNum(v, unit);
 
+// Every FETCHED figure knows the accession number it came from, so every fetched figure can open
+// it. The page claims in its header that each number is traceable to a filing; until now that was
+// true but only provable through a hover tooltip, which is invisible on a phone, in a screenshot,
+// and to anyone reading over a shoulder. The strongest claim on the page was the one thing a
+// sceptical reader could not check.
+//
+// Per CELL rather than per column, and the distinction is not cosmetic: rule 2 takes the newest
+// filing, so FY2019's figures usually come out of the FY2021 10-K, which restated them. There is no
+// single "filing for this column" to link a header to — only a filing per value. A column-level
+// link would be quietly wrong in exactly the cases a careful reader tests first.
+// Lands on EDGAR's filing-detail page, not the raw directory. The directory always resolves and was
+// the first version, but it is a wall of twenty filenames including .xsd and _cal.xml — unconvincing
+// to exactly the sceptical reader this exists for. The `-index.htm` page names the form ("Form 10-K
+// — Annual report"), the filing date, and the PERIOD OF REPORT, which is the column the reader just
+// clicked from, with the document itself one click away. EDGAR generates it for every electronic
+// filing, and this tool only ever handles XBRL-era ones.
+const secFilingUrl = (cik, accn) =>
+  cik && accn
+    ? `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${String(accn).replace(/-/g, "")}/${accn}-index.htm`
+    : null;
+
+// One stylesheet instead of ~1,300 pairs of inline hover handlers — the sheet is 168 lines by 8
+// columns and every cell is a candidate. Restraint is deliberate: underlining a thousand numbers
+// would wreck the paper-and-ink page, so a source link is invisible until the cursor asks for it.
+const CELL_CSS = `
+.srcnum { color: inherit; text-decoration: none; cursor: pointer; border-bottom: 1px dotted transparent; }
+.srcnum:hover { color: ${"#0d6d56"}; border-bottom-color: ${"#0d6d5666"}; }
+`;
+
 export default function App() {
   const [tickers, setTickers] = useState(null);
   const [q, setQ] = useState("");
@@ -267,6 +296,7 @@ export default function App() {
   };
 
   return <div style={S.page}>
+    <style>{CELL_CSS}</style>
     <div style={{ height: 6, background: C.ink }} /><div style={{ height: 2, background: C.teal }} />
     <div style={S.wrap}>
       <header style={{ padding: "26px 0 20px", borderBottom: `1px solid ${C.hair}`, marginBottom: 22 }}>
@@ -307,6 +337,10 @@ export default function App() {
         </div>
         <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 18 }}>
           {data.meta.tagsKept} tagged concepts kept · {data.meta.tagsDropped} outside the template · {(data.filings || []).length} filings on file
+          {/* The instruction manual for the click-through, placed beside the claim it proves rather
+              than in a footer. A sceptical reader forms the doubt AT a number, not at a bibliography
+              168 rows below it, so this sits at the top and the proof itself sits in the cell. */}
+          <span style={{ color: C.ink2, marginLeft: 12 }}>· click any reported figure to open the filing it came from</span>
           {quote && <span style={{ color: C.teal, marginLeft: 12 }}>${quote.price.toFixed(2)} — valuation on the newest year only, one price to divide with</span>}
           {quoteNote && <span style={{ color: C.bronze, marginLeft: 12 }}>{quoteNote}</span>}
           {copied && <span style={{ color: C.teal, marginLeft: 12 }}>{copied}</span>}
@@ -350,7 +384,7 @@ export default function App() {
                   one column of figures — spreading it across eight year-columns printed seven blanks
                   and hid the only real value off the right-hand edge of the scroll. */}
               {activeSections.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id) || s.tab === tab)
-                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec))}
+                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec))} cik={data.cik}
                   naLabel={INDUSTRY_LABEL[industry] ? `n/a for a ${INDUSTRY_LABEL[industry]}` : "n/a"} />)}
             </tbody>
           </table>
@@ -410,7 +444,7 @@ function ValuationCard({ grid, quote, note, S }) {
   </div>;
 }
 
-function SectionRows({ sec, grid, S, link, naLabel = "n/a" }) {
+function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
   const anyValue = sec.lines.some(l => grid.cols.some(c => c.v[l.k] != null));
   return <>
     {/* The cell spans the whole table, so its contents scroll away with the years — and since the
@@ -457,10 +491,20 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a" }) {
               rather than for the ones that happen to exist today. */}
           {line.note && <div style={{ fontSize: 9, color: C.faint, fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 }}>{line.note}</div>}
         </td>
-        {cells.map((x, i) => <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
-          title={x.m.tag ? `${x.m.tag} · ${x.m.form} filed ${x.m.filed}` : ""}>
-          {display(line.k, x.v, x.m.unit) || "—"}
-        </td>)}
+        {cells.map((x, i) => {
+          const shown = display(line.k, x.v, x.m.unit);
+          // Only a REPORTED figure carries an accession, and only a reported figure should claim to
+          // be verifiable. A computed line has no single source — EBITDA is not in any filing — and
+          // linking it would be the one dishonest thing on a page whose whole argument is
+          // provenance. Those keep the ƒ marker and stay plain text.
+          const url = shown != null && x.m.accn ? secFilingUrl(cik, x.m.accn) : null;
+          return <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
+            title={x.m.tag ? `${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
+            {url
+              ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
+              : (shown || "—")}
+          </td>;
+        })}
       </tr>;
     })}
   </>;

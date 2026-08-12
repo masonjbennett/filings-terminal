@@ -26,6 +26,25 @@ lookup did.
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections).
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
 
+**Every reported figure is a link to the filing it came from.** Click any number that was fetched
+rather than computed and EDGAR's filing-detail page opens — form type, filing date, and *period of
+report* matching the column you clicked from, with the document one click further. That is the
+difference between claiming traceability and demonstrating it: the header has always said each
+figure is traceable to an accession number, but until the cells became links that was only provable
+through a hover tooltip, which is invisible on a phone, in a screenshot, and to anyone reading over
+a shoulder.
+
+Two decisions inside it:
+
+- **Per cell, not per column.** Rule 2 takes the newest filing, so a column's figures routinely come
+  from several. Apple's FY2025 revenue links to the 10-K filed Oct-2025; its FY2025 *cash* links to
+  a 10-Q filed Jul-2026, which carried that balance sheet as its comparative. One Apple sheet spans
+  nine filings and one Chubb sheet ten. A link on the year header would be quietly wrong in exactly
+  the cases a careful reader checks first.
+- **Computed lines are deliberately not linked.** EBITDA, free cash flow, the combined ratio and FFO
+  exist in no filing, and sending someone to EDGAR to look for one would be the single dishonest
+  thing on a page whose whole argument is provenance. They keep the ƒ marker and stay plain text.
+
 ## Rules in the extraction engine
 
 Each was learned by probing real filings, and each fails **silently** if broken:
