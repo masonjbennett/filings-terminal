@@ -14,7 +14,10 @@ const UA = { "User-Agent": "Mason Bennett masonjbennett.com bennettmasonj@gmail.
 const SECTION_PATTERNS = {
   // The exclusion has to lead: a trailing (?!.*comprehensive) is satisfied by "COMPREHENSIVE
   // INCOME" because nothing follows the match, so it tagged the wrong statement.
-  is: /^(?!.*comprehensive).*(statement.*(operation|income)|^income statement)/i,
+  // "Earnings" belongs here with "operations" and "income": Berkshire files "Consolidated
+  // Statements of Earnings" and matched none of the three, so a blank line in its income statement
+  // fell back to the filing index instead of opening the statement itself.
+  is: /^(?!.*comprehensive).*(statement.*(operation|income|earnings)|^income statement)/i,
   bs: /balance sheet|statement.*financial position/i,
   cf: /statement.*cash flow/i,
   eq: /statement.*(equity|stockholders)/i,

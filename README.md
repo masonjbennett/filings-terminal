@@ -15,13 +15,13 @@ lookup did.
   the browser. No server round trip to turn "AAPL" into a CIK.
 - `api/facts.js` — proxies `data.sec.gov` (which sends no CORS headers, so a browser cannot read it
   directly) and **slims the payload**: a large filer's companyfacts document is 10–15MB because it
-  carries every tag ever reported; the template needs ~110 of them. Also returns the numeric SIC.
+  carries every tag ever reported; the template needs ~235 of them. Also returns the numeric SIC.
 - `api/sections.js` — reads a filing's `FilingSummary.xml` so a line the filer never tagged can link
   to the exact rendered statement or footnote, rather than "somewhere around page 47".
 - `api/quote.js` — share price ONLY. Market cap is computed as price × the company's own cover-page
   share count, so the EV bridge stays traceable to filings with exactly one outside input. Needs
   `FINNHUB_KEY`; without it the valuation block says so.
-- `src/template.js` — 168 line items across 15 sections plus industry overlays, grounded in standard
+- `src/template.js` — 279 line items across 15 core sections plus industry overlays, grounded in standard
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections).
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
@@ -47,6 +47,41 @@ Each was learned by probing real filings, and each fails **silently** if broken:
    tagged), *not tagged* (disclosed but untagged — go look), *judgement* (never auto-filled),
    *needs price*. Only "not tagged" is worth hunting by hand; conflating them sends you chasing
    numbers that do not exist.
+
+6. **The calendar is RECENT first, then deep, and it is per-industry.** Three failures, each of
+   which rendered a sheet that looked entirely healthy and was simply about the wrong years.
+   *First tag that yields anything*: Lincoln National tags
+   `RevenueFromContractWithCustomerExcludingAssessedTax` exactly once, for 2018, because only a
+   $1.3bn slice of its revenue is in ASC 606 scope — the whole terminal became a single 2018 column.
+   *Tag with the most years*, the obvious fix: Equinix tags `Revenues` 2013–2020 and the 606 tag
+   from 2019, so counting years picked the dead one and rendered FY2013–FY2020 in 2026. The rule is
+   now: find the newest annual period any candidate reaches, keep only tags that reach it, take the
+   deepest of those. Separately, Wells Fargo stopped filing `Revenues` after 2019 and showed four
+   stale columns ending FY2019, so `PERIOD_TAGS` gives each industry its own anchors (interest
+   income for a bank, premiums for a carrier) with net income as a last resort. The bank overlay had
+   shipped against JPM and BAC, which both still tag `Revenues`.
+7. **A partial total is worse than no total.** `sum()` treats a missing input as zero, which is
+   right for adding up debt-like items and wrong for anything a reader will divide by. Progressive
+   tags `LongTermDebtCurrent` as literally `0` and reports its real $6.9bn under
+   `DebtLongtermAndShorttermCombinedAmount`, so the three-way corporate debt sum returned **0** —
+   printing "Total debt 0", "Debt / equity 0.00x" and a net debt of *minus* $10.1bn. Carriers now
+   prefer their own all-in debt tag, and every combined-ratio input is null-checked explicitly. The
+   same rule blanks EBITDA without a real EBIT (VICI reported its $4m of D&A as EBITDA and a
+   4,041x Net debt/EBITDA) and blanks total debt when only the *current portion* of long-term debt
+   resolved (Equinix: $1.3bn against $33.8bn of real estate).
+8. **A subtotal that looks derivable usually is not.** Deriving a missing EBIT as
+   revenue − `CostsAndExpenses` was written, tested and removed: that tag is "total costs **and
+   expenses**" and for most filers includes interest, so the difference is pre-tax income, not
+   operating income. Welltower derived to *minus* $480m and Realty Income to $963m against a real
+   ~$2.1bn. A wrong EBIT does not stay put — it propagates into EBITDA, three margins, NOPAT, ROIC
+   and EV/EBITDA. Filers that never tag `OperatingIncomeLoss` now show a blank EBIT and EBITDA.
+9. **Revenue means the TOTAL, so `Revenues` leads the tag list.**
+   `RevenueFromContractWithCustomer…` is only the ASC 606 slice. The two coincide at an operating
+   company and diverge violently at a financial: MetLife's 606 revenue is $2.4bn of fee income
+   against $77.1bn of total revenue, so the sheet reported **3%** of the top line and every margin
+   and growth rate built on it. Berkshire read 33% low, Welltower 22%. Reordering is free where
+   `Revenues` is stale or absent — `pickFact` skips a tag with no fact for the period, so Apple
+   (never files it) and Equinix (stopped in 2020) fall through exactly as before.
 
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
@@ -80,12 +115,88 @@ which tags are present — a corporate with a finance arm reports loans too.
   ratios (efficiency, loans/deposits, allowance coverage, equity/assets). `NOT_APPLICABLE.bank`
   blanks the lines a depository does not have, including every EBITDA-based leverage ratio: a bank
   is levered on capital ratios, so Net debt/EBITDA is a category error rather than a gap.
-- **Insurance** (SIC 6311–6411) — line items sketched in `OVERLAYS`, not wired.
-- **REIT** (SIC 6798) — same.
+- **Insurance** (SIC 6300–6411) — DONE, as **four** overlays rather than one. See below.
+- **REIT** (SIC 6798) — DONE. Property operations, FFO, real estate and REIT ratios. See below.
 
 Verified against JPM and BAC: deposits $2.56tn/$2.02tn, NII $95.4bn/$60.1bn, efficiency 52.4%,
 ROE 15.7%, equity/assets 8.2%. Test any overlay on **at least three filers** — the bank work looked
 finished against JPM alone and was not.
+
+### Insurance is four industries, not one
+
+Splitting the SIC range was the first thing the research forced, because these do not share a
+metric:
+
+| SIC | Routes to | Why |
+|---|---|---|
+| 6300–6310, 6331–6399 | `pc` | Combined ratio, reserve development, premium leverage, float |
+| 6311, 6321 | `life` | No combined ratio at all — benefit ratio, reserves, book value ex-AOCI |
+| 6324 | `health` | An operating company whose cost of goods is medical claims. **Keeps** EBIT, EBITDA and EV multiples |
+| 6411 | `corporate` | Agents and brokers underwrite nothing. AJG, AON, BRO and ERIE file `RevenueFromContractWithCustomer` and `CostsAndExpenses` like any services firm — the corporate sheet is already correct for them, so they get no overlay |
+
+Tested against 26 filers. What it cost to get right:
+
+- **The combined ratio is a consolidated GAAP ratio and says so on the row.** It runs a point or
+  three from the company's own figure, which is non-GAAP with its own definition. Computed: PGR
+  87.4%, TRV 92.5%, CB 87.7%, WRB 90.7%, CINF 95.8%, AIG 95.1%.
+- **Scope has to match on both sides of the divide.** `PolicyholderBenefitsAndClaimsIncurredNet` is
+  short-duration business only but `PremiumsEarnedNet` is consolidated, so Chubb's life arm printed
+  a **77.4%** combined ratio — ten points better than anything it has reported. Its life benefits
+  sit in `LiabilityForFuturePolicyBenefitsPeriodExpense`; adding them back makes both halves
+  consolidated and gives 87.7%.
+- **The expense half is the weak point, and the obvious fallback is a trap.**
+  `OtherUnderwritingExpense` is filed by only two of eight carriers. `OtherCostAndExpenseOperating`
+  is the right line for Allstate ($9.0bn) and a **$34m scrap** at Cincinnati Financial against
+  $10.0bn of premium — an 18.9% expense ratio and an 85.4% combined ratio for a carrier that runs
+  near 96%. Plausible, right units, ten points wrong. Replaced with Schedule III's
+  `SupplementaryInsuranceInformationOtherOperatingExpense`, ordered *after* the income-statement
+  tags because at Progressive the Schedule sweeps in $1.2bn of non-underwriting cost.
+- **Two big filers are simply unreachable, and that is the correct answer.** Allstate tags its
+  claims expense with a company extension, and companyfacts carries **no** custom namespaces —
+  only `us-gaap`, `dei`, `srt`, `invest`, `ecd`. Berkshire (SIC 6331) tags not one insurance
+  concept. Both render blank with a link to the filed statement. The near-miss:
+  `LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseIncurredClaims1` looks like the incurred-claims
+  total and is filed by six of eight — but at Allstate it collapses from $29.3bn to $2.65bn once the
+  figure is only tagged inside a segment breakdown, leaving a dimensionless residual. It would have
+  printed a 4.7% loss ratio. It is deliberately in no tag list.
+- **Float fails closed.** Allstate and Cincinnati both stop filing any reinsurance-recoverable tag,
+  and treating an unknown recoverable as zero overstated Allstate's float by billions.
+
+Where a carrier's data genuinely is not tagged, the sheet is blank: Allstate and Berkshire have no
+combined ratio, Aflac and Berkley no total debt, Centene no premium line, Molina no MLR.
+
+### REIT
+
+A REIT, unlike a bank or a carrier, **is** an operating company: it keeps EBIT, EBITDA, EV/EBITDA
+and Net debt/EBITDA, which is the leverage metric the sector is quoted on. `NOT_APPLICABLE.reit` is
+therefore almost empty. What the corporate template misses is that GAAP net income is close to
+meaningless here — depreciating buildings that are appreciating pushes reported earnings far below
+cash generation, which is the entire reason FFO exists.
+
+Tested against ten filers (O, PLD, SPG, AMT, EQIX, AVB, VICI, WELL, DLR, ESS). FFO per share
+computed against reported: **O $4.27 · PLD $6.22 · AMT $9.97 · AVB $11.38 · WELL $4.63 · DLR $6.46 ·
+ESS $15.18** — seven of ten within a rounding of the filed figure.
+
+- **FFO is reconstructed, and every input is a row directly above it** so the arithmetic is
+  auditable on the page: net income to common + D&A − gains on sale + impairment.
+- **The add-back is total D&A, not Schedule III.** `SECScheduleIII…DepreciationExpense` is the only
+  universally tagged (10/10) real-estate depreciation figure, and it is shown — but it is buildings
+  only. At Realty Income it is $1.6bn against $2.5bn of total D&A, the gap being lease-intangible
+  amortisation, which NAREIT also adds back. Using it alone put FFO 23% low.
+- **FFO blanks when it can prove it is wrong.** The gain adjustment only happens if the filer tags a
+  gain, which lets an untagged one through. Simon reports $4.6bn of net income on $3.2bn of
+  operating income and tags no property gain at all: FFO came out at $18.54/share against the ~$13
+  Simon reports. So if no gain is tagged **and** net income to common exceeds operating income,
+  material gains demonstrably exist and were demonstrably not removed — blank instead. Realty Income
+  also out-earns its operating income but tags its gain, so it is unaffected.
+- **Two REITs are structurally different and mostly blank, correctly.** VICI's leases are sales-type,
+  so it holds financing receivables rather than depreciable property and has almost no depreciation;
+  Equinix stops tagging net income to common. Neither gets an FFO.
+- **Net debt/EBITDA is blank for the three REITs that never tag `OperatingIncomeLoss`** (O, VICI,
+  WELL). Deriving EBIT as revenue − `CostsAndExpenses` was tried and removed — see rule 8.
+
+Still missing, and genuinely not in any filing as a tagged figure: **AFFO/Core FFO** (every REIT
+defines it differently), same-store NOI, and occupancy. AFFO is a `manual` row that says so.
 
 ## Deploying
 
@@ -108,13 +219,10 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Insurance overlay** (SIC 6311–6411) — premiums earned, losses & LAE incurred, combined ratio,
-   reserves, investment income. Same shape as the bank work.
-2. **REIT overlay** (SIC 6798) — FFO, AFFO, NOI, same-store NOI, rental revenue.
-3. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
-4. **Multi-company comps** — metric definitions already exist in the template; needs a second
+2. **Multi-company comps** — metric definitions already exist in the template; needs a second
    fetch path and a column-per-company layout.
 
 ## A note on how this got built
@@ -123,3 +231,13 @@ Every session so far has turned up a bug that automated checks passed and actual
 label that read "needs price" beside a populated cell, section titles that scrolled off-screen, a
 valuation block whose only real value sat outside the viewport. Query the DOM to confirm a number,
 but **look at the page** before calling it done.
+
+The insurance/REIT session added two more, and the second is the sharpest example yet. Long
+explanatory notes inherited `white-space: nowrap` from the cell and widened the sticky label column
+from 303px to 503px, pushing three year-columns off an 8-year sheet — caught by measuring the
+rendered geometry, invisible in the data. And Chubb shipped a **$155bn enterprise value, 2.62x
+EV/Revenue and 12.12x EV/FCF**, the exact three rows `NOT_APPLICABLE.pc` exists to suppress: App's
+quote block runs *after* the blanking pass and wrote values back over it. That one could not be
+reproduced locally at all, because the quote needs `FINNHUB_KEY` and local dev has none — it was
+found by looking at production. The harness now simulates the quote block for that reason: if a code
+path only executes in production, the test has to fake it or it is not tested.

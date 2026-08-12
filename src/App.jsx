@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS } from "./template.js";
-import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BANK, YOY } from "./extract.js";
+import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
+import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY } from "./extract.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -17,11 +17,13 @@ const SANS = "'Space Grotesk','Segoe UI',system-ui,sans-serif";
 // first industry overlay added a balance-sheet section the set had never heard of: deposits and
 // loans were matched as durations, found nothing, and reported "not tagged" for the two largest
 // numbers on a bank's balance sheet.
+// A LINE can declare it too, for the case a section is otherwise all durations: a health plan's
+// medical claims payable is one balance among four flows, and giving it a section of its own to
+// carry a flag would read worse on the page than saying so on the row.
 const INSTANT_SECTIONS = new Set(["bs", "debtlike", "dilution"]);
 const INSTANT_LINES = new Set(["sharesOut", "nol", "taxCredits"]);
-const isInstant = (sec, k) => INSTANT_LINES.has(k) || sec.instant === true || INSTANT_SECTIONS.has(sec.id);
-
-const REV_TAGS = SECTIONS[0].lines[0].tags;
+const isInstant = (sec, line) =>
+  line.instant === true || INSTANT_LINES.has(line.k) || sec.instant === true || INSTANT_SECTIONS.has(sec.id);
 
 // Organised by STATEMENT, not by analysis. A DCF, an LBO and a comps set all run off the same
 // revenue, EBITDA, capex and net debt, so tabbing by analysis would print the same twenty lines in
@@ -49,9 +51,15 @@ const fmtX = v => (v == null ? null : v.toFixed(2) + "x");
 // out of these sets a number renders bare — a 3% FCF yield printed "0.03" and 26.7x EBITDA printed
 // "26.74", which are the two figures most likely to be read off this page out loud.
 const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d",
-  "efficiency","niiOnAssets","allowanceToLoans","provisionToLoans","depositsToAssets","equityToAssets"]);
-const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb","loansToDeposits"]);
-const DAYS = new Set(["dso","dio","dpo","ccc"]);
+  "efficiency","niiOnAssets","allowanceToLoans","provisionToLoans","depositsToAssets","equityToAssets",
+  // Insurance. A combined ratio printed as "0.89" instead of "88.9%" is the single most likely
+  // number on this page to be read out loud, so these matter more than the count suggests.
+  "lossRatio","expenseRatio","combinedRatio","pyDevRatio","cededRatio","investmentYield",
+  "benefitRatio","creditingRate","mlr","healthSgaRatio","premiumMix",
+  "ffoPayout","noiMargin","accumDepPct","debtToGrossRE"]);
+const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb","loansToDeposits",
+  "premiumLeverage","reserveLeverage"]);
+const DAYS = new Set(["dso","dio","dpo","ccc","daysClaimsPayable"]);
 const display = (k, v, unit) => v == null ? null : PCT.has(k) ? fmtPct(v) : MULT.has(k) ? fmtX(v) : DAYS.has(k) ? Math.round(v) + "d" : fmtNum(v, unit);
 
 export default function App() {
@@ -118,6 +126,16 @@ export default function App() {
     // top-down rather than appending an industry annex at the bottom.
     const out = [...SECTIONS];
     for (const sec of extra) {
+      // `after` places a section directly below the one it belongs under — underwriting beneath the
+      // income statement, reserves beneath the balance sheet — so an insurer's sheet reads I/S →
+      // Underwriting → B/S → Reserves → C/F. Without it every overlay lands in one block after the
+      // cash flow, which is where the bank sections still sit; that default is kept rather than
+      // changed, because moving shipped sections would be a redesign, not a fix.
+      if (sec.after) {
+        const at = out.findIndex(s => s.id === sec.after);
+        out.splice(at >= 0 ? at + 1 : out.length, 0, sec);
+        continue;
+      }
       const anchor = sec.tab === "ratios" ? "margins" : "sh";
       const at = out.findIndex(s => s.id === anchor);
       out.splice(at >= 0 ? at : out.length, 0, sec);
@@ -132,7 +150,7 @@ export default function App() {
     // take a slice. Models read the other way — oldest on the left, this year on the right, so a
     // growth row reads forward — so the columns are flipped once, here, and everything downstream
     // (the sheet, the Excel copy) inherits the right order rather than each fixing it separately.
-    const periods = annualPeriods(facts, REV_TAGS, 8).reverse();
+    const periods = annualPeriods(facts, [...(PERIOD_TAGS[industry] || PERIOD_TAGS.corporate), ...PERIOD_TAGS_FALLBACK], 8).reverse();
     if (!periods.length) return { periods: [], rows: [], empty: true };
 
     // Column at a time: fetch every tagged line, then derive, so derived lines can read the ones
@@ -141,11 +159,11 @@ export default function App() {
       const v = {}, meta = {};
       for (const sec of activeSections) for (const line of sec.lines) {
         if (line.how !== "fetched" || !line.tags) continue;
-        const inst = isInstant(sec, line.k);
+        const inst = isInstant(sec, line);
         const got = line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p);
         v[line.k] = got.value; meta[line.k] = got;
       }
-      const derivations = industry === "bank" ? { ...DERIVED, ...DERIVED_BANK } : DERIVED;
+      const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
       for (const [k, fn] of Object.entries(derivations)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
       // Lines a filer of this type does not have are blanked outright, so a derived value can never
       // be built from an inapplicable input — a bank with a computed "EBITDA" would be a fiction.
@@ -159,6 +177,12 @@ export default function App() {
       for (const [k, src] of Object.entries(YOY)) {
         const a = c.v[src], b = prev && prev.v[src];
         c.v[k] = a != null && b != null && b !== 0 ? a / b - 1 : null;
+        // This pass runs AFTER the inapplicable lines are blanked, so writing "computed"
+        // unconditionally erased that verdict: a P&C insurer's EBITDA row said "n/a for a P&C
+        // insurer" while the EBITDA growth row directly under it said "not tagged" — pointing the
+        // reader at a filing to go hunt for the growth rate of a figure the sheet had just
+        // explained does not exist.
+        if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
         c.meta[k] = { status: "computed" };
       }
     });
@@ -168,7 +192,19 @@ export default function App() {
     // multiples need historical prices, which the free quote tier does not carry.
     if (quote && quote.price && cols.length) {
       const c = cols[cols.length - 1], v = c.v;
-      const mark = (k, val) => { v[k] = val == null || !isFinite(val) ? null : val; c.meta[k] = { status: "market" }; };
+      // Like the YoY pass above, this runs AFTER the inapplicable lines are blanked — and unlike it,
+      // this one writes VALUES, not just labels. So a price arriving quietly resurrected every row
+      // NOT_APPLICABLE had just deleted: Chubb printed a $155bn enterprise value, 2.62x EV/Revenue
+      // and 12.12x EV/FCF, the exact three rows the P&C list exists to suppress, because enterprise
+      // value is a category error for a carrier whose liabilities ARE the business. It only appeared
+      // in production, since the quote needs FINNHUB_KEY and local dev has none — which is why the
+      // blanking is enforced here rather than trusted to have happened earlier.
+      const na = new Set(NOT_APPLICABLE[industry] || []);
+      const mark = (k, val) => {
+        if (na.has(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; return; }
+        v[k] = val == null || !isFinite(val) ? null : val;
+        c.meta[k] = { status: "market" };
+      };
       mark("price", quote.price);
       const mktCap = v.sharesOut != null ? quote.price * v.sharesOut : null;
       mark("mktCap", mktCap);
@@ -199,7 +235,12 @@ export default function App() {
     const r = sections.reports.find(x => (x.kinds || []).includes(kind));
     return r ? r.url : (sections.index || null);
   };
-  const kindFor = secId => (secId === "is" || secId === "addbacks" ? "is" : secId === "bs" || secId === "debtlike" ? "bs" : secId === "cf" ? "cf" : secId === "dilution" ? "sbc" : secId === "dcf" ? "tax" : null);
+  // Overlay sections declare their own `kind`, which is what makes the "open this statement ↗" link
+  // appear for them. It matters most exactly where the overlay fails: Berkshire is SIC 6331 and
+  // tags not one insurance concept, so its Underwriting section is entirely blank — and a blank
+  // section with a link to the filed income statement is a useful answer, while a blank section
+  // without one looks like the tool broke.
+  const kindFor = sec => sec.kind || (sec.id === "is" || sec.id === "addbacks" ? "is" : sec.id === "bs" || sec.id === "debtlike" ? "bs" : sec.id === "cf" ? "cf" : sec.id === "dilution" ? "sbc" : sec.id === "dcf" ? "tax" : null);
 
   // Copies the tab you are looking at, not all 168 lines. Pasting a whole terminal into a model is
   // how a sheet ends up with three hundred rows nobody reads — the point of the tabs is that the
@@ -309,8 +350,8 @@ export default function App() {
                   one column of figures — spreading it across eight year-columns printed seven blanks
                   and hid the only real value off the right-hand edge of the scroll. */}
               {activeSections.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id) || s.tab === tab)
-                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))}
-                  naLabel={industry === "corporate" ? "n/a" : `n/a for a ${industry}`} />)}
+                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec))}
+                  naLabel={INDUSTRY_LABEL[industry] ? `n/a for a ${INDUSTRY_LABEL[industry]}` : "n/a"} />)}
             </tbody>
           </table>
         </div>}
@@ -391,10 +432,16 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a" }) {
       // line read "needs price" forever — including when the price had arrived and the multiple was
       // printed in the cell beside the label, which reads as a broken deployment rather than a
       // mislabelled row. Whether a figure is THERE is the first question; why it isn't comes second.
+      // "not tagged" means "disclosed somewhere in the filing — go and look", so it must never
+      // land on a COMPUTED line. Nobody tags an underwriting profit, an insurance float or a
+      // three-year revenue CAGR; those are blank because an input above them is blank, and the
+      // input is already carrying its own label. Sending a reader into a 10-K to hunt for a figure
+      // that exists in no filing is the most expensive kind of wrong label on this page.
       const status = has ? null
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : line.how === "manual" ? "judgement"
         : line.how === "market" ? "needs price"
+        : line.how === "computed" ? null
         : cells[0] && cells[0].m.status === "never-tagged" ? "n/a" : "not tagged";
       const statusColor = status === "judgement" ? C.teal : status === naLabel || status === "n/a" ? C.faint : status === "needs price" ? C.navy : C.bronze;
       return <tr key={line.k} style={{ borderTop: `1px solid ${C.hair2}` }}>
@@ -402,7 +449,13 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a" }) {
           <span style={{ color: has ? C.ink2 : C.faint }}>{line.label}</span>
           {line.how === "computed" && <span style={{ fontSize: 8, fontFamily: MONO, color: C.navy, marginLeft: 7 }} title={line.formula}>ƒ</span>}
           {status && <span style={{ fontSize: 8, fontFamily: MONO, color: statusColor, marginLeft: 8, letterSpacing: .5 }}>{status}</span>}
-          {line.note && <div style={{ fontSize: 9, color: C.faint, fontStyle: "italic", marginTop: 1 }}>{line.note}</div>}
+          {/* The cell is nowrap so the label and its status chip stay on one line, and white-space
+              INHERITS — so a note was also forced onto one line and set the width of the whole
+              sticky column. Apple's column is 303px; the insurance notes took Progressive's to
+              503px and pushed three year columns off the right edge of an 8-year sheet. The note
+              wraps inside a fixed measure instead, which caps the damage for any note ever added
+              rather than for the ones that happen to exist today. */}
+          {line.note && <div style={{ fontSize: 9, color: C.faint, fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 }}>{line.note}</div>}
         </td>
         {cells.map((x, i) => <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
           title={x.m.tag ? `${x.m.tag} · ${x.m.form} filed ${x.m.filed}` : ""}>

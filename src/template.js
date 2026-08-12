@@ -19,7 +19,17 @@
 export const SECTIONS = [
 // ─────────────────────────────────────────────────────────────── HISTORICALS: INCOME STATEMENT
 { id: "is", title: "Income Statement", feeds: "Historicals · 3-statement", lines: [
-  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["RevenueFromContractWithCustomerExcludingAssessedTax","Revenues","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet"] },
+  // `Revenues` leads because it is the TOTAL-revenue concept, while
+  // RevenueFromContractWithCustomer is only the ASC 606 slice — the two coincide at an ordinary
+  // corporate and diverge violently at a financial. MetLife's 606 revenue is $2.4bn of fee income
+  // against $77.1bn of total revenue: the sheet was reporting 3% of the top line, and every margin
+  // and growth rate built on it. Berkshire read 33% low, Welltower 22%. Putting the narrow tag
+  // first was safe only for as long as nothing but operating companies were looked up.
+  //
+  // Reordering costs nothing where `Revenues` is stale or absent: pickFact skips a tag with no fact
+  // for the period, so Apple (which never files it) and Equinix (which stopped in 2020) fall
+  // straight through to the 606 tag exactly as before.
+  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["Revenues","RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet"] },
   { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"] },
   { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"], fallback: "revenue - cogs" },
   { k: "rnd", label: "Research & development", how: "fetched", tags: ["ResearchAndDevelopmentExpense"] },
@@ -28,6 +38,11 @@ export const SECTIONS = [
   { k: "sga", label: "SG&A (combined)", how: "fetched", tags: ["SellingGeneralAndAdministrativeExpense"] },
   { k: "otherOpex", label: "Other operating expense", how: "fetched", tags: ["OtherCostAndExpenseOperating","RestructuringCharges"] },
   { k: "totalOpex", label: "Total operating expenses", how: "fetched", tags: ["OperatingExpenses","CostsAndExpenses"] },
+  // Kept separate from totalOpex because the two are NOT the same subtotal: `CostsAndExpenses` is
+  // all-in (cost of revenue AND usually interest), while `OperatingExpenses` sits below a gross
+  // profit line and excludes cost of revenue. Reported as its own row rather than folded into the
+  // one above, since which of the two a filer uses changes what the number means.
+  { k: "totalCosts", label: "Total costs & expenses", how: "fetched", tags: ["CostsAndExpenses"] },
   { k: "ebit", label: "Operating income (EBIT)", how: "fetched", tags: ["OperatingIncomeLoss"] },
   { k: "da", label: "Depreciation & amortisation", how: "fetched", tags: ["DepreciationDepletionAndAmortization","DepreciationAmortizationAndAccretionNet","DepreciationAndAmortization","Depreciation"] },
   { k: "ebitda", label: "EBITDA", how: "computed", formula: "ebit + da", note: "Not a GAAP concept — always computed, never tagged" },
@@ -68,7 +83,12 @@ export const SECTIONS = [
   { k: "olCur", label: "Operating lease liability, current", how: "fetched", tags: ["OperatingLeaseLiabilityCurrent"] },
   { k: "flCur", label: "Finance lease liability, current", how: "fetched", tags: ["FinanceLeaseLiabilityCurrent"] },
   { k: "curLiab", label: "Total current liabilities", how: "fetched", tags: ["LiabilitiesCurrent"] },
-  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt"] },
+  // The third tag is last on purpose — it is only reached when a filer uses neither of the usual
+  // two, which is the case for MetLife ($14.2bn) and JPMorgan ($460.5bn). Both were reporting total
+  // debt as their short-term borrowings alone. It carries current maturities inside it, so a filer
+  // that tagged `ltdCur` AND only this would double-count that slice; none of the fifteen tested
+  // does, and the two eras above cover everything that does tag `ltdCur`.
+  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"] },
   { k: "olNon", label: "Operating lease liability, non-current", how: "fetched", tags: ["OperatingLeaseLiabilityNoncurrent"] },
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },
@@ -97,7 +117,9 @@ export const SECTIONS = [
   { k: "debtIssued", label: "Debt issued", how: "fetched", tags: ["ProceedsFromIssuanceOfLongTermDebt","ProceedsFromIssuanceOfDebt","ProceedsFromNotesPayable"] },
   { k: "debtRepaid", label: "Debt repaid", how: "fetched", tags: ["RepaymentsOfLongTermDebt","RepaymentsOfDebt"] },
   { k: "buybacks", label: "Share repurchases", how: "fetched", tags: ["PaymentsForRepurchaseOfCommonStock"] },
-  { k: "dividends", label: "Dividends paid", how: "fetched", tags: ["PaymentsOfDividendsCommonStock","PaymentsOfDividends"] },
+  // AvalonBay and Essex file neither of the first two — `PaymentsOfOrdinaryDividends` is what they
+  // use, and without it the FFO payout ratio (the number a REIT is bought for) has no numerator.
+  { k: "dividends", label: "Dividends paid", how: "fetched", tags: ["PaymentsOfDividendsCommonStock","PaymentsOfDividends","PaymentsOfOrdinaryDividends","DividendsCommonStockCash"] },
   { k: "cff", label: "Cash from financing", how: "fetched", tags: ["NetCashProvidedByUsedInFinancingActivities"] },
   { k: "fcf", label: "Free cash flow", how: "computed", formula: "cfo - capex" },
   { k: "fcfConv", label: "FCF conversion", how: "computed", formula: "fcf / netIncome" },
@@ -240,14 +262,61 @@ export const SECTIONS = [
 // ── Industry handling ──────────────────────────────────────────────────────────────────────────
 // Detected from the SIC code SEC already assigns, not guessed from which tags are present — a
 // corporate with a finance arm reports loans too, and would be misread as a bank.
+//
+// "Insurance" is not one industry, and treating 6311-6411 as one sheet was the first thing the
+// research killed. Four business models sit inside that range and they do not share a metric:
+//   • a P&C carrier is judged on the combined ratio, reserve development and premium leverage;
+//   • a life carrier has no combined ratio at all — it is spread businesses and reserves, read on
+//     the benefit ratio and book value per share EX-AOCI;
+//   • a health plan (6324) is an operating company whose cost of goods is medical claims: it keeps
+//     EBIT, EBITDA and EV multiples, which are category errors for the other two;
+//   • an agent or broker (6411) underwrites nothing. AJG, AON and BRO file
+//     RevenueFromContractWithCustomer, CostsAndExpenses and D&A like any services company — no
+//     premiums earned, no reserves, no float. Checked against all four: the corporate template is
+//     already the right sheet for them, so they get no overlay at all.
+// 6300-6310 ("Insurance Carriers", unspecified) is routed to P&C: the generic code is used by
+// carriers whose statements are short-duration, and the P&C overlay degrades to "not tagged"
+// rather than to a wrong number if that is ever not so.
 export const INDUSTRY = sic => {
   const n = Number(sic);
   if (!n) return "corporate";
   if (n >= 6020 && n <= 6199) return "bank";      // depository + nondepository credit
-  if (n >= 6311 && n <= 6411) return "insurance";
+  if (n === 6324) return "health";                // hospital & medical service plans (managed care)
+  if (n >= 6311 && n <= 6321) return "life";      // life, accident & health carriers
+  if ((n >= 6300 && n <= 6310) || (n >= 6331 && n <= 6399)) return "pc";  // fire/marine/casualty, surety, title
+  if (n === 6411) return "corporate";             // agents & brokers — fee businesses, see above
   if (n === 6798) return "reit";
   return "corporate";
 };
+
+// What to call the filer in a blanked cell. Without this the sheet says "n/a for a pc", and a label
+// a reader has to decode is worse than no label.
+export const INDUSTRY_LABEL = {
+  bank: "bank", pc: "P&C insurer", life: "life insurer", health: "health plan", reit: "REIT",
+};
+
+// Which tags the fiscal CALENDAR is derived from — how many columns the sheet has, and what each
+// one is dated. Revenue is the natural anchor for a corporate, but it is only an anchor if the
+// filer tags it, and a financial need not: Wells Fargo stopped filing `Revenues` after 2019 and
+// reports interest and noninterest income instead, so its terminal had been rendering four stale
+// columns ending in FY2019 ever since the bank overlay shipped — every figure correct, the whole
+// recent history simply absent. It survived because the bank work was checked against JPMorgan and
+// Bank of America, both of which still tag `Revenues`.
+//
+// Ordering does not decide the winner (annualPeriods takes whichever tag yields the most years);
+// it only decides how early the search can stop. Breadth is what matters here.
+const REV = SECTIONS[0].lines[0].tags;
+export const PERIOD_TAGS = {
+  corporate: REV,
+  bank: [...REV, "InterestAndDividendIncomeOperating", "InterestIncomeExpenseNet", "NoninterestIncome"],
+  pc: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
+  life: [...REV, "PremiumsEarnedNet", "BenefitsLossesAndExpenses"],
+  health: [...REV, "PremiumsEarnedNet"],
+  reit: REV,
+};
+// Last resort for any filer whose whole top line is a company extension. Net income is a duration
+// on the same fiscal calendar, so the columns are right even when the revenue row is blank.
+export const PERIOD_TAGS_FALLBACK = ["NetIncomeLoss", "ProfitLoss"];
 
 // Lines that are not MISSING for these filers — they do not exist. A bank has no cost of revenue,
 // no inventory and no operating income, and is not levered on EBITDA: it is levered on capital
@@ -258,7 +327,27 @@ export const NOT_APPLICABLE = {
     "curAssets", "curLiab", "totalOpex", "ebit", "ebitda", "ebitdaSbc", "ebitMargin", "ebitdaMargin",
     "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "nwcPctRev", "assetTurn",
     "capexPctRev", "prepaid", "ap", "evEbitda", "evEbit", "ufcf", "nopat", "roic", "investedCap"],
-  insurance: ["cogs", "grossProfit", "inventory", "dio", "dpo", "ccc"],
+  // A carrier's liabilities ARE the business, so the whole EBITDA/enterprise-value apparatus is a
+  // category error, not a gap: nobody quotes EV/EBITDA on Chubb. Insurance comps are P/B, P/TBV,
+  // P/E and ROE, which the corporate template already computes. Working capital is meaningless for
+  // the same reason — an insurer's balance sheet is not classified into current and non-current at
+  // all, so AssetsCurrent resolves to nothing and would print "not tagged" as if someone should go
+  // hunting for it.
+  pc: ["cogs", "grossProfit", "grossMargin", "inventory", "dso", "dio", "dpo", "ccc", "currentRatio",
+    "quickRatio", "curAssets", "curLiab", "prepaid", "ap", "totalOpex", "ebit", "ebitda", "ebitdaSbc",
+    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc",
+    "nwcPctRev", "assetTurn", "capexPctRev", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "ufcf",
+    "nopat", "roic", "investedCap"],
+  life: ["cogs", "grossProfit", "grossMargin", "inventory", "dso", "dio", "dpo", "ccc", "currentRatio",
+    "quickRatio", "curAssets", "curLiab", "prepaid", "ap", "totalOpex", "ebit", "ebitda", "ebitdaSbc",
+    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc",
+    "nwcPctRev", "assetTurn", "capexPctRev", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "ufcf",
+    "nopat", "roic", "investedCap"],
+  // Deliberately short. A health plan is an operating company — UnitedHealth files
+  // OperatingIncomeLoss, CostOfGoodsAndServicesSold and a classified balance sheet, and managed
+  // care genuinely trades on EV/EBITDA and P/E. Blanking what the other two carriers blank would
+  // delete most of a sheet that is correct as it stands.
+  health: ["inventory", "dio", "ccc"],
   reit: ["inventory", "dio", "dpo", "ccc"],
 };
 
@@ -307,30 +396,242 @@ export const OVERLAY_SECTIONS = {
       { k: "equityToAssets", label: "Equity / assets", how: "computed", formula: "equity / totalAssets", note: "Leverage for a bank — regulatory CET1 is not XBRL-tagged" },
     ]},
   ],
+
+  // ── P&C CARRIER (SIC 6300-6310, 6331-6399) ───────────────────────────────────────────────────
+  // `after` puts these where a reader expects them: underwriting under the income statement,
+  // reserves under the balance sheet. The bank overlay predates it and keeps the old default.
+  pc: [
+    { id: "pc_uw", title: "Underwriting", feeds: "Historicals · Combined ratio", tab: "statements", after: "is", kind: "is", lines: [
+      // Written premium leads earned premium by a year or more, so it is the growth line an
+      // underwriter actually watches. Three tags carry it and they are NOT synonyms of each other:
+      // PremiumsWrittenNet is the face of the income statement, the two Supplementary/Supplemental
+      // ones come off Schedule III and Schedule VI. Allstate files only the Schedule III version.
+      { k: "npw", label: "Net premiums written", how: "fetched", tags: ["PremiumsWrittenNet", "SupplementaryInsuranceInformationPremiumsWritten", "SupplementalInformationForPropertyCasualtyInsuranceUnderwritersPremiumsWritten"], note: "Leads earned premium — the forward-looking growth line" },
+      { k: "npe", label: "Net premiums earned", how: "fetched", tags: ["PremiumsEarnedNet", "SupplementaryInsuranceInformationPremiumRevenue", "PremiumsEarnedNetPropertyAndCasualty"] },
+      { k: "cededPrem", label: "Ceded premiums earned", how: "fetched", tags: ["CededPremiumsEarned", "CededPremiumsEarnedPropertyAndCasualty"] },
+      { k: "invIncome", label: "Net investment income", how: "fetched", tags: ["NetInvestmentIncome", "SupplementaryInsuranceInformationNetInvestmentIncome", "InvestmentIncomeNet"] },
+      { k: "realizedGains", label: "Realised investment gains/(losses)", how: "fetched", tags: ["RealizedInvestmentGainsLosses", "GainLossOnInvestments", "MarketableSecuritiesRealizedGainLoss"] },
+      // The one tag that looks right and is not:
+      // LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseIncurredClaims1 is filed by six of the
+      // eight carriers tested and reads as the incurred-claims total — but at Allstate it collapses
+      // from $29.3bn (2021) to $2.65bn (2022) onward, because after that year Allstate only tags it
+      // inside a segment breakdown and companyfacts carries NO dimensional data, so what survives is
+      // a residual. Using it as a fallback would have printed a 4.7% loss ratio for Allstate and an
+      // 88% combined ratio nowhere near it. It is deliberately not in this list: Allstate tags its
+      // claims line with a COMPANY EXTENSION, which companyfacts does not carry at any price, so the
+      // honest answer is "not tagged" plus a link to the rendered income statement.
+      { k: "lossesIncurred", label: "Losses & LAE incurred", how: "fetched", tags: ["PolicyholderBenefitsAndClaimsIncurredNet", "SupplementaryInsuranceInformationBenefitsClaimsLossesAndSettlementExpense"] },
+      // Scope, not decoration. PolicyholderBenefitsAndClaimsIncurredNet is SHORT-DURATION business
+      // only, but PremiumsEarnedNet is consolidated — so a carrier with a life arm inside the same
+      // filer divides a P&C numerator by a P&C-plus-life denominator. Chubb is the case that caught
+      // it: $26.7bn of P&C losses over $53.0bn of consolidated premium printed a 77.4% combined
+      // ratio, roughly ten points better than anything Chubb has ever reported. Its $5.5bn of life
+      // benefits sit in their own tag, and adding them back makes both halves consolidated. Only
+      // Chubb files this among the eight carriers tested — for a monoline it is correctly absent.
+      { k: "lifeBenefits", label: "Life & annuity policy benefits", how: "fetched", tags: ["LiabilityForFuturePolicyBenefitsPeriodExpense"], note: "Only appears where a life arm sits inside a P&C filer — it belongs in the ratio because the premium line already includes it" },
+      { k: "cyLosses", label: "— current accident year", how: "fetched", tags: ["SupplementalInformationForPropertyCasualtyInsuranceUnderwritersCurrentYearClaimsAndClaimsAdjustmentExpense", "SecSchedule1218SupplementalInformationPropertyCasualtyInsuranceUnderwritersCurrentYearClaimAndClaimAdjustmentExpense"] },
+      // Prior-year development is the quality-of-earnings line on a P&C income statement — a carrier
+      // can buy a good year by releasing reserves. NEGATIVE is favourable (reserves released).
+      { k: "pyDevelopment", label: "— prior-year reserve development", how: "fetched", tags: ["SupplementalInformationForPropertyCasualtyInsuranceUnderwritersPriorYearClaimsAndClaimsAdjustmentExpense", "SecSchedule1218SupplementalInformationPropertyCasualtyInsuranceUnderwritersPriorYearClaimAndClaimAdjustmentExpense"], note: "Negative = favourable, reserves released. The first place a bought quarter shows up" },
+      { k: "dacAmort", label: "Policy acquisition costs amortised", how: "fetched", tags: ["DeferredPolicyAcquisitionCostAmortizationExpense", "SupplementaryInsuranceInformationAmortizationOfDeferredPolicyAcquisitionCosts", "SupplementalInformationForPropertyCasualtyInsuranceUnderwritersAmortizationOfDeferredPolicyAcquisitionCosts"] },
+      // The expense half of the combined ratio is the weak point of the whole overlay, and the list
+      // is long because carriers genuinely disagree: Progressive and Berkley file
+      // OtherUnderwritingExpense, Travelers puts it in SG&A, Chubb and AIG in G&A. Only two of the
+      // eight tested use the tag whose name says underwriting.
+      //
+      // The order is face-of-the-income-statement first, Schedule III last, and it is load-bearing
+      // in both directions. Cincinnati Financial files NONE of the first three, and the obvious
+      // fourth guess — OtherCostAndExpenseOperating, which is right for Allstate — matches a $34m
+      // scrap at Cincinnati against $10.0bn of premium. That printed an 18.9% expense ratio and an
+      // 85.4% combined ratio for a carrier whose real expense ratio is near 30%: a plausible number,
+      // in the right units, ten points wrong, with nothing on the page to suggest it. Schedule III's
+      // OtherOperatingExpense ($1,073m) is the line Cincinnati actually files, so that replaced it —
+      // and it goes LAST because at Progressive it is $12.6bn against the $11.3bn on the face of the
+      // statement, the Schedule sweeping in service and investment expenses that are not underwriting.
+      { k: "otherUwExp", label: "Other underwriting expenses", how: "fetched", tags: ["OtherUnderwritingExpense", "SellingGeneralAndAdministrativeExpense", "GeneralAndAdministrativeExpense", "SupplementaryInsuranceInformationOtherOperatingExpense"] },
+      { k: "totalBenExp", label: "Total benefits, losses & expenses", how: "fetched", tags: ["BenefitsLossesAndExpenses"] },
+      { k: "uwProfit", label: "Underwriting profit/(loss)", how: "computed", formula: "npe - lossesIncurred - lifeBenefits - dacAmort - otherUwExp", note: "Before investment income — what the policies alone earned" },
+    ]},
+    { id: "pc_res", title: "Reserves, Float & Investments", feeds: "Historicals · Diligence", tab: "statements", after: "bs", kind: "bs", instant: true, lines: [
+      { k: "lossReserves", label: "Loss & LAE reserves, gross", how: "fetched", tags: ["LiabilityForClaimsAndClaimsAdjustmentExpense", "SupplementalInformationForPropertyCasualtyInsuranceUnderwritersReservesForUnpaidClaimsAndClaimsAdjustmentExpense"] },
+      { k: "reinsRecov", label: "Reinsurance recoverable on unpaid claims", how: "fetched", tags: ["ReinsuranceRecoverableForUnpaidClaimsAndClaimsAdjustments", "ReinsuranceRecoverables"] },
+      { k: "lossReservesNet", label: "Loss & LAE reserves, net of reinsurance", how: "fetched", tags: ["LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseNet"] },
+      { k: "unearnedPrem", label: "Unearned premiums", how: "fetched", tags: ["UnearnedPremiums", "SupplementaryInsuranceInformationUnearnedPremiums", "SupplementalInformationForPropertyCasualtyInsuranceUnderwritersUnearnedPremiums"] },
+      { k: "dac", label: "Deferred policy acquisition costs", how: "fetched", tags: ["DeferredPolicyAcquisitionCosts", "DeferredPolicyAcquisitionCostsNet", "SupplementaryInsuranceInformationDeferredPolicyAcquisitionCosts"] },
+      // Float on Buffett's own definition — money held that belongs to policyholders and is invested
+      // in the meantime. Every component is tagged, so this is the rare famous metric that can be
+      // computed exactly rather than approximated.
+      { k: "float", label: "Insurance float", how: "computed", formula: "(lossReservesNet or lossReserves - reinsRecov) + unearnedPrem - dac", note: "Policyholder money held and invested before it is paid out. Blank unless reserves NET of reinsurance are known" },
+      // Carriers commonly file one all-in debt figure instead of the corporate short/current/long
+      // split, and the split then reads as zero. Progressive tags LongTermDebtCurrent as literally
+      // 0 and puts its real $6.9bn here, so the three-way sum returned 0 — printing "Total debt 0",
+      // "Debt / equity 0.00x" and a net debt of MINUS $10.1bn for a company with seven billion of
+      // notes outstanding. Travelers had the same shape. This is the filer's own all-in total, so
+      // where it exists it is believed outright rather than added to anything.
+      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
+      { k: "investments", label: "Total investments", how: "fetched", tags: ["Investments", "InvestmentsFairValueDisclosure"] },
+      { k: "fixedMaturities", label: "Fixed maturities, available for sale", how: "fetched", tags: ["DebtSecuritiesAvailableForSaleExcludingAccruedInterest", "AvailableForSaleSecuritiesDebtSecurities", "AvailableForSaleSecurities"] },
+      { k: "equitySec", label: "Equity securities", how: "fetched", tags: ["EquitySecuritiesFvNi", "EquitySecuritiesFvNiCurrentAndNoncurrent", "AvailableForSaleSecuritiesEquitySecurities"] },
+    ]},
+    { id: "pc_ratios", title: "Underwriting Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      { k: "lossRatio", label: "Loss & LAE ratio", how: "computed", formula: "lossesIncurred / npe" },
+      { k: "expenseRatio", label: "Underwriting expense ratio", how: "computed", formula: "(dacAmort + otherUwExp) / npe" },
+      // Stated out loud because a reader WILL compare it to the number in the earnings release and
+      // find it a point or two off. The company's combined ratio is a non-GAAP figure with its own
+      // definition (fee income netted against expenses, catastrophe and reserve items reclassified,
+      // sometimes a statutory written-premium denominator). This one is built only from tagged GAAP
+      // lines, which is the only version that can be traced to an accession number.
+      { k: "combinedRatio", label: "Combined ratio", how: "computed", formula: "lossRatio + expenseRatio", note: "Under 100% = an underwriting profit. Built from GAAP lines, so it differs by a point or two from the company's own non-GAAP figure" },
+      { k: "pyDevRatio", label: "Prior-year development / NPE", how: "computed", formula: "pyDevelopment / npe", note: "How much of the combined ratio came out of the reserve bag" },
+      { k: "premiumLeverage", label: "Net premiums written / equity", how: "computed", formula: "npw / equity", note: "Premium-to-surplus on a GAAP book — how hard the capital is working" },
+      { k: "reserveLeverage", label: "Reserves / equity", how: "computed", formula: "lossReserves / equity", note: "How much of the balance sheet is an estimate" },
+      { k: "cededRatio", label: "Ceded / gross earned premium", how: "computed", formula: "cededPrem / (npe + cededPrem)", note: "How much risk is reinsured away" },
+      { k: "investmentYield", label: "Yield on investments", how: "computed", formula: "invIncome / investments", note: "Book yield — period-end portfolio, not an average balance" },
+    ]},
+  ],
+
+  // ── LIFE / ACCIDENT & HEALTH CARRIER (SIC 6311, 6321) ────────────────────────────────────────
+  // A life carrier has no combined ratio: it earns a spread on reserves and fees on account
+  // balances, and the underwriting-ratio apparatus above simply does not apply to it.
+  life: [
+    { id: "life_is", title: "Premiums, Fees & Benefits", feeds: "Historicals", tab: "statements", after: "is", kind: "is", lines: [
+      { k: "premiums", label: "Premiums earned, net", how: "fetched", tags: ["PremiumsEarnedNet", "SupplementaryInsuranceInformationPremiumRevenue"] },
+      // Universal-life and investment-type policy fees. PolicyChargesInsurance is the tag the name
+      // suggests and it is DEAD — Prudential and Globe Life both stop filing it in 2012.
+      // InsuranceCommissionsAndFees is what MetLife and Prudential file today ($5.0bn / $4.7bn).
+      { k: "policyFees", label: "Policy fees & other insurance revenue", how: "fetched", tags: ["InsuranceCommissionsAndFees", "PolicyChargesInsurance"] },
+      { k: "invIncome", label: "Net investment income", how: "fetched", tags: ["NetInvestmentIncome", "SupplementaryInsuranceInformationNetInvestmentIncome"] },
+      { k: "realizedGains", label: "Realised investment gains/(losses)", how: "fetched", tags: ["RealizedInvestmentGainsLosses", "GainLossOnInvestments"] },
+      { k: "benefits", label: "Policyholder benefits & claims", how: "fetched", tags: ["PolicyholderBenefitsAndClaimsIncurredNet", "SupplementaryInsuranceInformationBenefitsClaimsLossesAndSettlementExpense"] },
+      { k: "interestCredited", label: "Interest credited to account balances", how: "fetched", tags: ["InterestCreditedToPolicyholdersAccountBalances", "InterestCreditedToPolicyOwnerAccount", "InterestCreditedToPolicyOwnerAccounts"], note: "The cost of the spread business — only writers of annuities and universal life have it" },
+      { k: "dacAmort", label: "DAC amortisation", how: "fetched", tags: ["DeferredPolicyAcquisitionCostAmortizationExpense", "SupplementaryInsuranceInformationAmortizationOfDeferredPolicyAcquisitionCosts"] },
+      { k: "totalBenExp", label: "Total benefits & expenses", how: "fetched", tags: ["BenefitsLossesAndExpenses"] },
+    ]},
+    { id: "life_bs", title: "Policy Reserves & Investments", feeds: "Historicals · Diligence", tab: "statements", after: "bs", kind: "bs", instant: true, lines: [
+      { k: "futurePolicyBenefits", label: "Future policy benefits", how: "fetched", tags: ["LiabilityForFuturePolicyBenefits"] },
+      // PolicyholderFunds leads because Lincoln National's PolicyholderContractDeposits stops in
+      // 2010 at $148m while PolicyholderFunds carries the real $136bn. At MetLife the two are the
+      // same number, so leading with the one that survives costs nothing.
+      { k: "policyholderAccounts", label: "Policyholder account balances", how: "fetched", tags: ["PolicyholderFunds", "PolicyholderContractDeposits"] },
+      { k: "separateAccounts", label: "Separate account assets", how: "fetched", tags: ["SeparateAccountAssets"], note: "Policyholder-directed — the carrier takes fees, not investment risk" },
+      { k: "dac", label: "Deferred policy acquisition costs", how: "fetched", tags: ["DeferredPolicyAcquisitionCosts", "DeferredPolicyAcquisitionCostsNet", "SupplementaryInsuranceInformationDeferredPolicyAcquisitionCosts"] },
+      // Carriers commonly file one all-in debt figure instead of the corporate short/current/long
+      // split, and the split then reads as zero. Progressive tags LongTermDebtCurrent as literally
+      // 0 and puts its real $6.9bn here, so the three-way sum returned 0 — printing "Total debt 0",
+      // "Debt / equity 0.00x" and a net debt of MINUS $10.1bn for a company with seven billion of
+      // notes outstanding. Travelers had the same shape. This is the filer's own all-in total, so
+      // where it exists it is believed outright rather than added to anything.
+      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
+      { k: "investments", label: "Total investments", how: "fetched", tags: ["Investments", "InvestmentsFairValueDisclosure"] },
+      { k: "fixedMaturities", label: "Fixed maturities, available for sale", how: "fetched", tags: ["DebtSecuritiesAvailableForSaleExcludingAccruedInterest", "AvailableForSaleSecuritiesDebtSecurities", "AvailableForSaleSecurities"] },
+      { k: "reinsRecov", label: "Reinsurance recoverable", how: "fetched", tags: ["ReinsuranceRecoverables", "ReinsuranceRecoverableForUnpaidClaimsAndClaimsAdjustments"] },
+    ]},
+    { id: "life_ratios", title: "Life Insurance Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      // Matches the definition Aflac, Unum and Globe Life publish, which is why the denominator is
+      // premiums alone. Read it only against a carrier of the same shape: for a protection writer
+      // it runs 54-70% and means what a loss ratio means, but at an annuity or retirement writer
+      // the benefits line carries reserve and account-balance movements that no premium offsets —
+      // Prudential prints 114% and Lincoln 148%, and neither is distress.
+      { k: "benefitRatio", label: "Benefit ratio", how: "computed", formula: "benefits / premiums", note: "The life analogue of a loss ratio. Above 100% at annuity writers by construction — benefits include reserve movements premiums never funded" },
+      { k: "creditingRate", label: "Crediting rate on account balances", how: "computed", formula: "interestCredited / policyholderAccounts", note: "Against period-end balances, so it is a proxy — average balances are not tagged" },
+      { k: "investmentYield", label: "Yield on investments", how: "computed", formula: "invIncome / investments" },
+      { k: "policyReserves", label: "Total policy reserves", how: "computed", formula: "futurePolicyBenefits + policyholderAccounts" },
+      { k: "reserveLeverage", label: "Policy reserves / equity", how: "computed", formula: "policyReserves / equity" },
+      // The denominator every life comp is quoted on. GAAP equity moves with unrealised bond
+      // gains through AOCI, so reported book value swings with the ten-year rather than with the
+      // business; stripping AOCI is what makes two carriers comparable in the same year.
+      { k: "bvpsExAoci", label: "Book value per share, ex-AOCI", how: "computed", formula: "(equity - aoci) / sharesOut", note: "The life-insurance book value — AOCI moves with rates, not with the business" },
+    ]},
+  ],
+
+  // ── HEALTH PLAN / MANAGED CARE (SIC 6324) ────────────────────────────────────────────────────
+  // Deliberately thin. UnitedHealth, Elevance, Centene, Humana and Molina all file a normal
+  // operating income statement; what the corporate template misses is only that their cost of goods
+  // is medical claims, so this adds the ratios built on that and leaves the rest alone.
+  health: [
+    { id: "health_is", title: "Premiums & Medical Costs", feeds: "Historicals", tab: "statements", after: "is", kind: "is", lines: [
+      { k: "premiums", label: "Premiums earned, net", how: "fetched", tags: ["PremiumsEarnedNet", "HealthCareOrganizationPremiumRevenue"] },
+      // Health plans switched tags mid-history: UnitedHealth files
+      // PolicyholderBenefitsAndClaimsIncurredHealthCare through 2021 and the generic
+      // ...IncurredNet from 2022, so listing only one leaves half the columns blank.
+      //
+      // What is NOT here is the tempting third guess. Molina tags its medical care costs as
+      // CostOfGoodsAndServicesSold, which would fill its blank — but at Centene the same tag is a
+      // $2.7bn services line against $168bn of real medical cost, so adding it would print a 2%
+      // medical loss ratio for Centene's older years. Molina's costs are already visible on this
+      // sheet as Cost of revenue in the income statement above; a blank MLR is the price of not
+      // printing a fictional one, and Centene's premium line is a company extension anyway.
+      { k: "medicalCosts", label: "Medical costs / benefits incurred", how: "fetched", tags: ["PolicyholderBenefitsAndClaimsIncurredNet", "PolicyholderBenefitsAndClaimsIncurredHealthCare"] },
+      { k: "invIncome", label: "Net investment income", how: "fetched", tags: ["NetInvestmentIncome", "InvestmentIncomeInterest"] },
+      // instant on the LINE, not the section: this is the one balance in an otherwise duration
+      // section, and splitting it into a section of its own for two rows would read worse than
+      // declaring it here.
+      { k: "medicalClaimsPayable", label: "Medical claims payable", how: "fetched", instant: true, tags: ["LiabilityForClaimsAndClaimsAdjustmentExpense"], note: "A balance at the year end, not a flow — the reserve held against claims already incurred" },
+      // Same all-in debt story as the carriers — UnitedHealth files $77.7bn here against the $69.5bn
+      // its long-term-debt tag alone reports.
+      { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", instant: true, tags: ["DebtLongtermAndShorttermCombinedAmount"] },
+    ]},
+    { id: "health_ratios", title: "Health Plan Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      { k: "mlr", label: "Medical loss ratio", how: "computed", formula: "medicalCosts / premiums", note: "The benefit ratio — the first number a managed-care analyst reads" },
+      { k: "healthSgaRatio", label: "Operating cost ratio", how: "computed", formula: "sga / revenue" },
+      { k: "daysClaimsPayable", label: "Days in claims payable", how: "computed", formula: "medicalClaimsPayable / medicalCosts * 365", note: "Reserve adequacy — a falling trend is where a miss shows up first" },
+      { k: "premiumMix", label: "Premiums / total revenue", how: "computed", formula: "premiums / revenue", note: "How much of the top line is insured risk rather than services" },
+    ]},
+  ],
+
+  // ── REIT (SIC 6798) ──────────────────────────────────────────────────────────────────────────
+  // Unlike a bank or a carrier, a REIT IS an operating company: it keeps EBIT, EBITDA, EV/EBITDA
+  // and Net debt/EBITDA, which is the leverage metric the sector is actually quoted on. What the
+  // corporate template misses is that GAAP net income is close to meaningless here — depreciating
+  // buildings that are appreciating drives reported earnings far below cash generation, which is
+  // the entire reason FFO exists.
+  reit: [
+    { id: "reit_ops", title: "Property Operations & FFO", feeds: "Historicals · FFO", tab: "statements", after: "is", kind: "is", lines: [
+      { k: "rentalRevenue", label: "Rental & lease income", how: "fetched", tags: ["OperatingLeaseLeaseIncome", "LeaseIncome", "OperatingLeasesIncomeStatementLeaseRevenue", "RealEstateRevenueNet"] },
+      { k: "propOpex", label: "Property operating expenses", how: "fetched", tags: ["DirectCostsOfLeasedAndRentedPropertyOrEquipment", "CostOfOtherPropertyOperatingExpense"] },
+      { k: "realEstateTax", label: "Real estate taxes", how: "fetched", tags: ["RealEstateTaxExpense"] },
+      { k: "noi", label: "Net operating income (NOI)", how: "computed", formula: "rentalRevenue - propOpex", note: "Property-level, before G&A, D&A and interest. Net-lease REITs run near 100% because tenants pay the opex" },
+      // Schedule III depreciation is REAL-ESTATE only, and it is shown beside the total D&A above
+      // precisely because the two differ: at Realty Income it is $1.6bn against $2.5bn of total
+      // D&A, the gap being amortisation of in-place lease intangibles. NAREIT adds back both.
+      { k: "reDep", label: "— of which real estate (Schedule III)", how: "fetched", tags: ["SECScheduleIIIRealEstateAccumulatedDepreciationDepreciationExpense"], note: "Buildings only. The D&A line above also carries lease-intangible amortisation, which FFO adds back too" },
+      { k: "gainOnPropertySale", label: "Gain/(loss) on property sales", how: "fetched", tags: ["GainLossOnSaleOfProperties", "GainsLossesOnSalesOfInvestmentRealEstate", "GainLossOnDispositionOfAssets", "GainLossOnSaleOfPropertyPlantEquipment"] },
+      { k: "reImpairment", label: "Real estate impairment", how: "fetched", tags: ["ImpairmentOfRealEstate", "AssetImpairmentCharges"] },
+      { k: "straightLineRent", label: "Straight-line rent adjustment", how: "fetched", tags: ["StraightLineRent"], note: "Non-cash rent GAAP recognises early — the largest single gap between FFO and AFFO" },
+      // The whole point of the section. Every input is a row directly above it, so the arithmetic
+      // can be checked on the page rather than taken on trust — which matters because the gain
+      // subtraction only happens when the filer tags one. Simon reports $4.6bn of net income on
+      // $6.4bn of revenue and tags no property gain at all, so its FFO here reads high; the blank
+      // "Gain on property sales" row immediately above is the tell, and the note says so.
+      { k: "ffo", label: "FFO (NAREIT basis)", how: "computed", formula: "niToCommon + da - gainOnPropertySale + reImpairment", note: "Reconstructed from tagged adjustments only. A filer that never tags its property gains reads high — check the gain row above. Company-reported FFO applies further adjustments" },
+      { k: "ffoPerShare", label: "FFO per share, diluted", how: "computed", formula: "ffo / wasoDil" },
+      { k: "affo", label: "AFFO / Core FFO", how: "manual", note: "Every REIT defines it differently — recurring capex, leasing costs and straight-line rent are all judgement. Not in any filing as a tagged figure" },
+    ]},
+    { id: "reit_bs", title: "Real Estate & Leverage", feeds: "Historicals · Diligence", tab: "statements", after: "bs", kind: "bs", instant: true, lines: [
+      { k: "reGross", label: "Real estate, at cost", how: "fetched", tags: ["RealEstateGrossAtCarryingValue", "RealEstateInvestmentPropertyAtCost"] },
+      { k: "reAccumDep", label: "Accumulated depreciation, real estate", how: "fetched", tags: ["RealEstateAccumulatedDepreciation", "RealEstateInvestmentPropertyAccumulatedDepreciation"] },
+      { k: "reNet", label: "Real estate, net", how: "computed", formula: "reGross - reAccumDep" },
+      // Same story as the carriers: REITs file one debt total under names the corporate three-way
+      // sum has never heard of. Realty Income puts all $25.1bn under `NotesPayable` and reported
+      // $517m without this; Essex and Digital Realty reported nothing at all.
+      { k: "reitDebt", label: "Debt outstanding, as disclosed", how: "fetched", tags: ["NotesPayable", "LongTermDebt", "DebtLongtermAndShorttermCombinedAmount"] },
+      { k: "numProperties", label: "Properties owned", how: "fetched", tags: ["NumberOfRealEstateProperties"], note: "A count, not a dollar figure" },
+    ]},
+    { id: "reit_ratios", title: "REIT Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      { k: "ffoPayout", label: "Dividend payout (of FFO)", how: "computed", formula: "dividends / ffo", note: "A REIT must distribute 90% of taxable income — payout well over 100% of FFO is the stress signal" },
+      { k: "noiMargin", label: "NOI margin", how: "computed", formula: "noi / rentalRevenue" },
+      { k: "debtToGrossRE", label: "Debt / real estate at cost", how: "computed", formula: "totalDebt / reGross", note: "Against undepreciated cost, which is how REIT covenants are written" },
+      { k: "accumDepPct", label: "Accumulated depreciation / cost", how: "computed", formula: "reAccumDep / reGross", note: "Portfolio age proxy — how far through its book life the estate is" },
+    ]},
+  ],
 };
 
-export const OVERLAYS = {
-  bank: [
-    { k: "nii", label: "Net interest income", how: "fetched", tags: ["InterestIncomeExpenseNet"] },
-    { k: "provision", label: "Provision for credit losses", how: "fetched", tags: ["ProvisionForLoanLeaseAndOtherLosses","ProvisionForCreditLosses"] },
-    { k: "loans", label: "Loans, net", how: "fetched", tags: ["LoansAndLeasesReceivableNetReportedAmount","NotesReceivableNet"] },
-    { k: "deposits", label: "Total deposits", how: "fetched", tags: ["Deposits"] },
-    { k: "noninterestIncome", label: "Noninterest income", how: "fetched", tags: ["NoninterestIncome"] },
-    { k: "noninterestExpense", label: "Noninterest expense", how: "fetched", tags: ["NoninterestExpense"] },
-    { k: "efficiency", label: "Efficiency ratio", how: "computed", formula: "noninterestExpense / (nii + noninterestIncome)" },
-    { k: "nim", label: "Net interest margin", how: "computed", formula: "nii / earningAssets" },
-  ],
-  reit: [
-    { k: "ffo", label: "FFO", how: "computed", formula: "netIncome + realEstateDep - gainsOnSale" },
-    { k: "realEstateDep", label: "Real estate depreciation", how: "fetched", tags: ["RealEstateInvestmentPropertyAccumulatedDepreciation","DepreciationAndAmortizationDiscontinuedOperations"] },
-    { k: "rentalRevenue", label: "Rental revenue", how: "fetched", tags: ["OperatingLeaseLeaseIncome"] },
-  ],
-  insurance: [
-    { k: "premiums", label: "Premiums earned", how: "fetched", tags: ["PremiumsEarnedNet"] },
-    { k: "lossesIncurred", label: "Losses & LAE incurred", how: "fetched", tags: ["PolicyholderBenefitsAndClaimsIncurredNet"] },
-    { k: "combinedRatio", label: "Combined ratio", how: "computed", formula: "(lossesIncurred + underwritingExpense) / premiums" },
-  ],
-};
+// Every industry sketched here has now been built and verified against real filers, so OVERLAYS is
+// empty rather than holding guesses. It is kept as the shape a future overlay starts from: probe
+// first (see the harness notes in the README), promote into OVERLAY_SECTIONS second. Each sketch
+// that ever lived here — bank, insurance, REIT — turned out to be wrong in a way that failed
+// silently, which is why none of them should be trusted straight into the template.
+export const OVERLAYS = {};
 
 export const tally = () => {
   const t = {};
