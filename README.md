@@ -1,4 +1,4 @@
-# Filings Terminal — filings-terminal.vercel.app
+# Filings Terminal — filings.masonjbennett.com
 
 Pulls reported financials straight from SEC EDGAR into a model-ready sheet. Every figure is the
 value the company filed, traceable to the accession number it came from. **No AI anywhere in the
@@ -257,12 +257,17 @@ Vercel project → this repo. One environment variable: `FINNHUB_KEY` (same valu
 Vercel does not share env vars across projects). Env vars only apply to **new** deployments, so
 redeploy after adding it.
 
-**The live URL is `filings-terminal.vercel.app`.** `filings.masonjbennett.com` was planned and is
-NOT set up — as of Aug 2026 it returns `DNS_PROBE_FINISHED_NXDOMAIN`, while the apex resolves
-normally. This file and the main repo's CLAUDE.md both claimed it was live, which is how a dead
-link nearly reached the site's project card. To finish it: add the domain in Vercel, then a CNAME at
-Cloudflare set **DNS only, grey cloud** — proxied (orange) breaks certificate issuance. Once it
-resolves, the two links in `mason-bennett-dashboard/src/App.jsx` should be swapped back.
+**`filings.masonjbennett.com` went live 12 Aug 2026**; `filings-terminal.vercel.app` still serves
+the same deployment, so older links keep working. It had been claimed as live in this file and in
+the main repo's CLAUDE.md for a day while it actually returned `DNS_PROBE_FINISHED_NXDOMAIN` — which
+is how a dead link reached the site's project card before a screenshot attempt happened to route
+through DNS and catch it. **Do not describe infrastructure as working without resolving it**; the
+readiness gates worth checking, in the order they fail, are: DNS resolves at all → the record is
+grey-clouded (Cloudflare's proxy answers from 104.x/172.67.x and blocks Vercel's certificate
+issuance) → HTTPS serves the app. The zone is at Cloudflare, and the subdomain is a CNAME to a
+per-project Vercel target (`21fa2e858bbf15dc.vercel-dns-017.com`) — not the generic
+`cname.vercel-dns.com`, and not an A record, which is what Cloudflare rejects with "not a valid
+IPv4 address".
 
 `npm run dev` runs the serverless functions too, via a small plugin in `vite.config.js`, so local
 development exercises the real code path against real SEC responses.
