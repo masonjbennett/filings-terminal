@@ -260,8 +260,14 @@ function SectionRows({ sec, grid, S, link }) {
     {sec.lines.map(line => {
       const cells = grid.cols.map(c => ({ v: c.v[line.k], m: c.meta[line.k] || {} }));
       const has = cells.some(x => x.v != null);
-      const status = line.how === "manual" ? "judgement" : line.how === "market" ? "needs price" :
-        has ? null : cells[0] && cells[0].m.status === "never-tagged" ? "n/a" : "not tagged";
+      // A value that arrived outranks every label. This used to test `how` first, so a valuation
+      // line read "needs price" forever — including when the price had arrived and the multiple was
+      // printed in the cell beside the label, which reads as a broken deployment rather than a
+      // mislabelled row. Whether a figure is THERE is the first question; why it isn't comes second.
+      const status = has ? null
+        : line.how === "manual" ? "judgement"
+        : line.how === "market" ? "needs price"
+        : cells[0] && cells[0].m.status === "never-tagged" ? "n/a" : "not tagged";
       const statusColor = status === "judgement" ? C.teal : status === "n/a" ? C.faint : status === "needs price" ? C.navy : C.bronze;
       return <tr key={line.k} style={{ borderTop: `1px solid ${C.hair2}` }}>
         <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap" }}>
