@@ -232,9 +232,17 @@ export default function App() {
             year the one you have to go looking for. */}
         {grid.cols && <div ref={scroller} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+            {/* This row orients the whole sheet, so it is the last place to be economical with size.
+                It was 9px uppercase at 2px letter-spacing over an 8px date at 60% opacity — spaced-out
+                digits are the hardest thing to read quickly, and the year is the one thing you scan
+                for. Year now leads at 13px in full ink; the date sits under it at 10px in a quieter
+                colour rather than a transparency, so it stays legible instead of washing out. */}
             <thead><tr style={{ background: "#f6eee1" }}>
-              <th style={{ ...S.label, textAlign: "left", padding: "10px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 230 }}>Line item</th>
-              {grid.cols.map(c => <th key={c.period.end} style={{ ...S.label, textAlign: "right", padding: "10px 14px", whiteSpace: "nowrap" }}>FY{c.period.fy || c.period.end.slice(0, 4)}<div style={{ fontSize: 8, opacity: .6, letterSpacing: 1 }}>{c.period.end}</div></th>)}
+              <th style={{ textAlign: "left", padding: "11px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 230, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.mute, borderBottom: `1px solid ${C.hair}` }}>Line item</th>
+              {grid.cols.map(c => <th key={c.period.end} style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13, fontWeight: 600, letterSpacing: .5, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>
+                FY{c.period.fy}
+                <div style={{ fontSize: 10, fontWeight: 400, letterSpacing: .3, color: C.faint, marginTop: 3 }}>{c.period.end}</div>
+              </th>)}
             </tr></thead>
             <tbody>
               {/* Valuation is lifted out into its own card above. There is ONE price, so it produces
@@ -318,7 +326,7 @@ function SectionRows({ sec, grid, S, link }) {
           {status && <span style={{ fontSize: 8, fontFamily: MONO, color: statusColor, marginLeft: 8, letterSpacing: .5 }}>{status}</span>}
           {line.note && <div style={{ fontSize: 9, color: C.faint, fontStyle: "italic", marginTop: 1 }}>{line.note}</div>}
         </td>
-        {cells.map((x, i) => <td key={i} style={{ padding: "6px 14px", textAlign: "right", fontFamily: MONO, fontSize: 12, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
+        {cells.map((x, i) => <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
           title={x.m.tag ? `${x.m.tag} · ${x.m.form} filed ${x.m.filed}` : ""}>
           {display(line.k, x.v, x.m.unit) || "—"}
         </td>)}
