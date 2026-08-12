@@ -132,6 +132,52 @@ will actually check.
 Valuation sits above all three tabs and populates the **newest column only**. There is one price, so
 EV/EBITDA against FY2019 would be today's enterprise value over a six-year-old profit.
 
+## Getting the data out
+
+Every free competitor — stockanalysis, Koyfin, TIKR, QuickFS — shows financials for nothing and
+charges for the export. That is the business model in this category, and it is backwards for the
+person doing the work: nobody analyses on a website. **Download Excel workbook** writes all three
+tabs as a real `.xlsx` — number formats, frozen header, column widths — and the Copy button beside it
+stays for the other job, dropping the tab in front of you into a model that is already open.
+
+The writer is ~120 lines against `fflate` in `src/xlsx.js`, and the dependency choice is the point:
+SheetJS's npm package is abandoned at 0.18.5 with two HIGH advisories and no fix, and exceljs pulls a
+vulnerable `uuid`. The real risk to a write-only path is negligible, but `npm audit` is the first
+thing a technical reader runs, and this project's whole argument is rigour. fflate is 8KB and audits
+clean. An `.xlsx` is a zip of XML and only one narrow slice of it is needed, so it is written
+directly rather than inheriting a dependency that rots. **Do not swap it for a library.** It is
+lazy-imported, so a reader who never exports pays nothing for it.
+
+Four things in there fail silently:
+
+- **The indices in `S` ARE the positions in `cellXfs`.** Appending is safe; reordering repaints every
+  cell in the workbook with the wrong format and breaks nothing that looks broken.
+- **A blank is written as no cell at all**, never an empty string — an empty string in a year column
+  stops Excel treating the column as numeric, which quietly breaks the average a reader puts under it.
+- **Number formats follow the screen**: percent, then multiple, then decimals for anything under a
+  thousand (per-share figures, ratios, counts), money otherwise. An exact zero is money — "Preferred
+  dividends 0.00" on a sheet denominated in billions reads as a broken export.
+- **Sheet names are sanitised.** Excel rejects a name over 31 characters, or containing
+  `: \ / ? * [ ]`, by refusing to open the file at all.
+
+**The EV bridge is in the workbook but not in the page's year grid, deliberately.** On screen it
+lives in a card above the tabs, because there is one price, so it fills one column, and a table row
+of seven blanks buried the only real value off the right-hand edge of the scroll. A spreadsheet has
+no such problem — a figure under the newest year with the earlier years empty is how a model reads —
+and an export missing enterprise value and EV/EBITDA would be missing the two numbers a banker looks
+for first. So it is appended in the export rather than added to `TABS`, which would put it back on
+the page, and only when a price actually arrived: with no `FINNHUB_KEY` it would be eleven blank rows.
+It carries a row of its own naming the price and the year, because a spreadsheet has no card header
+to say so.
+
+Verified by opening the files in **real Excel**, not by reading the XML back: a malformed `.xlsx`
+fails by refusing to open, not by looking wrong. AAPL, CB, O, JPM and CBRE were captured from the
+shipping click path and opened with `CorruptLoad = xlNormalLoad`, which refuses a bad file instead of
+silently repairing it, with two deliberately broken files put through the same call to prove the
+check can fail. Chubb's five EV rows are blank in the exported file and Apple's populate: the export
+reads `grid`, so every suppression rule in this file already applies to it, and any rule that does
+not hold in the workbook is a bug in both places at once.
+
 ## Industry overlays
 
 Detected from the **SIC code SEC assigns** (`api/facts.js` returns `sicCode`), never inferred from
@@ -309,3 +355,9 @@ quote block runs *after* the blanking pass and wrote values back over it. That o
 reproduced locally at all, because the quote needs `FINNHUB_KEY` and local dev has none — it was
 found by looking at production. The harness now simulates the quote block for that reason: if a code
 path only executes in production, the test has to fake it or it is not tested.
+
+The Excel session added the cheapest example of the lot. The download button shipped with `↧`
+(U+21A7), a glyph JetBrains Mono does not carry, so the fallback drew a serif capital I and the
+primary button on the sheet read **"I DOWNLOAD EXCEL WORKBOOK"**. The build passed, 109 regression
+assertions passed, five workbooks opened in Excel with every value matching the page. It took a 4×
+crop of a screenshot to see it.

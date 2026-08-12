@@ -292,9 +292,81 @@ export default function App() {
   // without one looks like the tool broke.
   const kindFor = sec => sec.kind || (sec.id === "is" || sec.id === "addbacks" ? "is" : sec.id === "bs" || sec.id === "debtlike" ? "bs" : sec.id === "cf" ? "cf" : sec.id === "dilution" ? "sbc" : sec.id === "dcf" ? "tax" : null);
 
-  // Copies the tab you are looking at, not all 168 lines. Pasting a whole terminal into a model is
-  // how a sheet ends up with three hundred rows nobody reads — the point of the tabs is that the
-  // block you are working in is the block that lands in Excel.
+  // The whole workbook, not the visible tab. Every free competitor shows financials and paywalls
+  // getting them OUT — that is the standard business model in this category, and it is the part a
+  // finance reader actually needs, because nobody analyses on a website. This is the differentiator,
+  // so it exports all three tabs at once with real number formats rather than a CSV dump.
+  //
+  // The writer is lazy-imported: it and fflate are ~10KB, but nobody who is only reading should pay
+  // for them on first paint. Same pattern the main site uses for sql.js in the Query Drill.
+  const downloadWorkbook = async () => {
+    // A filer with no annual XBRL periods renders the "no periods on file" note and has nothing to
+    // export. Returning silently would leave the button looking broken rather than empty.
+    if (!grid || !grid.cols || !grid.cols.length) { setCopied("Nothing to export — no annual periods"); setTimeout(() => setCopied(""), 4000); return; }
+    setCopied("Building workbook…");
+    try {
+      // `XF` rather than `S`: the component already has an `S` holding the page's inline styles, and
+      // a second one meaning "cell format" inside this function is how the wrong one gets used.
+      const { downloadXlsx, S: XF } = await import("./xlsx.js");
+      // #,##0 would render an EPS of 7.32 as "7". Anything under a thousand is a per-share figure,
+      // a ratio or a count, and wants decimals — the same rule fmtNum uses on screen. Except an exact
+      // zero, which is overwhelmingly a dollar line the filer reported as nil ("Debt issued 0.00",
+      // "Preferred dividends 0.00" — two decimals on a figure in billions reads as a broken export).
+      const styleFor = (k, v) => PCT.has(k) ? XF.PCT : MULT.has(k) ? XF.MULT : DAYS.has(k) ? XF.DEC
+        : (v != null && v !== 0 && Math.abs(v) < 1000 ? XF.DEC : XF.MONEY);
+      const tic = (data.tickers || [])[0] || (co && co.ticker) || "";
+      const newest = grid.cols[grid.cols.length - 1];
+      const sheetFor = tabId => {
+        const secs = activeSections.filter(s => TABS.find(t => t.id === tabId).secs.includes(s.id) || s.tab === tabId);
+        // The page lifts the EV bridge OUT of the year grid into a card above the tabs: there is one
+        // price, so it fills one column, and a table row of seven blanks buried the only real value
+        // off the right-hand edge of the scroll. A workbook has no such problem — a figure under the
+        // newest year with the earlier years empty is how every model on earth reads — and an export
+        // that silently dropped enterprise value and EV/EBITDA would be missing the two numbers a
+        // banker looks for first. So it is appended here rather than added to TABS, which would put
+        // it back on the page. Only when a price actually arrived: with no FINNHUB_KEY every line is
+        // null, and eleven blank rows read as a broken export rather than an absent input.
+        if (tabId === "valuation" && quote && quote.price) {
+          const ev = SECTIONS.find(s => s.id === "ev");
+          if (ev) secs.push(ev);
+        }
+        const rows = [
+          [{ v: data.name, s: XF.TITLE }],
+          [{ v: `${(data.tickers || []).join(" · ")}${data.sic ? " · " + data.sic : ""}`, s: XF.MUTED }],
+          [{ v: `Reported figures from SEC filings · generated ${new Date().toISOString().slice(0, 10)} · filings.masonjbennett.com/?t=${tic}`, s: XF.MUTED }],
+          [],
+          [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
+          [{ v: "Period end", s: XF.MUTED }, ...grid.cols.map(c => ({ v: c.period.end, s: XF.MUTED }))],
+        ];
+        for (const sec of secs) {
+          rows.push([]);
+          rows.push([{ v: sec.title, s: XF.BOLD }]);
+          // Said on its own row, because a spreadsheet has no tooltip and no card header to carry it:
+          // these are today's price against the newest year, not a time series. In column A, not
+          // beside the title — a year column has to stay numeric all the way down, or the first
+          // reader to select it gets a count where they expected a sum.
+          if (sec.id === "ev") rows.push([{ v: `$${quote.price.toFixed(2)} today against FY${newest.period.fy} (${newest.period.end}) — newest column only`, s: XF.MUTED }]);
+          for (const line of sec.lines) {
+            // Judgement lines are blank by design and say so on the page; a blank row in a
+            // spreadsheet just looks like the export failed.
+            if (line.how === "manual") continue;
+            rows.push([{ v: line.label }, ...grid.cols.map(c => ({ v: c.v[line.k], s: styleFor(line.k, c.v[line.k]) }))]);
+          }
+        }
+        return { name: TABS.find(t => t.id === tabId).label, rows,
+          widths: [46, ...grid.cols.map(() => 18)], freeze: { x: 1, y: 6 } };
+      };
+      downloadXlsx(TABS.map(t => sheetFor(t.id)), `${tic || "filings"}-financials.xlsx`);
+      setCopied("Workbook downloaded");
+    } catch (e) {
+      setCopied("Export failed — " + String((e && e.message) || e).slice(0, 60));
+    }
+    setTimeout(() => setCopied(""), 4000);
+  };
+
+  // Copies the tab you are looking at, not all 168 lines. Kept alongside the download because the
+  // two are different jobs: the workbook is the file you keep, this is the block you are working in
+  // going straight into a model that is already open.
   const copyTsv = () => {
     if (!grid || !grid.cols) return;
     const secs = activeSections.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id) || s.tab === tab);
@@ -354,7 +426,13 @@ export default function App() {
           <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>{data.name}</h2>
           <span style={{ font: `600 12px ${MONO}`, color: C.teal }}>{(data.tickers || []).join(" · ")}</span>
           <span style={{ fontSize: 11, color: C.faint }}>{data.sic}</span>
-          <button onClick={copyTsv} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.teal}40`, borderRadius: 8, padding: "7px 14px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Copy {TABS.find(t => t.id === tab).label} for Excel</button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {/* Download leads and is the filled button: the whole workbook is what a reader wants,
+                and it is the thing every free competitor charges for. Copy stays for the case where
+                you only want the tab in front of you pasted straight into an open model. */}
+            <button onClick={downloadWorkbook} style={{ background: `${C.teal}0e`, border: `1px solid ${C.teal}55`, borderRadius: 8, padding: "7px 14px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>↓ Download Excel workbook</button>
+            <button onClick={copyTsv} style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "7px 14px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Copy {TABS.find(t => t.id === tab).label}</button>
+          </div>
         </div>
         <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 18 }}>
           {data.meta.tagsKept} tagged concepts kept · {data.meta.tagsDropped} outside the template · {(data.filings || []).length} filings on file
