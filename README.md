@@ -1,4 +1,4 @@
-# Filings Terminal — filings.masonjbennett.com
+# Filings Terminal — filings-terminal.vercel.app
 
 Pulls reported financials straight from SEC EDGAR into a model-ready sheet. Every figure is the
 value the company filed, traceable to the accession number it came from. **No AI anywhere in the
@@ -255,8 +255,14 @@ defines it differently), same-store NOI, and occupancy. AFFO is a `manual` row t
 
 Vercel project → this repo. One environment variable: `FINNHUB_KEY` (same value as the main site;
 Vercel does not share env vars across projects). Env vars only apply to **new** deployments, so
-redeploy after adding it. Domain is a CNAME at Cloudflare — set **DNS only, grey cloud**, or
-certificate issuance fails.
+redeploy after adding it.
+
+**The live URL is `filings-terminal.vercel.app`.** `filings.masonjbennett.com` was planned and is
+NOT set up — as of Aug 2026 it returns `DNS_PROBE_FINISHED_NXDOMAIN`, while the apex resolves
+normally. This file and the main repo's CLAUDE.md both claimed it was live, which is how a dead
+link nearly reached the site's project card. To finish it: add the domain in Vercel, then a CNAME at
+Cloudflare set **DNS only, grey cloud** — proxied (orange) breaks certificate issuance. Once it
+resolves, the two links in `mason-bennett-dashboard/src/App.jsx` should be swapped back.
 
 `npm run dev` runs the serverless functions too, via a small plugin in `vite.config.js`, so local
 development exercises the real code path against real SEC responses.
