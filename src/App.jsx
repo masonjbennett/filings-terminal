@@ -124,6 +124,11 @@ export default function App() {
 
   const load = async (cik, ticker, title) => {
     setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null); setQuote(null); setQuoteNote("");
+    // The sheet becomes a URL you can send to someone. Until now every lookup lived only in the
+    // session that made it — "here is Chubb's combined ratio, check the filings yourself" was not
+    // something you could paste into an email. replaceState rather than pushState so the back
+    // button still leaves the terminal instead of walking back through a search history.
+    if (ticker) try { history.replaceState(null, "", `?t=${encodeURIComponent(ticker)}`); } catch {}
     try {
       const r = await fetch(`/api/facts?cik=${cik}`);
       const d = await r.json();
@@ -142,6 +147,22 @@ export default function App() {
     } catch { setErr("couldn't reach the filing desk"); }
     setBusy(false);
   };
+
+  // Opening ?t=CB loads Chubb before anyone types. Runs once, and only once the company list has
+  // arrived — the ticker has to be resolved to a CIK locally, which is the same lookup the search
+  // box does. An unknown ticker is left alone rather than shouted about: the search box is right
+  // there, and a mistyped share link should land on a usable page, not an error.
+  const deepLoaded = useRef(false);
+  useEffect(() => {
+    if (!tickers || deepLoaded.current) return;
+    const want = new URLSearchParams(location.search).get("t");
+    if (!want) return;
+    deepLoaded.current = true;
+    const s = want.trim().toUpperCase();
+    const row = tickers.find(([, tic]) => tic === s);
+    if (row) load(row[0], row[1], row[2]);
+    else setErr(`no filer with the ticker "${s}" — try the search box`);
+  }, [tickers]);
 
   // ── Build the grid ───────────────────────────────────────────────────────────────────────────
   // SIC decides the shape of the sheet. Everything downstream — which sections exist, which lines

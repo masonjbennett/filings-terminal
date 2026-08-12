@@ -26,6 +26,13 @@ lookup did.
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections).
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
 
+**Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
+searching normally rewrites the address bar to match, so any lookup can be pasted into an email —
+"here is the combined ratio, check the filings yourself" is now a link rather than an instruction.
+`replaceState` rather than `pushState`, so the back button leaves the terminal instead of walking
+back through a search history; an unrecognised ticker leaves the search box usable rather than
+erroring, because a mistyped share link should still land somewhere useful.
+
 **Every reported figure is a link to the filing it came from.** Click any number that was fetched
 rather than computed and EDGAR's filing-detail page opens — form type, filing date, and *period of
 report* matching the column you clicked from, with the document one click further. That is the
