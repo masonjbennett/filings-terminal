@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { SECTIONS } from "./template.js";
-import { annualPeriods, pickFact, latestFact, DERIVED, YOY } from "./extract.js";
+import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS } from "./template.js";
+import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BANK, YOY } from "./extract.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -12,9 +12,14 @@ const SANS = "'Space Grotesk','Segoe UI',system-ui,sans-serif";
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
 // beside nine months of earnings, so it is declared rather than guessed.
+// A section declares its own period shape via `instant: true`, and the hardcoded list below is only
+// the fallback for the original corporate sections. This started as a set of ids, which meant the
+// first industry overlay added a balance-sheet section the set had never heard of: deposits and
+// loans were matched as durations, found nothing, and reported "not tagged" for the two largest
+// numbers on a bank's balance sheet.
 const INSTANT_SECTIONS = new Set(["bs", "debtlike", "dilution"]);
 const INSTANT_LINES = new Set(["sharesOut", "nol", "taxCredits"]);
-const isInstant = (sec, k) => INSTANT_LINES.has(k) || INSTANT_SECTIONS.has(sec);
+const isInstant = (sec, k) => INSTANT_LINES.has(k) || sec.instant === true || INSTANT_SECTIONS.has(sec.id);
 
 const REV_TAGS = SECTIONS[0].lines[0].tags;
 
@@ -43,8 +48,9 @@ const fmtX = v => (v == null ? null : v.toFixed(2) + "x");
 // Yields are rates and read as percentages; valuation ratios are multiples and read with an x. Left
 // out of these sets a number renders bare — a 3% FCF yield printed "0.03" and 26.7x EBITDA printed
 // "26.74", which are the two figures most likely to be read off this page out loud.
-const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d"]);
-const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb"]);
+const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d",
+  "efficiency","niiOnAssets","allowanceToLoans","provisionToLoans","depositsToAssets","equityToAssets"]);
+const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","currentRatio","quickRatio","assetTurn","evRev","evEbitda","evEbit","evFcf","pe","pb","loansToDeposits"]);
 const DAYS = new Set(["dso","dio","dpo","ccc"]);
 const display = (k, v, unit) => v == null ? null : PCT.has(k) ? fmtPct(v) : MULT.has(k) ? fmtX(v) : DAYS.has(k) ? Math.round(v) + "d" : fmtNum(v, unit);
 
@@ -101,6 +107,24 @@ export default function App() {
   };
 
   // ── Build the grid ───────────────────────────────────────────────────────────────────────────
+  // SIC decides the shape of the sheet. Everything downstream — which sections exist, which lines
+  // are marked inapplicable — hangs off this one value, so it is read from SEC's own classification
+  // rather than inferred from the data.
+  const industry = data ? INDUSTRY(data.sicCode) : "corporate";
+  const activeSections = useMemo(() => {
+    const extra = OVERLAY_SECTIONS[industry] || [];
+    if (!extra.length) return SECTIONS;
+    // Bank sections slot in after the corporate statements they replace, so the sheet still reads
+    // top-down rather than appending an industry annex at the bottom.
+    const out = [...SECTIONS];
+    for (const sec of extra) {
+      const anchor = sec.tab === "ratios" ? "margins" : "sh";
+      const at = out.findIndex(s => s.id === anchor);
+      out.splice(at >= 0 ? at : out.length, 0, sec);
+    }
+    return out;
+  }, [industry]);
+
   const grid = useMemo(() => {
     if (!data) return null;
     const facts = data.facts || {};
@@ -115,13 +139,17 @@ export default function App() {
     // above them in the same column.
     const cols = periods.map(p => {
       const v = {}, meta = {};
-      for (const sec of SECTIONS) for (const line of sec.lines) {
+      for (const sec of activeSections) for (const line of sec.lines) {
         if (line.how !== "fetched" || !line.tags) continue;
-        const inst = isInstant(sec.id, line.k);
+        const inst = isInstant(sec, line.k);
         const got = line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p);
         v[line.k] = got.value; meta[line.k] = got;
       }
-      for (const [k, fn] of Object.entries(DERIVED)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
+      const derivations = industry === "bank" ? { ...DERIVED, ...DERIVED_BANK } : DERIVED;
+      for (const [k, fn] of Object.entries(derivations)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
+      // Lines a filer of this type does not have are blanked outright, so a derived value can never
+      // be built from an inapplicable input — a bank with a computed "EBITDA" would be a fiction.
+      for (const k of NOT_APPLICABLE[industry] || []) { v[k] = null; meta[k] = { status: "not-applicable" }; }
       return { period: p, v, meta };
     });
     // Growth lines need the PRIOR year, which now sits to the LEFT. Getting this index backwards
@@ -178,7 +206,7 @@ export default function App() {
   // block you are working in is the block that lands in Excel.
   const copyTsv = () => {
     if (!grid || !grid.cols) return;
-    const secs = SECTIONS.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id));
+    const secs = activeSections.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id) || s.tab === tab);
     const out = [["Line item", ...grid.cols.map(c => c.period.end)].join("\t")];
     for (const sec of secs) {
       out.push(sec.title);
@@ -280,8 +308,9 @@ export default function App() {
               {/* Valuation is lifted out into its own card above. There is ONE price, so it produces
                   one column of figures — spreading it across eight year-columns printed seven blanks
                   and hid the only real value off the right-hand edge of the scroll. */}
-              {SECTIONS.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id))
-                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))} />)}
+              {activeSections.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id) || s.tab === tab)
+                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))}
+                  naLabel={industry === "corporate" ? "n/a" : `n/a for a ${industry}`} />)}
             </tbody>
           </table>
         </div>}
@@ -340,7 +369,7 @@ function ValuationCard({ grid, quote, note, S }) {
   </div>;
 }
 
-function SectionRows({ sec, grid, S, link }) {
+function SectionRows({ sec, grid, S, link, naLabel = "n/a" }) {
   const anyValue = sec.lines.some(l => grid.cols.some(c => c.v[l.k] != null));
   return <>
     {/* The cell spans the whole table, so its contents scroll away with the years — and since the
@@ -363,10 +392,11 @@ function SectionRows({ sec, grid, S, link }) {
       // printed in the cell beside the label, which reads as a broken deployment rather than a
       // mislabelled row. Whether a figure is THERE is the first question; why it isn't comes second.
       const status = has ? null
+        : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : line.how === "manual" ? "judgement"
         : line.how === "market" ? "needs price"
         : cells[0] && cells[0].m.status === "never-tagged" ? "n/a" : "not tagged";
-      const statusColor = status === "judgement" ? C.teal : status === "n/a" ? C.faint : status === "needs price" ? C.navy : C.bronze;
+      const statusColor = status === "judgement" ? C.teal : status === naLabel || status === "n/a" ? C.faint : status === "needs price" ? C.navy : C.bronze;
       return <tr key={line.k} style={{ borderTop: `1px solid ${C.hair2}` }}>
         <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap" }}>
           <span style={{ color: has ? C.ink2 : C.faint }}>{line.label}</span>

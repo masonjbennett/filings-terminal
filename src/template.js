@@ -237,8 +237,78 @@ export const SECTIONS = [
 ]},
 ];
 
-// Industry overlays — a bank has no gross profit and a REIT lives on FFO. Applying one template to
-// every filer is what made JPM score 50%: the template was wrong, not the data.
+// ── Industry handling ──────────────────────────────────────────────────────────────────────────
+// Detected from the SIC code SEC already assigns, not guessed from which tags are present — a
+// corporate with a finance arm reports loans too, and would be misread as a bank.
+export const INDUSTRY = sic => {
+  const n = Number(sic);
+  if (!n) return "corporate";
+  if (n >= 6020 && n <= 6199) return "bank";      // depository + nondepository credit
+  if (n >= 6311 && n <= 6411) return "insurance";
+  if (n === 6798) return "reit";
+  return "corporate";
+};
+
+// Lines that are not MISSING for these filers — they do not exist. A bank has no cost of revenue,
+// no inventory and no operating income, and is not levered on EBITDA: it is levered on capital
+// ratios, so Net debt/EBITDA is a category error rather than a gap. Saying "n/a for a bank" is the
+// difference between a sheet that looks broken and one that shows it knows what it is reading.
+export const NOT_APPLICABLE = {
+  bank: ["cogs", "grossProfit", "inventory", "dio", "dpo", "ccc", "currentRatio", "quickRatio",
+    "curAssets", "curLiab", "totalOpex", "ebit", "ebitda", "ebitdaSbc", "ebitMargin", "ebitdaMargin",
+    "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "nwcPctRev", "assetTurn",
+    "capexPctRev", "prepaid", "ap", "evEbitda", "evEbit", "ufcf", "nopat", "roic", "investedCap"],
+  insurance: ["cogs", "grossProfit", "inventory", "dio", "dpo", "ccc"],
+  reit: ["inventory", "dio", "dpo", "ccc"],
+};
+
+// Sections added for a given industry, and which tab they belong to.
+export const OVERLAY_SECTIONS = {
+  bank: [
+    { id: "bank_is", title: "Bank Income Statement", feeds: "Historicals", tab: "statements", lines: [
+      { k: "intIncTotal", label: "Total interest income", how: "fetched", tags: ["InterestAndDividendIncomeOperating"] },
+      { k: "intExpTotal", label: "Total interest expense", how: "fetched", tags: ["InterestExpense"] },
+      { k: "intExpDeposits", label: "Interest expense on deposits", how: "fetched", tags: ["InterestExpenseDeposits"] },
+      { k: "nii", label: "Net interest income", how: "fetched", tags: ["InterestIncomeExpenseNet"], fallback: "intIncTotal - intExpTotal" },
+      { k: "provision", label: "Provision for credit losses", how: "fetched", tags: ["ProvisionForLoanLeaseAndOtherLosses", "ProvisionForCreditLosses"] },
+      { k: "niiAfterProv", label: "NII after provision", how: "fetched", tags: ["InterestIncomeExpenseAfterProvisionForLoanLoss"] },
+      { k: "noninterestIncome", label: "Noninterest income", how: "fetched", tags: ["NoninterestIncome"] },
+      { k: "noninterestExpense", label: "Noninterest expense", how: "fetched", tags: ["NoninterestExpense"] },
+      { k: "totalRevenueBank", label: "Total revenue (NII + fees)", how: "computed", formula: "nii + noninterestIncome" },
+    ]},
+    // instant: balances at a date, not flows over a period. Declared here so the grid never has to
+    // guess from the section id.
+    { id: "bank_bs", title: "Loans, Deposits & Securities", feeds: "Historicals", tab: "statements", instant: true, lines: [
+      // Tag lists have to span TAXONOMY ERAS, not just synonyms. CECL (ASU 2016-13) retired the
+      // loan and securities tags around 2020-21 and replaced them with "ExcludingAccruedInterest"
+      // variants: LoansAndLeasesReceivableNetReportedAmount stops in 2016, the old allowance and AFS
+      // tags stop in 2021. Using only those returned "not tagged" for the two largest numbers on a
+      // bank's balance sheet. pickFact walks the list and skips any tag with no fact for the period,
+      // so listing both eras fixes recent AND historical years at once.
+      { k: "loans", label: "Loans & leases, net", how: "fetched", tags: ["FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss", "LoansAndLeasesReceivableNetReportedAmount", "LoansAndLeasesReceivableNetOfDeferredIncome", "NotesReceivableNet"] },
+      // Computed, not fetched. The ...BeforeAllowanceForCreditLoss tag returned a SMALLER number
+      // than the "after" tag at JPM ($1,408.9bn vs $1,467.7bn), which cannot be true of a gross
+      // versus net loan balance — the two tags are evidently applied to different portfolio scopes.
+      // Rather than print an impossibility, gross is derived from the two figures that are
+      // unambiguous, so allowance coverage is always internally consistent.
+      { k: "loansGross", label: "Loans & leases, gross", how: "computed", formula: "loans + allowance" },
+      { k: "allowance", label: "Allowance for credit losses", how: "fetched", tags: ["FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest", "FinancingReceivableAllowanceForCreditLosses"] },
+      { k: "deposits", label: "Total deposits", how: "fetched", tags: ["Deposits"] },
+      { k: "afs", label: "Securities available for sale", how: "fetched", tags: ["DebtSecuritiesAvailableForSaleExcludingAccruedInterest", "AvailableForSaleSecuritiesDebtSecurities", "AvailableForSaleSecurities"] },
+      { k: "htm", label: "Securities held to maturity", how: "fetched", tags: ["DebtSecuritiesHeldToMaturityExcludingAccruedInterestAfterAllowanceForCreditLoss", "HeldToMaturitySecurities"] },
+    ]},
+    { id: "bank_ratios", title: "Bank Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [
+      { k: "efficiency", label: "Efficiency ratio", how: "computed", formula: "noninterestExpense / (nii + noninterestIncome)", note: "Lower is better — the core bank cost metric" },
+      { k: "niiOnAssets", label: "Net interest income / assets", how: "computed", formula: "nii / totalAssets", note: "Proxy for NIM — average EARNING assets are not tagged, so true NIM cannot be computed from filings" },
+      { k: "loansToDeposits", label: "Loans / deposits", how: "computed", formula: "loans / deposits" },
+      { k: "allowanceToLoans", label: "Allowance / gross loans", how: "computed", formula: "allowance / loansGross" },
+      { k: "provisionToLoans", label: "Provision / gross loans", how: "computed", formula: "provision / loansGross" },
+      { k: "depositsToAssets", label: "Deposits / assets", how: "computed", formula: "deposits / totalAssets" },
+      { k: "equityToAssets", label: "Equity / assets", how: "computed", formula: "equity / totalAssets", note: "Leverage for a bank — regulatory CET1 is not XBRL-tagged" },
+    ]},
+  ],
+};
+
 export const OVERLAYS = {
   bank: [
     { k: "nii", label: "Net interest income", how: "fetched", tags: ["InterestIncomeExpenseNet"] },

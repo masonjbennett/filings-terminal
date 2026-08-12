@@ -185,6 +185,21 @@ export const DERIVED = {
   cashTaxRate: v => (v.tax == null ? null : div(v.tax - (v.deferredTax || 0), v.pretax)),
 };
 
+// Bank-only derivations. Kept separate so they only run for a depository — computing an efficiency
+// ratio for Apple would produce a number, and a number that means nothing is worse than a blank.
+export const DERIVED_BANK = {
+  nii: v => (v.nii != null ? v.nii : v.intIncTotal == null ? null : v.intIncTotal - (v.intExpTotal || 0)),
+  totalRevenueBank: v => sum(v.nii, v.noninterestIncome),
+  efficiency: v => div(v.noninterestExpense, sum(v.nii, v.noninterestIncome)),
+  niiOnAssets: v => div(v.nii, v.totalAssets),
+  loansToDeposits: v => div(v.loans, v.deposits),
+  loansGross: v => sum(v.loans, v.allowance),
+  allowanceToLoans: v => div(v.allowance, sum(v.loans, v.allowance)),
+  provisionToLoans: v => div(v.provision, sum(v.loans, v.allowance)),
+  depositsToAssets: v => div(v.deposits, v.totalAssets),
+  equityToAssets: v => div(v.equity, v.totalAssets),
+};
+
 // Year-over-year lines need the column beside them, so they are computed after the grid is built.
 export const YOY = {
   revGrowth: "revenue", ebitdaGrowth: "ebitda", epsGrowth: "epsDil",
