@@ -18,6 +18,21 @@ const isInstant = (sec, k) => INSTANT_LINES.has(k) || INSTANT_SECTIONS.has(sec);
 
 const REV_TAGS = SECTIONS[0].lines[0].tags;
 
+// Organised by STATEMENT, not by analysis. A DCF, an LBO and a comps set all run off the same
+// revenue, EBITDA, capex and net debt, so tabbing by analysis would print the same twenty lines in
+// four places under a taxonomy the data does not have. Bloomberg's FA splits I/S, B/S, C/F and
+// Ratios for the same reason: the terminal is the source, the analysis happens in the model.
+//
+// Sections that are mostly judgement — LBO inputs, precedent transactions, premia — are deliberately
+// NOT tabs. As rows inside a sheet they read as honest scope notes; as a tab with your name on it,
+// four blank fields read as a tool that cannot do LBOs. They live in the footer instead.
+const TABS = [
+  { id: "statements", label: "Statements", secs: ["is", "bs", "cf", "sh"] },
+  { id: "ratios", label: "Ratios", secs: ["margins", "credit", "returns"] },
+  { id: "valuation", label: "Valuation", secs: ["debtlike", "addbacks", "dcf", "dilution"] },
+];
+const FOOTER_SECS = ["lbo", "pta", "premia"];
+
 const fmtNum = (v, unit) => {
   if (v == null) return null;
   if (unit === "pure" || Math.abs(v) < 1000) return (Math.round(v * 100) / 100).toLocaleString();
@@ -42,6 +57,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sections, setSections] = useState(null); // rendered-statement links for the newest 10-K
   const [copied, setCopied] = useState("");
+  const [tab, setTab] = useState("statements");
   const [quote, setQuote] = useState(null);
   const [quoteNote, setQuoteNote] = useState("");
   const scroller = useRef(null);
@@ -157,10 +173,14 @@ export default function App() {
   };
   const kindFor = secId => (secId === "is" || secId === "addbacks" ? "is" : secId === "bs" || secId === "debtlike" ? "bs" : secId === "cf" ? "cf" : secId === "dilution" ? "sbc" : secId === "dcf" ? "tax" : null);
 
+  // Copies the tab you are looking at, not all 168 lines. Pasting a whole terminal into a model is
+  // how a sheet ends up with three hundred rows nobody reads — the point of the tabs is that the
+  // block you are working in is the block that lands in Excel.
   const copyTsv = () => {
     if (!grid || !grid.cols) return;
+    const secs = SECTIONS.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id));
     const out = [["Line item", ...grid.cols.map(c => c.period.end)].join("\t")];
-    for (const sec of SECTIONS) {
+    for (const sec of secs) {
       out.push(sec.title);
       for (const line of sec.lines) {
         if (line.how === "manual" || line.how === "market") continue;
@@ -214,7 +234,7 @@ export default function App() {
           <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>{data.name}</h2>
           <span style={{ font: `600 12px ${MONO}`, color: C.teal }}>{(data.tickers || []).join(" · ")}</span>
           <span style={{ fontSize: 11, color: C.faint }}>{data.sic}</span>
-          <button onClick={copyTsv} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.teal}40`, borderRadius: 8, padding: "7px 14px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Copy sheet for Excel</button>
+          <button onClick={copyTsv} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.teal}40`, borderRadius: 8, padding: "7px 14px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Copy {TABS.find(t => t.id === tab).label} for Excel</button>
         </div>
         <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 18 }}>
           {data.meta.tagsKept} tagged concepts kept · {data.meta.tagsDropped} outside the template · {(data.filings || []).length} filings on file
@@ -225,7 +245,19 @@ export default function App() {
 
         {grid.empty && <p style={{ color: C.bronze, fontFamily: MONO, fontSize: 12 }}>No annual XBRL periods on file — this filer may report under IFRS (20-F) or predate tagging.</p>}
 
+        {/* The valuation summary rides above every tab on purpose. It is four numbers a banker reads
+            first — EV, the multiple, the price it came from — and burying it one click deep would
+            make the headline of the page something you have to go looking for. */}
         {grid.cols && <ValuationCard grid={grid} quote={quote} note={quoteNote} S={S} />}
+
+        {grid.cols && <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+          {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "7px 16px", borderRadius: 8, cursor: "pointer", border: "1px solid",
+              font: `600 11px ${MONO}`, letterSpacing: 1, textTransform: "uppercase",
+              background: tab === t.id ? "#0d6d5610" : "transparent",
+              borderColor: tab === t.id ? `${C.teal}45` : C.hair,
+              color: tab === t.id ? C.teal : C.faint }}>{t.label}</button>)}
+        </div>}
 
         {/* Opens pinned to the right-hand edge — the current year, which is what you came to see —
             and scrolling left walks back through history. Model order without making the newest
@@ -248,10 +280,26 @@ export default function App() {
               {/* Valuation is lifted out into its own card above. There is ONE price, so it produces
                   one column of figures — spreading it across eight year-columns printed seven blanks
                   and hid the only real value off the right-hand edge of the scroll. */}
-              {SECTIONS.filter(s => s.id !== "ev").map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))} />)}
+              {SECTIONS.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id))
+                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec.id))} />)}
             </tbody>
           </table>
         </div>}
+
+        {/* Stated plainly rather than hidden. These are the lines no filing contains — a sponsor's
+            add-backs, a maintenance/growth capex split, deal terms — and a tool that quietly leaves
+            them blank invites you to assume it tried and failed. Knowing where to stop is the part
+            a finance reader will actually check. */}
+        <div style={{ marginTop: 18, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "12px 16px", background: "#f6eee180" }}>
+          <span style={{ ...S.label, color: C.bronze }}>Deliberately not computed</span>
+          <div style={{ fontSize: 11.5, color: C.mute, lineHeight: 1.65, marginTop: 6 }}>
+            {SECTIONS.filter(s => FOOTER_SECS.includes(s.id)).map(s =>
+              s.lines.filter(l => l.how === "manual").map(l => l.label).join(" · ")).filter(Boolean).join(" · ")}
+            <div style={{ fontSize: 10.5, color: C.faint, marginTop: 5, fontStyle: "italic" }}>
+              None of these exist in any filing — they are judgement or deal terms. The tool will find the relevant 8-K or merger proxy, but it will not invent the number.
+            </div>
+          </div>
+        </div>
 
         <div style={{ marginTop: 16, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 10, fontFamily: MONO, color: C.faint }}>
           <span><b style={{ color: C.ink2 }}>reported</b> — filed value</span>
