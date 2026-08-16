@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY } from "./extract.js";
+import { SECTIONS, INDUSTRY, INDUSTRY_LABEL } from "./template.js";
+import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
@@ -9,22 +9,6 @@ const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute
 const MONO = "'JetBrains Mono',ui-monospace,Consolas,monospace";
 const SERIF = "'Instrument Serif','Palatino Linotype',Georgia,serif";
 const SANS = "'Space Grotesk','Segoe UI',system-ui,sans-serif";
-
-// Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
-// DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
-// beside nine months of earnings, so it is declared rather than guessed.
-// A section declares its own period shape via `instant: true`, and the hardcoded list below is only
-// the fallback for the original corporate sections. This started as a set of ids, which meant the
-// first industry overlay added a balance-sheet section the set had never heard of: deposits and
-// loans were matched as durations, found nothing, and reported "not tagged" for the two largest
-// numbers on a bank's balance sheet.
-// A LINE can declare it too, for the case a section is otherwise all durations: a health plan's
-// medical claims payable is one balance among four flows, and giving it a section of its own to
-// carry a flag would read worse on the page than saying so on the row.
-const INSTANT_SECTIONS = new Set(["bs", "debtlike", "dilution"]);
-const INSTANT_LINES = new Set(["sharesOut", "nol", "taxCredits"]);
-const isInstant = (sec, line) =>
-  line.instant === true || INSTANT_LINES.has(line.k) || sec.instant === true || INSTANT_SECTIONS.has(sec.id);
 
 // Organised by STATEMENT, not by analysis. A DCF, an LBO and a comps set all run off the same
 // revenue, EBITDA, capex and net debt, so tabbing by analysis would print the same twenty lines in
@@ -84,25 +68,16 @@ const secFilingUrl = (cik, accn) =>
     ? `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${String(accn).replace(/-/g, "")}/${accn}-index.htm`
     : null;
 
-// One stylesheet instead of ~1,300 pairs of inline hover handlers — the sheet is 168 lines by 8
-// columns and every cell is a candidate. Restraint is deliberate: underlining a thousand numbers
-// would wreck the paper-and-ink page, so a source link is invisible until the cursor asks for it.
 // The cell is nowrap so a label and its status chip stay on one line, and white-space INHERITS — so
 // a note was forced onto one line too and set the width of the whole sticky column. Apple's is
 // 303px; the insurance notes took Progressive's to 503px and pushed three year columns off the right
 // edge of an 8-year sheet. Wrapping inside a fixed measure caps the damage for any note ever added,
 // not just the ones that exist today, which is why this is shared rather than written per note.
-// "Did this payload contain a usable sheet at all?" — the same question the grid asks, asked early
-// enough to do something about it. Uses the industry's own period anchors rather than a fixed list,
-// because a bank keyed off `Revenues` would look empty when it is merely a bank.
-const hasAnnualPeriods = d => {
-  if (!d || !d.facts) return false;
-  const ind = INDUSTRY(d.sicCode);
-  return annualPeriods(d.facts, [...(PERIOD_TAGS[ind] || PERIOD_TAGS.corporate), ...PERIOD_TAGS_FALLBACK], 1).length > 0;
-};
-
 const NOTE_STYLE = { fontSize: 9, color: "#8a8072", fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 };
 
+// One stylesheet instead of ~1,300 pairs of inline hover handlers — the sheet is 168 lines by 8
+// columns and every cell is a candidate. Restraint is deliberate: underlining a thousand numbers
+// would wreck the paper-and-ink page, so a source link is invisible until the cursor asks for it.
 const CELL_CSS = `
 .srcnum { color: inherit; text-decoration: none; cursor: pointer; border-bottom: 1px dotted transparent; }
 .srcnum:hover { color: ${"#0d6d56"}; border-bottom-color: ${"#0d6d5666"}; }
@@ -202,111 +177,12 @@ export default function App() {
   // ── Build the grid ───────────────────────────────────────────────────────────────────────────
   // SIC decides the shape of the sheet. Everything downstream — which sections exist, which lines
   // are marked inapplicable — hangs off this one value, so it is read from SEC's own classification
-  // rather than inferred from the data.
+  // rather than inferred from the data. The build itself lives in grid.js, so comps can run it once
+  // per company and the offline harness can test the code that actually ships.
   const industry = data ? INDUSTRY(data.sicCode) : "corporate";
-  const activeSections = useMemo(() => {
-    const extra = OVERLAY_SECTIONS[industry] || [];
-    if (!extra.length) return SECTIONS;
-    // Bank sections slot in after the corporate statements they replace, so the sheet still reads
-    // top-down rather than appending an industry annex at the bottom.
-    const out = [...SECTIONS];
-    for (const sec of extra) {
-      // `after` places a section directly below the one it belongs under — underwriting beneath the
-      // income statement, reserves beneath the balance sheet — so an insurer's sheet reads I/S →
-      // Underwriting → B/S → Reserves → C/F. Without it every overlay lands in one block after the
-      // cash flow, which is where the bank sections still sit; that default is kept rather than
-      // changed, because moving shipped sections would be a redesign, not a fix.
-      if (sec.after) {
-        const at = out.findIndex(s => s.id === sec.after);
-        out.splice(at >= 0 ? at + 1 : out.length, 0, sec);
-        continue;
-      }
-      const anchor = sec.tab === "ratios" ? "margins" : "sh";
-      const at = out.findIndex(s => s.id === anchor);
-      out.splice(at >= 0 ? at : out.length, 0, sec);
-    }
-    return out;
-  }, [industry]);
+  const activeSections = useMemo(() => sectionsFor(industry), [industry]);
 
-  const grid = useMemo(() => {
-    if (!data) return null;
-    const facts = data.facts || {};
-    // annualPeriods returns newest-first because "the most recent 8 years" is the natural way to
-    // take a slice. Models read the other way — oldest on the left, this year on the right, so a
-    // growth row reads forward — so the columns are flipped once, here, and everything downstream
-    // (the sheet, the Excel copy) inherits the right order rather than each fixing it separately.
-    const periods = annualPeriods(facts, [...(PERIOD_TAGS[industry] || PERIOD_TAGS.corporate), ...PERIOD_TAGS_FALLBACK], 8).reverse();
-    if (!periods.length) return { periods: [], rows: [], empty: true };
-
-    // Column at a time: fetch every tagged line, then derive, so derived lines can read the ones
-    // above them in the same column.
-    const cols = periods.map(p => {
-      const v = {}, meta = {};
-      for (const sec of activeSections) for (const line of sec.lines) {
-        if (line.how !== "fetched" || !line.tags) continue;
-        const inst = isInstant(sec, line);
-        const got = line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p);
-        v[line.k] = got.value; meta[line.k] = got;
-      }
-      const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
-      for (const [k, fn] of Object.entries(derivations)) { const out = fn(v); if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; } }
-      // Lines a filer of this type does not have are blanked outright, so a derived value can never
-      // be built from an inapplicable input — a bank with a computed "EBITDA" would be a fiction.
-      for (const k of NOT_APPLICABLE[industry] || []) { v[k] = null; meta[k] = { status: "not-applicable" }; }
-      return { period: p, v, meta };
-    });
-    // Growth lines need the PRIOR year, which now sits to the LEFT. Getting this index backwards
-    // would invert every growth rate silently — the number would still look plausible.
-    cols.forEach((c, i) => {
-      const prev = cols[i - 1];
-      for (const [k, src] of Object.entries(YOY)) {
-        const a = c.v[src], b = prev && prev.v[src];
-        c.v[k] = a != null && b != null && b !== 0 ? a / b - 1 : null;
-        // This pass runs AFTER the inapplicable lines are blanked, so writing "computed"
-        // unconditionally erased that verdict: a P&C insurer's EBITDA row said "n/a for a P&C
-        // insurer" while the EBITDA growth row directly under it said "not tagged" — pointing the
-        // reader at a filing to go hunt for the growth rate of a figure the sheet had just
-        // explained does not exist.
-        if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
-        c.meta[k] = { status: "computed" };
-      }
-    });
-    // Valuation lands on the NEWEST column only, and that restraint is the point. There is one
-    // price — today's — so an EV/EBITDA against FY2019 would be today's enterprise value over a
-    // six-year-old profit: a number that looks like a multiple and means nothing. Historical
-    // multiples need historical prices, which the free quote tier does not carry.
-    if (quote && quote.price && cols.length) {
-      const c = cols[cols.length - 1], v = c.v;
-      // Like the YoY pass above, this runs AFTER the inapplicable lines are blanked — and unlike it,
-      // this one writes VALUES, not just labels. So a price arriving quietly resurrected every row
-      // NOT_APPLICABLE had just deleted: Chubb printed a $155bn enterprise value, 2.62x EV/Revenue
-      // and 12.12x EV/FCF, the exact three rows the P&C list exists to suppress, because enterprise
-      // value is a category error for a carrier whose liabilities ARE the business. It only appeared
-      // in production, since the quote needs FINNHUB_KEY and local dev has none — which is why the
-      // blanking is enforced here rather than trusted to have happened earlier.
-      const na = new Set(NOT_APPLICABLE[industry] || []);
-      const mark = (k, val) => {
-        if (na.has(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; return; }
-        v[k] = val == null || !isFinite(val) ? null : val;
-        c.meta[k] = { status: "market" };
-      };
-      mark("price", quote.price);
-      const mktCap = v.sharesOut != null ? quote.price * v.sharesOut : null;
-      mark("mktCap", mktCap);
-      const ev = mktCap == null || v.totalDebt == null ? null
-        : mktCap + v.totalDebt + (v.preferred || 0) + (v.nciBs || 0) - (v.cash || 0) - (v.sti || 0);
-      mark("ev", ev);
-      mark("evRev", ev && v.revenue ? ev / v.revenue : null);
-      mark("evEbitda", ev && v.ebitda ? ev / v.ebitda : null);
-      mark("evEbit", ev && v.ebit ? ev / v.ebit : null);
-      mark("evFcf", ev && v.fcf ? ev / v.fcf : null);
-      mark("pe", v.epsDil ? quote.price / v.epsDil : null);
-      mark("pb", mktCap && v.equity ? mktCap / v.equity : null);
-      mark("fcfYield", mktCap && v.fcf != null ? v.fcf / mktCap : null);
-      mark("divYield", v.dps ? v.dps / quote.price : null);
-    }
-    return { periods, cols };
-  }, [data, quote]);
+  const grid = useMemo(() => buildGrid(data, quote), [data, quote]);
 
   // After the grid paints, jump to the newest year. Runs on the data rather than on mount, because
   // the table does not exist yet when the fetch is still in flight.
