@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { SECTIONS, INDUSTRY, INDUSTRY_LABEL } from "./template.js";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN } from "./template.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 
@@ -35,7 +35,11 @@ const fmtX = v => (v == null ? null : v.toFixed(2) + "x");
 // Yields are rates and read as percentages; valuation ratios are multiples and read with an x. Left
 // out of these sets a number renders bare — a 3% FCF yield printed "0.03" and 26.7x EBITDA printed
 // "26.74", which are the two figures most likely to be read off this page out loud.
-const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d",
+const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth",
+  // The CAGRs were missing from here for as long as they existed, and it never showed because they
+  // were declared with a formula and never actually computed — a blank cannot be mis-formatted.
+  // The moment comps made them real, Nvidia's 100% three-year CAGR rendered as "1".
+  "revCagr3","revCagr5","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d",
   "efficiency","niiOnAssets","allowanceToLoans","provisionToLoans","depositsToAssets","equityToAssets",
   // Insurance. A combined ratio printed as "0.89" instead of "88.9%" is the single most likely
   // number on this page to be read out loud, so these matter more than the count suggests.
@@ -95,6 +99,7 @@ export default function App() {
   const [tab, setTab] = useState("statements");
   const [quote, setQuote] = useState(null);
   const [quoteNote, setQuoteNote] = useState("");
+  const [comps, setComps] = useState([]);      // [{ ticker, title, grid, quote, loading, err }]
   const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(rows => setTickers(applyTickerFixes(rows))).catch(() => setErr("couldn't load the company list")); }, []);
@@ -114,6 +119,32 @@ export default function App() {
     return [...exact, ...starts, ...contains].slice(0, 8);
   }, [tickers, q]);
 
+  // The facts lookup with its predecessor fallback, shared by the single sheet and by comps. Shared
+  // rather than copied because the fallback is the kind of rule that gets fixed in one caller and
+  // left broken in the other — comps would then render an empty column for Exxon.
+  const fetchFacts = async (cik, ticker) => {
+    const r = await fetch(`/api/facts?cik=${cik}`);
+    let d = await r.json(), ok = r.ok, usedCik = cik;
+    // A holding-company reorganisation leaves the ticker pointing at an entity that has filed
+    // nothing, and the sheet comes out empty — see PREDECESSOR. The fallback runs off the DATA rather
+    // than off the table: only a lookup that produced no annual periods triggers a second one, so the
+    // day the successor files its own 10-K this stops firing by itself instead of pinning the ticker
+    // to stale predecessor figures until someone reviews the list.
+    //
+    // The !ok half is not defensive padding: an entity that has never filed has no companyfacts
+    // document at all, and data.sec.gov answers 404. CBAT's successor is exactly that, so gating the
+    // retry on a successful response would have skipped the one case with nothing to show.
+    if ((!ok || !hasAnnualPeriods(d)) && PREDECESSOR[ticker]) {
+      const p = PREDECESSOR[ticker];
+      try {
+        const r2 = await fetch(`/api/facts?cik=${p.cik}`);
+        const d2 = await r2.json();
+        if (r2.ok && hasAnnualPeriods(d2)) { d = d2; ok = true; usedCik = p.cik; }
+      } catch {}
+    }
+    return { ok, d, usedCik };
+  };
+
   const load = async (cik, ticker, title) => {
     setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null); setQuote(null); setQuoteNote("");
     // The sheet becomes a URL you can send to someone. Until now every lookup lived only in the
@@ -122,26 +153,7 @@ export default function App() {
     // button still leaves the terminal instead of walking back through a search history.
     if (ticker) try { history.replaceState(null, "", `?t=${encodeURIComponent(ticker)}`); } catch {}
     try {
-      const r = await fetch(`/api/facts?cik=${cik}`);
-      let d = await r.json();
-      let ok = r.ok, usedCik = cik;
-      // A holding-company reorganisation leaves the ticker pointing at an entity that has filed
-      // nothing, and the sheet comes out empty — see PREDECESSOR. The fallback runs off the DATA
-      // rather than off the table: only a lookup that produced no annual periods triggers a second
-      // one, so the day the successor files its own 10-K this stops firing by itself instead of
-      // pinning the ticker to stale predecessor figures until someone reviews the list.
-      //
-      // The !ok half is not defensive padding: an entity that has never filed has no companyfacts
-      // document at all, and data.sec.gov answers 404. CBAT's successor is exactly that, so gating
-      // the retry on a successful response would have skipped the one case with nothing to show.
-      if ((!ok || !hasAnnualPeriods(d)) && PREDECESSOR[ticker]) {
-        const p = PREDECESSOR[ticker];
-        try {
-          const r2 = await fetch(`/api/facts?cik=${p.cik}`);
-          const d2 = await r2.json();
-          if (r2.ok && hasAnnualPeriods(d2)) { d = d2; ok = true; usedCik = p.cik; }
-        } catch {}
-      }
+      const { ok, d, usedCik } = await fetchFacts(cik, ticker);
       if (!ok) { setErr(d.error || "that lookup failed"); setBusy(false); return; }
       setData(d);
       const k10 = (d.filings || []).find(f => f.form === "10-K");
@@ -158,6 +170,47 @@ export default function App() {
     setBusy(false);
   };
 
+  // ── Comps ────────────────────────────────────────────────────────────────────────────────────
+  // Every metric a comps set needs already exists on the single sheet and is produced by the same
+  // engine, so this adds a second FETCH PATH and a column-per-company layout, nothing else. In
+  // particular the industry overlays carry straight over: a bank in the set has no EV/EBITDA because
+  // NOT_APPLICABLE.bank says so, not because comps decided.
+  const addComp = async ticker => {
+    const t = String(ticker || "").trim().toUpperCase();
+    if (!t || comps.some(c => c.ticker === t)) return;
+    const row = (tickers || []).find(([, x]) => x === t);
+    if (!row) { setErr(`no filer with the ticker "${t}"`); return; }
+    setQ(""); setErr("");
+    // Placeholder first so the column appears immediately and the set reads as loading rather than
+    // as broken — a comps fetch is two round trips per company and they are not instant.
+    setComps(cs => [...cs, { ticker: t, title: row[2], loading: true }]);
+    let entry;
+    try {
+      const { ok, d } = await fetchFacts(row[0], t);
+      if (!ok) entry = { ticker: t, title: row[2], err: d.error || "lookup failed" };
+      else {
+        // Unlike the single sheet, comps AWAITS the price: the multiples are most of the point, and a
+        // table that reflows as six quotes land one by one is worse than one that arrives whole.
+        let quote = null;
+        try {
+          const qr = await fetch(`/api/quote?symbol=${encodeURIComponent((d.tickers && d.tickers[0]) || t)}`);
+          const qj = await qr.json();
+          if (qr.ok) quote = qj;
+        } catch {}
+        entry = { ticker: t, title: d.name || row[2], grid: buildGrid(d, quote), quote };
+      }
+    } catch { entry = { ticker: t, title: row[2], err: "couldn't reach the filing desk" }; }
+    setComps(cs => cs.map(c => (c.ticker === t ? entry : c)));
+  };
+
+  // The set is a URL, exactly as a single sheet is: /?c=AAPL,MSFT,NVDA opens it for whoever you send
+  // it to. replaceState for the same reason as ?t= — the back button should leave the terminal
+  // rather than walk back through every ticker that was added.
+  useEffect(() => {
+    if (!comps.length) return;
+    try { history.replaceState(null, "", `?c=${comps.map(c => c.ticker).join(",")}`); } catch {}
+  }, [comps]);
+
   // Opening ?t=CB loads Chubb before anyone types. Runs once, and only once the company list has
   // arrived — the ticker has to be resolved to a CIK locally, which is the same lookup the search
   // box does. An unknown ticker is left alone rather than shouted about: the search box is right
@@ -165,7 +218,17 @@ export default function App() {
   const deepLoaded = useRef(false);
   useEffect(() => {
     if (!tickers || deepLoaded.current) return;
-    const want = new URLSearchParams(location.search).get("t");
+    const params = new URLSearchParams(location.search);
+    const set = params.get("c");
+    if (set) {
+      deepLoaded.current = true;
+      // Sequential, not Promise.all: SEC caps at 10 requests/second and each company here is two
+      // round trips through our own functions. A six-name set fired at once is the kind of thing
+      // that gets an IP throttled, and the columns appear as they land anyway.
+      (async () => { for (const t of set.split(",").map(x => x.trim()).filter(Boolean).slice(0, 8)) await addComp(t); })();
+      return;
+    }
+    const want = params.get("t");
     if (!want) return;
     deepLoaded.current = true;
     const s = want.trim().toUpperCase();
@@ -320,7 +383,10 @@ export default function App() {
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Ticker or company name — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
           style={{ width: "100%", background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "13px 16px", fontSize: 15, fontFamily: MONO, color: C.ink2, outline: "none" }} />
         {hits.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 34px rgba(64,52,32,.13)" }}>
-          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => load(cik, tic, title)}
+          {/* With a comps set open the search box ADDS rather than replaces: having built a set, the
+              next thing anyone types is another name for it, and swapping the whole page out for a
+              single sheet would throw the set away without asking. */}
+          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => (comps.length ? addComp(tic) : load(cik, tic, title))}
             style={{ display: "flex", gap: 12, alignItems: "baseline", width: "100%", padding: "10px 15px", background: "none", border: "none", borderBottom: `1px solid ${C.hair2}`, cursor: "pointer", textAlign: "left", fontFamily: SANS }}
             onMouseEnter={e => e.currentTarget.style.background = "#0d6d5608"} onMouseLeave={e => e.currentTarget.style.background = "none"}>
             <span style={{ font: `600 12px ${MONO}`, color: C.teal, minWidth: 62 }}>{tic}</span>
@@ -332,7 +398,11 @@ export default function App() {
       {err && <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12 }}>{err}</p>}
       {busy && <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12 }}>Reading EDGAR…</p>}
 
-      {data && grid && <>
+      {comps.length > 0 && <CompsTable comps={comps} S={S}
+        onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
+        onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />}
+
+      {comps.length === 0 && data && grid && <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
           <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>{data.name}</h2>
           <span style={{ font: `600 12px ${MONO}`, color: C.teal }}>{(data.tickers || []).join(" · ")}</span>
@@ -343,6 +413,11 @@ export default function App() {
                 you only want the tab in front of you pasted straight into an open model. */}
             <button onClick={downloadWorkbook} style={{ background: `${C.teal}0e`, border: `1px solid ${C.teal}55`, borderRadius: 8, padding: "7px 14px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>↓ Download Excel workbook</button>
             <button onClick={copyTsv} style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "7px 14px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Copy {TABS.find(t => t.id === tab).label}</button>
+            {/* The way into comps. Starting from a company you are already looking at is the natural
+                move — you find one name, then ask who it trades against — and it saves retyping the
+                ticker that is on screen. */}
+            <button onClick={() => addComp(co && co.ticker ? co.ticker : (data.tickers || [])[0])}
+              style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "7px 14px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>+ Compare</button>
           </div>
         </div>
         <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 18 }}>
@@ -439,6 +514,94 @@ export default function App() {
 // One price divided into one year, so it reads as one block. Says out loud which year it divided
 // into, because "EV/EBITDA 26.7x" is meaningless without knowing whether the EBITDA is FY2025 or
 // a stale year — and that ambiguity is exactly what a valuation row buried in a year grid creates.
+// Companies across, metrics down — the transpose of the single sheet, off the same engine.
+//
+// The honesty problem specific to comps is the FISCAL YEAR. Apple's 2025 ends in September and
+// Microsoft's in June, and a table that lines them up under one "FY2025" heading is quietly
+// comparing different twelve-month windows — the most common way a comps page misleads. Each column
+// therefore carries its own period end under the ticker, and the header says so once in words.
+// Calendarising properly needs quarterly stitching, which is a real feature and not a label.
+function CompsTable({ comps, S, onRemove, onClear }) {
+  const ready = comps.filter(c => c.grid && c.grid.cols && c.grid.cols.length);
+  const newest = c => c.grid.cols[c.grid.cols.length - 1];
+  const val = (c, k) => (c.grid && c.grid.cols && c.grid.cols.length ? newest(c).v[k] : null);
+
+  // Median over the companies that HAVE the figure, never over the set. A bank contributes no
+  // EV/EBITDA and a filer with no operating income contributes no margin; counting those as zero, or
+  // dividing by the full column count, would drag the median toward whichever names are missing.
+  const median = k => {
+    const xs = ready.map(c => val(c, k)).filter(v => v != null && isFinite(v)).sort((a, b) => a - b);
+    if (!xs.length) return null;
+    const m = Math.floor(xs.length / 2);
+    return xs.length % 2 ? xs[m] : (xs[m - 1] + xs[m]) / 2;
+  };
+
+  const anyPriced = ready.some(c => c.quote && c.quote.price);
+  return <div style={{ marginBottom: 24 }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+      <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>Comparable companies</h2>
+      <span style={{ fontSize: 11, color: C.faint, fontFamily: MONO }}>
+        each company's own most recent fiscal year — the period end is under the ticker, because they do not line up
+      </span>
+      <button onClick={onClear} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Clear set</button>
+    </div>
+    <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 14 }}>
+      {ready.length} of {comps.length} loaded · search above to add another
+      {!anyPriced && <span style={{ color: C.bronze, marginLeft: 12 }}>· multiples need FINNHUB_KEY on this deployment</span>}
+    </p>
+
+    <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+        <thead><tr style={{ background: "#f6eee1" }}>
+          <th style={{ textAlign: "left", padding: "11px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 210, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.mute, borderBottom: `1px solid ${C.hair}` }}>Metric</th>
+          {comps.map(c => <th key={c.ticker} style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>
+            {c.ticker}
+            <button onClick={() => onRemove(c.ticker)} title={`remove ${c.ticker}`}
+              style={{ marginLeft: 6, background: "none", border: "none", color: C.faint, cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
+            <div style={{ fontSize: 9, fontWeight: 400, color: C.faint, marginTop: 3, maxWidth: 150, whiteSpace: "normal", lineHeight: 1.3 }}>
+              {c.loading ? "loading…" : c.err ? c.err : c.grid && c.grid.cols && c.grid.cols.length ? `FY${newest(c).period.fy} · ${newest(c).period.end}` : "no annual periods"}
+            </div>
+          </th>)}
+          <th style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", color: C.teal, borderBottom: `1px solid ${C.hair}`, borderLeft: `1px solid ${C.hair}` }}>
+            Median
+            <div style={{ fontSize: 9, fontWeight: 400, color: C.faint, marginTop: 3 }}>of those reporting</div>
+          </th>
+        </tr></thead>
+        <tbody>
+          {COMPS_ROWS.map(g => <Fragment key={g.group}>
+            <tr><td colSpan={comps.length + 2} style={{ padding: 0, borderTop: `1px solid ${C.hair}` }}>
+              <div style={{ position: "sticky", left: 0, display: "inline-block", padding: "13px 14px 5px" }}>
+                <span style={{ ...S.label, color: C.teal }}>{g.group}</span>
+              </div>
+            </td></tr>
+            {g.rows.map(r => {
+              const med = COMPS_MEDIAN.has(r.k) ? median(r.k) : null;
+              return <tr key={r.k} style={{ borderTop: `1px solid ${C.hair2}` }}>
+                <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.ink2 }}>{r.label}</td>
+                {comps.map(c => {
+                  const v = val(c, r.k);
+                  return <td key={c.ticker} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}>
+                    {display(r.k, v) || "—"}
+                  </td>;
+                })}
+                <td style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: med == null ? C.hair : C.teal, whiteSpace: "nowrap", borderLeft: `1px solid ${C.hair2}` }}>
+                  {med == null ? "—" : display(r.k, med)}
+                </td>
+              </tr>;
+            })}
+          </Fragment>)}
+        </tbody>
+      </table>
+    </div>
+
+    <p style={{ fontSize: 10.5, color: C.faint, fontFamily: MONO, marginTop: 12, lineHeight: 1.6 }}>
+      Same engine as the single sheet, so the industry rules carry over: a bank in the set has no
+      EV/EBITDA because a bank is levered on capital ratios, not because the figure is missing. A blank
+      is a blank for the reason the company's own sheet gives — open it with <span style={{ color: C.ink2 }}>?t=TICKER</span>.
+    </p>
+  </div>;
+}
+
 function ValuationCard({ grid, quote, note, S }) {
   const sec = SECTIONS.find(s => s.id === "ev");
   const c = grid.cols[grid.cols.length - 1];

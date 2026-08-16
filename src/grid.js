@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -106,6 +106,16 @@ export function buildGrid(data, quote, limit = 8) {
       // unconditionally erased that verdict: a P&C insurer's EBITDA row said "n/a for a P&C insurer"
       // while the EBITDA growth row directly under it said "not tagged" — pointing the reader at a
       // filing to go hunt for the growth rate of a figure the sheet had just explained does not exist.
+      if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
+      c.meta[k] = { status: "computed" };
+    }
+    // Same cross-column pass, further back. Both ends must be positive: a CAGR through zero or a
+    // sign change is not a growth rate, it is a fraction raised to a third power, and it would print
+    // as a confident percentage. Guarding here rather than trusting revenue to be positive, because
+    // the same map will one day be pointed at a line that is not.
+    for (const [k, [src, n]] of Object.entries(CAGRS)) {
+      const a = c.v[src], b = cols[i - n] && cols[i - n].v[src];
+      c.v[k] = a != null && b != null && a > 0 && b > 0 ? Math.pow(a / b, 1 / n) - 1 : null;
       if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
       c.meta[k] = { status: "computed" };
     }

@@ -698,3 +698,53 @@ export const tally = () => {
   return { bySection: SECTIONS.map(s => [s.title, s.lines.length]), byHow: t,
     total: SECTIONS.reduce((n, s) => n + s.lines.length, 0) };
 };
+
+// ── Comps ────────────────────────────────────────────────────────────────────────────────────────
+// A comps set is a SHORT list. The temptation is to print the whole template with companies as
+// columns, but nobody reads 279 rows across six firms — a comps page is scale, growth, margin,
+// leverage and the multiple, which is what fits on the sheet an analyst actually circulates.
+//
+// Every key here already exists in the sections above and is produced by the same engine, so an
+// industry overlay's blanking applies unchanged: a bank in the set has no EV/EBITDA because
+// NOT_APPLICABLE.bank says so, not because comps has its own opinion.
+export const COMPS_ROWS = [
+  { group: "Scale", rows: [
+    { k: "revenue", label: "Revenue" },
+    { k: "ebitda", label: "EBITDA" },
+    { k: "netIncome", label: "Net income" },
+    { k: "mktCap", label: "Market cap", market: true },
+    { k: "ev", label: "Enterprise value", market: true },
+  ] },
+  { group: "Growth & margin", rows: [
+    { k: "revGrowth", label: "Revenue growth" },
+    { k: "revCagr3", label: "Revenue CAGR, 3yr" },
+    { k: "grossMargin", label: "Gross margin" },
+    { k: "ebitdaMargin", label: "EBITDA margin" },
+    { k: "ebitMargin", label: "EBIT margin" },
+    { k: "netMargin", label: "Net margin" },
+    { k: "fcfMargin", label: "FCF margin" },
+  ] },
+  { group: "Returns & leverage", rows: [
+    { k: "roic", label: "ROIC" },
+    { k: "roe", label: "ROE" },
+    { k: "netDebt", label: "Net debt" },
+    { k: "netLev", label: "Net debt / EBITDA" },
+    { k: "intCover", label: "EBITDA / interest" },
+  ] },
+  { group: "Valuation", market: true, rows: [
+    { k: "evRev", label: "EV / Revenue", market: true },
+    { k: "evEbitda", label: "EV / EBITDA", market: true },
+    { k: "evEbit", label: "EV / EBIT", market: true },
+    { k: "pe", label: "P / E", market: true },
+    { k: "fcfYield", label: "FCF yield", market: true },
+    { k: "divYield", label: "Dividend yield", market: true },
+  ] },
+];
+
+// Rows where a median across the set is meaningful. A median revenue tells you nothing — the set is
+// not a distribution of company sizes, it is the companies you chose — while a median EV/EBITDA is
+// the number the whole exercise exists to produce. Absolute dollar lines are therefore excluded
+// rather than printed and ignored.
+export const COMPS_MEDIAN = new Set(["revGrowth", "revCagr3", "grossMargin", "ebitdaMargin", "ebitMargin",
+  "netMargin", "fcfMargin", "roic", "roe", "netLev", "intCover", "evRev", "evEbitda", "evEbit", "pe",
+  "fcfYield", "divYield"]);

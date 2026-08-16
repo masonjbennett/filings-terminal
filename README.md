@@ -239,6 +239,40 @@ check can fail. Chubb's five EV rows are blank in the exported file and Apple's 
 reads `grid`, so every suppression rule in this file already applies to it, and any rule that does
 not hold in the workbook is a bug in both places at once.
 
+## Comps
+
+`filings.masonjbennett.com/?c=AAPL,MSFT,NVDA` opens a comparable-companies set: companies across,
+metrics down, off the same engine as the single sheet. **+ Compare** on any company starts a set from
+the sheet you are already looking at, and with a set open the search box adds to it rather than
+replacing it.
+
+It is deliberately a **short** list — 23 rows in four blocks (scale, growth and margin, returns and
+leverage, valuation) rather than the whole 279-line template with companies as columns. Nobody reads
+279 rows across six firms; a comps page is the sheet an analyst circulates.
+
+Three things it does not fudge:
+
+- **The fiscal years do not line up, and the page says so.** Apple's 2025 ends in September,
+  Microsoft's 2026 in June, Nvidia's in January. Printing them under one "FY2025" heading is the most
+  common way a comps table misleads, so each column carries its own period end under the ticker.
+  Calendarising properly needs quarterly stitching — that is a feature, not a label, and it is not
+  here yet.
+- **The industry rules carry over untouched**, because the set is built by the same `buildGrid`. A
+  bank in the set has no EV/EBITDA because `NOT_APPLICABLE.bank` says a depository is levered on
+  capital ratios; Chubb has no enterprise value at all, verified with a live price in the set — the
+  same suppression that the $155bn Chubb bug exists to enforce.
+- **The median is taken over the companies that report the figure**, never over the set, so a blank
+  is not silently counted as a zero. Absolute dollar lines have no median at all: a median revenue
+  describes the names you happened to pick, while a median EV/EBITDA is the point of the exercise.
+
+Building it surfaced a bug that had been invisible since the first version: `revCagr3` and `revCagr5`
+were declared in the template **with formulas and never implemented**, because a `DERIVED` function
+only ever sees one column and a three-year rate spans four. They rendered blank on every sheet ever
+served. They are now a cross-column pass in `grid.js` beside the YoY one — and the moment they became
+real, Nvidia's 100% three-year CAGR printed as "1", because a key that never had a value had also
+never been added to the percent-formatting set. A blank cannot be mis-formatted, which is exactly why
+nothing caught it.
+
 ## Industry overlays
 
 Detected from the **SIC code SEC assigns** (`api/facts.js` returns `sicCode`), never inferred from
@@ -458,11 +492,12 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+1. **Comps, second pass.** Shipped and useful; the gaps are calendarisation (LTM stitched from
+   10-Qs, so the columns are the same twelve months), an Excel export of the set, and letting a
+   column open its own sheet.
+2. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
-3. **Multi-company comps** — metric definitions already exist in the template; needs a second
-   fetch path and a column-per-company layout.
 
 ## A note on how this got built
 

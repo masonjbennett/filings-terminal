@@ -401,3 +401,14 @@ export const DERIVED_BY_INDUSTRY = {
 export const YOY = {
   revGrowth: "revenue", ebitdaGrowth: "ebitda", epsGrowth: "epsDil",
 };
+
+// Multi-year CAGRs, as [source key, years back]. Separate from YOY and from DERIVED because a
+// derivation only ever sees ONE column: `v` is a single year, so a rate spanning three of them
+// cannot be expressed there. Both of these have been declared in the template with a formula since
+// the first version and were never implemented, which is worse than absent — the row rendered
+// permanently blank on every sheet, and a blank on a computed line says nothing about why. The
+// comps set is where it finally showed, because a three-year CAGR is a column an analyst expects.
+export const CAGRS = {
+  revCagr3: ["revenue", 3],
+  revCagr5: ["revenue", 5],
+};
