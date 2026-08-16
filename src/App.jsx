@@ -51,6 +51,16 @@ const MULT = new Set(["netLev","grossLev","intCover","fccr","debtEquity","curren
 const DAYS = new Set(["dso","dio","dpo","ccc","daysClaimsPayable"]);
 const display = (k, v, unit) => v == null ? null : PCT.has(k) ? fmtPct(v) : MULT.has(k) ? fmtX(v) : DAYS.has(k) ? Math.round(v) + "d" : fmtNum(v, unit);
 
+// Which Excel number format a value gets, shared by the single sheet's workbook and the comps set's.
+// #,##0 would render an EPS of 7.32 as "7", so anything under a thousand — a per-share figure, a
+// ratio, a count — takes decimals, the same rule fmtNum uses on screen. Except an exact zero, which
+// is overwhelmingly a dollar line the filer reported as nil: "Preferred dividends 0.00" on a sheet
+// denominated in billions reads as a broken export. `XF` is passed in rather than imported because
+// xlsx.js is lazy-loaded, and it is named XF rather than S because the component already has an `S`
+// holding the page's inline styles.
+const styleFor = (XF, k, v) => PCT.has(k) ? XF.PCT : MULT.has(k) ? XF.MULT : DAYS.has(k) ? XF.DEC
+  : (v != null && v !== 0 && Math.abs(v) < 1000 ? XF.DEC : XF.MONEY);
+
 // Every FETCHED figure knows the accession number it came from, so every fetched figure can open
 // it. The page claims in its header that each number is traceable to a filing; until now that was
 // true but only provable through a hover tooltip, which is invisible on a phone, in a screenshot,
@@ -100,6 +110,10 @@ export default function App() {
   const [quote, setQuote] = useState(null);
   const [quoteNote, setQuoteNote] = useState("");
   const [comps, setComps] = useState([]);      // [{ ticker, title, grid, quote, loading, err }]
+  // One member of the set, opened on its own. The set stays in state rather than being torn down,
+  // because "open this column's sheet" and "throw away the six companies I just assembled" are not
+  // the same instruction — the way back is a button, not a re-typed list.
+  const [solo, setSolo] = useState(null);
   const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(rows => setTickers(applyTickerFixes(rows))).catch(() => setErr("couldn't load the company list")); }, []);
@@ -206,10 +220,19 @@ export default function App() {
   // The set is a URL, exactly as a single sheet is: /?c=AAPL,MSFT,NVDA opens it for whoever you send
   // it to. replaceState for the same reason as ?t= — the back button should leave the terminal
   // rather than walk back through every ticker that was added.
-  useEffect(() => {
-    if (!comps.length) return;
-    try { history.replaceState(null, "", `?c=${comps.map(c => c.ticker).join(",")}`); } catch {}
-  }, [comps]);
+  // Skipped while a member is open on its own, or the address bar would advertise the set while the
+  // page shows one company — and that is the URL someone copies.
+  const setUrl = () => { try { history.replaceState(null, "", `?c=${comps.map(c => c.ticker).join(",")}`); } catch {} };
+  useEffect(() => { if (comps.length && !solo) setUrl(); }, [comps, solo]);
+
+  // Open one company from the set as a full sheet. `load` writes ?t= and fetches; `solo` is what
+  // makes the sheet render in front of a set that is still there.
+  const openSolo = ticker => {
+    const row = (tickers || []).find(([, t]) => t === ticker);
+    if (!row) return;
+    setSolo(ticker);
+    load(row[0], row[1], row[2]);
+  };
 
   // Opening ?t=CB loads Chubb before anyone types. Runs once, and only once the company list has
   // arrived — the ticker has to be resolved to a CIK locally, which is the same lookup the search
@@ -282,12 +305,6 @@ export default function App() {
       // `XF` rather than `S`: the component already has an `S` holding the page's inline styles, and
       // a second one meaning "cell format" inside this function is how the wrong one gets used.
       const { downloadXlsx, S: XF } = await import("./xlsx.js");
-      // #,##0 would render an EPS of 7.32 as "7". Anything under a thousand is a per-share figure,
-      // a ratio or a count, and wants decimals — the same rule fmtNum uses on screen. Except an exact
-      // zero, which is overwhelmingly a dollar line the filer reported as nil ("Debt issued 0.00",
-      // "Preferred dividends 0.00" — two decimals on a figure in billions reads as a broken export).
-      const styleFor = (k, v) => PCT.has(k) ? XF.PCT : MULT.has(k) ? XF.MULT : DAYS.has(k) ? XF.DEC
-        : (v != null && v !== 0 && Math.abs(v) < 1000 ? XF.DEC : XF.MONEY);
       const tic = (data.tickers || [])[0] || (co && co.ticker) || "";
       const newest = grid.cols[grid.cols.length - 1];
       const sheetFor = tabId => {
@@ -324,7 +341,7 @@ export default function App() {
             // Judgement lines are blank by design and say so on the page; a blank row in a
             // spreadsheet just looks like the export failed.
             if (line.how === "manual") continue;
-            rows.push([{ v: line.label }, ...grid.cols.map(c => ({ v: c.v[line.k], s: styleFor(line.k, c.v[line.k]) }))]);
+            rows.push([{ v: line.label }, ...grid.cols.map(c => ({ v: c.v[line.k], s: styleFor(XF, line.k, c.v[line.k]) }))]);
           }
         }
         return { name: TABS.find(t => t.id === tabId).label, rows,
@@ -386,7 +403,7 @@ export default function App() {
           {/* With a comps set open the search box ADDS rather than replaces: having built a set, the
               next thing anyone types is another name for it, and swapping the whole page out for a
               single sheet would throw the set away without asking. */}
-          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => (comps.length ? addComp(tic) : load(cik, tic, title))}
+          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => (solo ? openSolo(tic) : comps.length ? addComp(tic) : load(cik, tic, title))}
             style={{ display: "flex", gap: 12, alignItems: "baseline", width: "100%", padding: "10px 15px", background: "none", border: "none", borderBottom: `1px solid ${C.hair2}`, cursor: "pointer", textAlign: "left", fontFamily: SANS }}
             onMouseEnter={e => e.currentTarget.style.background = "#0d6d5608"} onMouseLeave={e => e.currentTarget.style.background = "none"}>
             <span style={{ font: `600 12px ${MONO}`, color: C.teal, minWidth: 62 }}>{tic}</span>
@@ -398,11 +415,17 @@ export default function App() {
       {err && <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12 }}>{err}</p>}
       {busy && <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12 }}>Reading EDGAR…</p>}
 
-      {comps.length > 0 && <CompsTable comps={comps} S={S}
+      {comps.length > 0 && !solo && <CompsTable comps={comps} S={S} onOpen={openSolo}
         onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
         onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />}
 
-      {comps.length === 0 && data && grid && <>
+      {/* The way back out of a sheet opened from a set. Above the company name rather than beside it,
+          because it is a change of view and not another action on this company. */}
+      {solo && comps.length > 0 && <button onClick={() => { setSolo(null); setUrl(); }}
+        style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", marginBottom: 12, color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>
+        ← Back to the set of {comps.length}</button>}
+
+      {(!comps.length || solo) && data && grid && <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
           <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>{data.name}</h2>
           <span style={{ font: `600 12px ${MONO}`, color: C.teal }}>{(data.tickers || []).join(" · ")}</span>
@@ -518,13 +541,44 @@ export default function App() {
 //
 // The honesty problem specific to comps is the FISCAL YEAR. Apple's 2025 ends in September and
 // Microsoft's in June, and a table that lines them up under one "FY2025" heading is quietly
-// comparing different twelve-month windows — the most common way a comps page misleads. Each column
-// therefore carries its own period end under the ticker, and the header says so once in words.
-// Calendarising properly needs quarterly stitching, which is a real feature and not a label.
-function CompsTable({ comps, S, onRemove, onClear }) {
-  const ready = comps.filter(c => c.grid && c.grid.cols && c.grid.cols.length);
-  const newest = c => c.grid.cols[c.grid.cols.length - 1];
-  const val = (c, k) => (c.grid && c.grid.cols && c.grid.cols.length ? newest(c).v[k] : null);
+// comparing different twelve-month windows — the most common way a comps page misleads. Across the
+// 97-filer corporate sample those year ends spread over ELEVEN months.
+//
+// So the default basis is the TRAILING TWELVE MONTHS, stitched from each company's most recent 10-Q,
+// which closes that spread to three months. It does not close it to zero and the page never claims
+// it does: the through-date sits under every ticker and the actual spread across the set is printed
+// in words above the table. Street practice is exactly this — LTM comps with the through-date
+// disclosed — and the filed fiscal year stays one click away, because the reported year is what a
+// reader will want when they go to check a figure against the 10-K itself.
+function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
+  const [basis, setBasis] = useState("ltm");
+  const [saved, setSaved] = useState("");
+  // The LTM column is built by the same buildGrid as the year columns, so switching basis picks a
+  // different column out of the same grid rather than refetching anything.
+  const colOf = c => !c.grid ? null
+    : basis === "ltm" ? c.grid.ltm
+    : (c.grid.cols && c.grid.cols.length ? c.grid.cols[c.grid.cols.length - 1] : null);
+  const ready = comps.filter(c => colOf(c));
+  const val = (c, k) => { const col = colOf(c); return col ? col.v[k] : null; };
+  const why = (c, k) => { const col = colOf(c); return col && col.meta[k] ? col.meta[k].status : null; };
+
+  // Rule 5 on the single sheet — a blank is not one thing — applied to a table that has nowhere to
+  // put a status chip. Stitching introduces a blank the fiscal-year basis never had: the filer
+  // reports the concept annually but not in its 10-Qs, so there is no comparable twelve months.
+  // Costco's revenue is the case, and unmarked it reads as the tool breaking on Costco while $91bn
+  // and $199bn sit in the columns beside it. The cell turns bronze — the sheet's colour for "there
+  // is something to go and look at" — and the companies and lines are named underneath, because a
+  // colour alone does not say why and there are rarely more than two of them in a set.
+  const GAP = {
+    "no-interim": (tic, lines) => `${tic} reports ${lines} only in its annual filing, so there is no comparable twelve months`,
+    "restated-basis": (tic, lines) => `${tic} has re-presented its prior year without the annual figure catching up, so stitching ${lines} would mix two bases`,
+  };
+  const gaps = {};
+  for (const c of ready) for (const g of COMPS_ROWS) for (const r of g.rows) {
+    const st = why(c, r.k);
+    if (val(c, r.k) != null || !GAP[st]) continue;
+    (gaps[st] = gaps[st] || {})[c.ticker] = [...(gaps[st][c.ticker] || []), r.label];
+  }
 
   // Median over the companies that HAVE the figure, never over the set. A bank contributes no
   // EV/EBITDA and a filer with no operating income contributes no margin; counting those as zero, or
@@ -537,31 +591,106 @@ function CompsTable({ comps, S, onRemove, onClear }) {
   };
 
   const anyPriced = ready.some(c => c.quote && c.quote.price);
+  // Measured from the set on screen rather than asserted, because the whole argument for LTM is that
+  // it narrows the spread and the reader is entitled to see by how much for THESE names. A set of
+  // three December filers lines up exactly and should say so; a set spanning January and June ends
+  // should not be flattered by a generic sentence about calendarisation.
+  const ends = ready.map(c => colOf(c).period.end).sort();
+  const spreadDays = ends.length > 1 ? Math.round((new Date(ends[ends.length - 1]) - new Date(ends[0])) / 864e5) : 0;
+  const carried = ready.filter(c => basis === "ltm" && !c.grid.ltmStitched);
+
+  const exportSet = async () => {
+    setSaved("Building workbook…");
+    try {
+      const { downloadXlsx, S: XF } = await import("./xlsx.js");
+      const cols = ready;
+      const groups = COMPS_ROWS.filter(g => anyPriced || !g.market);
+      const rows = [
+        [{ v: "Comparable companies", s: XF.TITLE }],
+        // Names here rather than in a row of their own beneath the header. Six header rows is the
+        // single sheet's shape and the data has to start at row 7 in both: a seventh header row put
+        // company names INSIDE the frozen data area, where every cell below is a number, and the
+        // Excel check that opens these files flagged it as text in a numeric column — which is the
+        // same complaint it would make about a real defect.
+        [{ v: cols.map(c => c.title || c.ticker).join(" · "), s: XF.MUTED }],
+        [{ v: `${basis === "ltm" ? "Trailing twelve months, stitched from each company's most recent 10-Q" : "Each company's most recent reported fiscal year"} · generated ${new Date().toISOString().slice(0, 10)} · filings.masonjbennett.com/?c=${cols.map(c => c.ticker).join(",")}`, s: XF.MUTED }],
+        [],
+        [{ v: "Metric", s: XF.BOLD }, ...cols.map(c => ({ v: c.ticker, s: XF.BOLD })), { v: "Median", s: XF.BOLD }],
+        // The period end goes in a row of its own and not into the ticker header, because the columns
+        // do not share a window and a workbook has no subtitle to say so. A reader who sorts or
+        // filters this file must still be able to see which twelve months each column covers.
+        [{ v: basis === "ltm" ? "Twelve months ended" : "Fiscal year ended", s: XF.MUTED },
+          ...cols.map(c => ({ v: colOf(c).period.end, s: XF.MUTED }))],
+      ];
+      for (const g of groups) {
+        rows.push([]);
+        rows.push([{ v: g.group, s: XF.BOLD }]);
+        for (const r of g.rows) {
+          if (r.market && !anyPriced) continue;
+          const med = COMPS_MEDIAN.has(r.k) ? median(r.k) : null;
+          rows.push([{ v: r.label },
+            ...cols.map(c => ({ v: val(c, r.k), s: styleFor(XF, r.k, val(c, r.k)) })),
+            { v: med, s: styleFor(XF, r.k, med) }]);
+        }
+      }
+      downloadXlsx([{ name: "Comps", rows, widths: [30, ...cols.map(() => 16), 16], freeze: { x: 1, y: 6 } }],
+        `comps-${cols.map(c => c.ticker).join("-").slice(0, 60) || "set"}.xlsx`);
+      setSaved("Workbook downloaded");
+    } catch (e) { setSaved("Export failed — " + String((e && e.message) || e).slice(0, 60)); }
+    setTimeout(() => setSaved(""), 4000);
+  };
+
+  const pill = (id, label) => <button key={id} onClick={() => setBasis(id)}
+    style={{ padding: "6px 13px", borderRadius: 8, cursor: "pointer", border: "1px solid",
+      font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase",
+      background: basis === id ? "#0d6d5610" : "transparent",
+      borderColor: basis === id ? `${C.teal}45` : C.hair, color: basis === id ? C.teal : C.faint }}>{label}</button>;
+
   return <div style={{ marginBottom: 24 }}>
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
       <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>Comparable companies</h2>
-      <span style={{ fontSize: 11, color: C.faint, fontFamily: MONO }}>
-        each company's own most recent fiscal year — the period end is under the ticker, because they do not line up
-      </span>
-      <button onClick={onClear} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Clear set</button>
+      <div style={{ display: "flex", gap: 6 }}>{pill("ltm", "LTM")}{pill("fy", "Reported FY")}</div>
+      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <button onClick={exportSet} style={{ background: `${C.teal}0e`, border: `1px solid ${C.teal}55`, borderRadius: 8, padding: "6px 12px", color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>↓ Download Excel</button>
+        <button onClick={onClear} style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", color: C.mute, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>Clear set</button>
+      </div>
     </div>
-    <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 14 }}>
-      {ready.length} of {comps.length} loaded · search above to add another
+    {/* The claim and its measurement in one line. "Calendarised" is the word that would be a lie
+        here — LTM narrows the windows, it does not align them, and the number saying by how much is
+        cheap to compute and impossible to argue with. */}
+    <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 14, lineHeight: 1.7 }}>
+      {basis === "ltm"
+        ? <>trailing twelve months to each company's latest quarter{spreadDays > 0 && <> — the windows still differ, by <span style={{ color: C.ink2 }}>{spreadDays} days</span> across this set</>}{spreadDays === 0 && ends.length > 1 && <> — every company in this set ends on the same date</>}</>
+        : <>each company's own most recent fiscal year — the ends spread <span style={{ color: C.ink2 }}>{spreadDays} days</span>, which is what LTM exists to narrow</>}
+      <br />{ready.length} of {comps.length} loaded · search above to add another · click a ticker to open its sheet
       {!anyPriced && <span style={{ color: C.bronze, marginLeft: 12 }}>· multiples need FINNHUB_KEY on this deployment</span>}
+      {saved && <span style={{ color: C.teal, marginLeft: 12 }}>{saved}</span>}
     </p>
 
     <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
         <thead><tr style={{ background: "#f6eee1" }}>
           <th style={{ textAlign: "left", padding: "11px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 210, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.mute, borderBottom: `1px solid ${C.hair}` }}>Metric</th>
-          {comps.map(c => <th key={c.ticker} style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>
-            {c.ticker}
+          {comps.map(c => { const col = colOf(c); return <th key={c.ticker} style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>
+            {/* A column is a company, and the obvious next question about any column is "what does its
+                own sheet say" — which is where every blank in it gets explained. A real anchor, so
+                ctrl-click opens a second tab and the address is copyable, with the in-page load
+                intercepted so the set survives behind a back button. */}
+            <a href={`?t=${encodeURIComponent(c.ticker)}`} onClick={e => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); onOpen(c.ticker); }}
+              className="srcnum" style={{ color: C.ink }}>{c.ticker}</a>
             <button onClick={() => onRemove(c.ticker)} title={`remove ${c.ticker}`}
               style={{ marginLeft: 6, background: "none", border: "none", color: C.faint, cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
             <div style={{ fontSize: 9, fontWeight: 400, color: C.faint, marginTop: 3, maxWidth: 150, whiteSpace: "normal", lineHeight: 1.3 }}>
-              {c.loading ? "loading…" : c.err ? c.err : c.grid && c.grid.cols && c.grid.cols.length ? `FY${newest(c).period.fy} · ${newest(c).period.end}` : "no annual periods"}
+              {c.loading ? "loading…" : c.err ? c.err : !col ? "no annual periods"
+                : basis === "fy" ? `FY${col.period.fy} · ${col.period.end}`
+                : `12m to ${col.period.end}`}
+              {/* Said on the column it applies to, not in a footnote. A company whose year has just
+                  closed has nothing to stitch, so its LTM IS that fiscal year — true, and a different
+                  statement from the eight companies beside it. */}
+              {col && basis === "ltm" && !c.grid.ltmStitched &&
+                <div style={{ color: C.bronze }}>= FY{col.period.fy}, nothing filed since</div>}
             </div>
-          </th>)}
+          </th>; })}
           <th style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", color: C.teal, borderBottom: `1px solid ${C.hair}`, borderLeft: `1px solid ${C.hair}` }}>
             Median
             <div style={{ fontSize: 9, fontWeight: 400, color: C.faint, marginTop: 3 }}>of those reporting</div>
@@ -579,8 +708,9 @@ function CompsTable({ comps, S, onRemove, onClear }) {
               return <tr key={r.k} style={{ borderTop: `1px solid ${C.hair2}` }}>
                 <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.ink2 }}>{r.label}</td>
                 {comps.map(c => {
-                  const v = val(c, r.k);
-                  return <td key={c.ticker} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}>
+                  const v = val(c, r.k), gap = v == null && GAP[why(c, r.k)];
+                  return <td key={c.ticker} title={gap ? gap(c.ticker, r.label.toLowerCase()) : ""}
+                    style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? (gap ? C.bronze : C.hair) : C.ink2, whiteSpace: "nowrap" }}>
                     {display(r.k, v) || "—"}
                   </td>;
                 })}
@@ -597,7 +727,13 @@ function CompsTable({ comps, S, onRemove, onClear }) {
     <p style={{ fontSize: 10.5, color: C.faint, fontFamily: MONO, marginTop: 12, lineHeight: 1.6 }}>
       Same engine as the single sheet, so the industry rules carry over: a bank in the set has no
       EV/EBITDA because a bank is levered on capital ratios, not because the figure is missing. A blank
-      is a blank for the reason the company's own sheet gives — open it with <span style={{ color: C.ink2 }}>?t=TICKER</span>.
+      is a blank for the reason the company's own sheet gives — click the ticker to open it.
+      {basis === "ltm" && <><br />An LTM line is the last full year plus this year to date less last year to the same date,
+      all three from the same tag the annual column used, with the balance sheet read at the quarter end rather than summed.
+      {carried.length > 0 && ` ${carried.map(c => c.ticker).join(", ")} ${carried.length > 1 ? "have" : "has"} nothing filed since the year end, so the fiscal year is the trailing twelve months.`}
+      {Object.entries(gaps).map(([st, byTicker]) => <span key={st} style={{ color: C.bronze }}>
+        {" "}{Object.entries(byTicker).map(([tic, labels]) => GAP[st](tic, labels.join(" and ").toLowerCase())).join("; ")} — open the sheet for the reported year.
+      </span>)}</>}
     </p>
   </div>;
 }

@@ -159,6 +159,35 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     current-portion tag on top therefore moved twelve filers by billions with no way to tell which
     had just been double counted, so it was backed out. Fixing it needs a per-filer test, not a tag.
 
+12. **A figure stitched across periods must have all its legs on ONE basis, and rule 2 is usually
+    what guarantees that — until it isn't.** A trailing twelve months is the last full year plus
+    this year to date less last year to the same date. Take the newest filed version of each leg and
+    a divestiture is handled for free: it re-presents the prior periods, and the newest version of
+    every leg picks the re-presentation up at once. Honeywell's first half of 2025 was filed at
+    **$20.17bn and re-filed at $18.25bn** after the Solstice spin; Occidental's at **$13.22bn and
+    $10.96bn** after OxyChem. Both stitch correctly, because both annual figures had already moved —
+    Occidental's 10-K restated its own 2024 comparative from $26.7bn to $22.0bn.
+
+    That is a fact about those two filers, not a rule. The interim legs pick up a re-presentation at
+    the next **10-Q** and the annual leg only at the next **10-K**, so a divestiture completed
+    mid-year leaves two or three quarters where the annual leg is the old basis and the interim legs
+    are the new one. FY *including* a sold business plus a delta *excluding* it is neither, and it is
+    wrong by that business's half-year — right units, right magnitude, a different company inside it.
+
+    It is detectable, because a re-presentation always sweeps the comparatives with it: **if the
+    prior leg has moved since it was first filed, the annual leg shares its basis only if that
+    filing also restated the year before it** — checked against that accession, not against "was it
+    ever restated". No evidence either way fails closed. This fires for **2 of 89** filers swept, so
+    the blank is rare enough to be worth its certainty, and the case has to be built by hand to see
+    it fire at all: `t-ltm.mjs` strips the restated comparative out of Honeywell's 10-K and asserts
+    the line goes blank. A guard that has never been seen to fire is not a guard.
+
+    The same stitch has a second rule, which is rule 9 wearing different clothes: **all three legs
+    come from the tag the ANNUAL column chose, and only that tag.** A filer tagging `Revenues` in its
+    10-K and only the ASC 606 slice in its 10-Qs would otherwise have a total stitched onto the
+    change in a component of itself. Costco is exactly that and its LTM revenue is **blank**, which
+    is the honest answer and is marked as one on the page.
+
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
 adjacent columns both rendered "FY2019". Columns run **oldest → newest**, the way a model does, and
@@ -252,11 +281,6 @@ leverage, valuation) rather than the whole 279-line template with companies as c
 
 Three things it does not fudge:
 
-- **The fiscal years do not line up, and the page says so.** Apple's 2025 ends in September,
-  Microsoft's 2026 in June, Nvidia's in January. Printing them under one "FY2025" heading is the most
-  common way a comps table misleads, so each column carries its own period end under the ticker.
-  Calendarising properly needs quarterly stitching — that is a feature, not a label, and it is not
-  here yet.
 - **The industry rules carry over untouched**, because the set is built by the same `buildGrid`. A
   bank in the set has no EV/EBITDA because `NOT_APPLICABLE.bank` says a depository is levered on
   capital ratios; Chubb has no enterprise value at all, verified with a live price in the set — the
@@ -264,6 +288,9 @@ Three things it does not fudge:
 - **The median is taken over the companies that report the figure**, never over the set, so a blank
   is not silently counted as a zero. Absolute dollar lines have no median at all: a median revenue
   describes the names you happened to pick, while a median EV/EBITDA is the point of the exercise.
+- **A blank says which kind of blank it is.** Rule 5 in a table with nowhere to put a status chip:
+  a line the filer reports annually but not quarterly turns the cell bronze and names itself
+  underneath, because unmarked it reads as the tool breaking on that one company.
 
 Building it surfaced a bug that had been invisible since the first version: `revCagr3` and `revCagr5`
 were declared in the template **with formulas and never implemented**, because a `DERIVED` function
@@ -272,6 +299,80 @@ served. They are now a cross-column pass in `grid.js` beside the YoY one — and
 real, Nvidia's 100% three-year CAGR printed as "1", because a key that never had a value had also
 never been added to the percent-formatting set. A blank cannot be mis-formatted, which is exactly why
 nothing caught it.
+
+### The columns are trailing twelve months, and the page prints the spread
+
+The fiscal years do not line up, and the second pass stopped saying so and did something about it.
+Across the 97-filer corporate sample the fiscal-year ends spread **eleven months** — Intuit's year to
+31 Jul 2025 in the same table as Microsoft's to 30 Jun 2026. Stitching each company forward to its
+most recent quarter closes that to **three months**. So LTM is the default basis and **Reported FY**
+is the toggle beside it, because the filed year is what a reader wants the moment they go to check a
+figure against the 10-K itself.
+
+It narrows the windows, it does not align them, and the page never says "calendarised". The
+through-date sits under every ticker and **the actual spread across the set on screen is measured and
+printed in words** — 65 days for AAPL/MSFT/NVDA/JPM against 276 on the reported year. Measured rather
+than asserted, because a set of three December filers lines up exactly and should say so, and one
+spanning January and June should not be flattered by a generic sentence about calendarisation.
+
+- **Balance-sheet lines are read at the quarter end, not stitched.** A balance is a fact at a date and
+  adding three of them together means nothing. That also makes net debt — and therefore enterprise
+  value — as of the latest quarter rather than as of a year-end that may be eleven months behind the
+  price being divided into it.
+- **It is a ladder, not a pair of lookups.** Window *k*'s prior leg is window *k+1*'s current leg, the
+  same period seen from either side, so a series of LTM columns costs one extra rung each. That is
+  what lets the LTM column carry a growth rate and a three-year CAGR through the same cross-column
+  pass the fiscal-year columns use, rather than borrowing those rows from a window it is not on. Four
+  deep, which is what a three-year CAGR spans; `revCagr5` would need six and stays blank on this basis.
+- **`buildGrid` builds it for every sheet** — `grid.ltm` and `grid.ltmCols` beside `grid.cols` — and
+  only comps renders it. That costs the single sheet about 18ms on a payload it just fetched over the
+  network, which is cheaper than a second code path the sheet would never exercise and the harness
+  would therefore never test. Putting the LTM column into the single sheet's year grid is a real and
+  available next step; it would touch the grid, the Excel export and the copy path.
+- **Where there is nothing to stitch, the fiscal year IS the trailing twelve months, and the column
+  says so.** Six of the 97 have filed nothing since their year closed — Microsoft's year to 30 Jun
+  2026 is the twelve months to 30 Jun 2026. Gated on whether an interim period exists at all rather
+  than on the stitch having failed, because those look identical from an empty result and are not the
+  same claim: relabelling a nine-month-old fiscal year "LTM" is the misdating the rest of the engine
+  exists to prevent.
+- **The old sketch was wrong twice, and never ran.** `latestYtd`/`ltm` sat in `extract.js` unused
+  since the first version. It took the first tag with any 10-Q match and stopped — rule 6's failure in
+  the interim data, resolving a Microsoft period ending **2010-12-31**. And it took whichever span
+  turned up first at that period end, where a 10-Q files **both** the discrete quarter and the
+  year-to-date span under one tag with one end date: FY + Q3 − prior Q3 keeps three quarters of the
+  old year and drops three of the new one.
+
+Checked by `t-ltm.mjs`: 3,413 assertions over the 97 filers, of which the load-bearing one is an
+**independent reconstruction from discrete quarters** — the last four quarters ending at *T*, with the
+un-filed fourth quarter of the old year recovered as FY less its own nine-month year-to-date. That
+path shares exactly one fact with the stitch and reaches the answer through periods the ladder never
+touches, so agreement is evidence about **period selection** rather than about arithmetic. 87 filers
+reconstruct, the worst to 0.39% and every other to under 0.01%. Only two assertions fail and both are
+the Altria and Instacart findings already open below — the LTM column inherits the sheet's known
+limits and adds none of its own.
+
+**Coverage costs almost nothing**, which is the other reason it can be the default: revenue resolves
+for 95 of 97 against 97 on the reported year, net income 96, EBITDA 77 either way. The five lines lost
+are all the same-tag rule refusing to cross concepts — Costco's revenue, AT&T's operating cash flow
+after it moved to the continuing-operations tag in 2026.
+
+### Getting the set out, and getting out of the set
+
+**Download Excel** writes the set as one `Comps` sheet, companies across and metrics down, with the
+median column and the same number formats as the single sheet's workbook — `styleFor` is shared
+rather than copied. The twelve months each column covers goes in **a row of its own** rather than into
+the ticker header, because the columns do not share a window and a workbook has no subtitle to say so.
+Six header rows, matching the single sheet: a seventh put company names *inside* the frozen data area
+and the Excel check flagged them as text in a numeric column, which is the same complaint it would
+make about a real defect. Verified the same way as the single sheet — captured from the shipping click
+path and opened in real Excel with `CorruptLoad = xlNormalLoad`, three sets including a carrier set and
+a reported-FY set, with the two deliberately broken negative controls still rejected.
+
+**A column opens its own sheet.** Clicking a ticker loads that company and leaves a *← Back to the set*
+button above it; the set stays in state rather than being torn down, because "show me this column's
+sheet" and "throw away the six companies I just assembled" are not the same instruction. It is a real
+anchor to `?t=TICKER`, so ctrl-click opens a second tab and the address is copyable, with the in-page
+load intercepted otherwise. That is where every blank in the set gets explained.
 
 ## Industry overlays
 
@@ -451,10 +552,12 @@ wanted explicitly. As a global rule it is not. It would also have reached only 1
 Phillips 66, Nike, GE and Newmont tag no interest expense or no pre-tax income and stay blank either
 way. `t-ebit.mjs` in the session scratchpad reruns the whole calibration.
 
-Three findings left open, all single filers: Williams tags `Revenues` $11.95bn against a 606 tag of
+Four findings left open, all single filers: Williams tags `Revenues` $11.95bn against a 606 tag of
 $14.90bn (needs the filing to adjudicate); Altria's income statement does not foot on the page because
 excise tax sits inside its cost of sales but outside `CostOfGoodsAndServicesSold`, understating the
-COGS row while gross profit and margin stay right; and Instacart's balance sheet is $0.2bn out.
+COGS row while gross profit and margin stay right; Instacart's balance sheet is $0.2bn out; and
+Colgate's ROE reads 3948% on near-zero equity. The last two reappear in the LTM column, which is the
+right behaviour — a column that inherits the sheet's engine inherits its open questions too.
 
 ## Deploying
 
@@ -492,12 +595,16 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Comps, second pass.** Shipped and useful; the gaps are calendarisation (LTM stitched from
-   10-Qs, so the columns are the same twelve months), an Excel export of the set, and letting a
-   column open its own sheet.
-2. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
+2. **A small/mid-cap sweep.** The 97 were nearly all mega-caps — the best-tagged filers in the
+   market — and they still yielded six real bugs. The ~10,000 tickers riding the corporate template
+   mostly are not. Reuses `t-corp.mjs` with a new sample; the LTM ladder is the newest thing it would
+   test, and thin interim tagging is exactly where it should be pointed.
+3. **The four open single-filer findings** listed above, none of them fixed.
+4. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
+   than another tag.
 
 ## A note on how this got built
 
@@ -521,3 +628,14 @@ The Excel session added the cheapest example of the lot. The download button shi
 primary button on the sheet read **"I DOWNLOAD EXCEL WORKBOOK"**. The build passed, 109 regression
 assertions passed, five workbooks opened in Excel with every value matching the page. It took a 4×
 crop of a screenshot to see it.
+
+The LTM session's was subtler, and it is the one worth generalising. 3,413 assertions passed and the
+comps table still had **Costco's revenue as a bare em-dash between $91bn and $199bn** — correct, and
+correct for a reason the page gave nowhere. The engine had a status for it and the table threw the
+status away, because a comps grid has no room for the label column the single sheet uses. Every
+correctness check can pass on a number that communicates the wrong thing; the sheet's own rule 5 —
+*a blank is not one thing* — is a claim about the reader, and only a reader can check it. The
+same session's second one came from an existing tool rather than a new eye: adding a seventh header
+row to the comps workbook put company names inside the frozen data area, and the Excel check written
+for a different export refused it as text in a numeric column. Checks outlive the thing they were
+written for, which is an argument for making them structural rather than specific.

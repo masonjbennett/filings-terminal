@@ -144,37 +144,154 @@ export function latestFact(facts, tags) {
               : { value: null, status: "never-tagged" };
 }
 
-// Latest year-to-date period in a 10-Q, used to roll an LTM figure forward from the last 10-K.
-export function latestYtd(facts, tags) {
+// ── Trailing twelve months ─────────────────────────────────────────────────────────────────────
+// A comps set built on each company's OWN fiscal year is comparing different twelve-month windows.
+// Across the 97-filer corporate sample the fiscal-year ends spread over ELEVEN months — Intuit's
+// year to 31 Jul 2025 sitting in the same table as Microsoft's to 30 Jun 2026 — and printing those
+// side by side under one heading is the most common way a comps page misleads. Stitching each
+// company forward to its most recent quarter closes that spread to three months.
+//
+// LTM = last full year + this year's year-to-date − last year's same year-to-date. The differencing
+// is not optional: income and cash-flow figures in a 10-Q are CUMULATIVE from the fiscal year start,
+// so adding a Q3 figure to a full year would double-count nine months of it.
+//
+// A sketch of this lived here unused since the first version, and both of its rules were wrong in
+// ways that would have printed a confident number:
+//
+//   It took the FIRST tag with any 10-Q match and stopped — the Lincoln National / Equinix failure
+//   of rule 6, in the interim data. Microsoft stopped tagging `Revenues` years ago, so it resolved a
+//   year-to-date period ending 2010-12-31 and would have stitched a 2026 sheet onto a 2010 quarter.
+//
+//   It took whichever span turned up first at that period end. A 10-Q files BOTH the discrete
+//   quarter and the year-to-date span under the same tag with the same end date, and the discrete
+//   quarter is not a valid leg: FY + Q3 − prior Q3 keeps three quarters of the OLD year and drops
+//   three of the new one. Same units, plausible magnitude, wrong twelve months.
+const shift = (d, n) => new Date(new Date(d).getTime() + n * 86400000).toISOString().slice(0, 10);
+const YTD_MIN = 60, YTD_MAX = 320;     // one quarter to three, allowing for 52/53-week drift
+
+// One rung of the ladder: the year-to-date span inside the fiscal year that FOLLOWS `fy`, ending as
+// close to `wantEnd` as the filer's own quarter dates allow. `span` pins the shape — it is null for
+// the newest rung, which is what DEFINES the shape for every rung behind it.
+// Longest-at-that-end is what separates the year-to-date span from the discrete quarter filed beside
+// it; matching the START to the fiscal year is what proves it is a year-to-date span at all.
+function ytdRung(facts, tags, fy, { wantEnd = null, span = null, interimOnly = false } = {}) {
+  const yStart = shift(fy.end, 1);
   let best = null;
   for (const tag of tags) {
-    const all = factsFor(facts, tag);
-    if (!all) continue;
-    for (const f of all) {
-      if (!isDuration(f) || f.form !== "10-Q") continue;
+    for (const f of factsFor(facts, tag) || []) {
+      if (!isDuration(f)) continue;
+      if (interimOnly && f.form !== "10-Q") continue;
+      if (f.end <= fy.end) continue;                                  // must be past the year end
+      if (Math.abs(days(yStart, f.start)) > 10) continue;             // must start at the fiscal year
       const d = days(f.start, f.end);
-      if (d < 80 || d > 300) continue;
-      if (!best || f.end > best.end) best = { end: f.end, start: f.start, days: d, val: f.val, accn: f.accn };
+      if (d < YTD_MIN || d > YTD_MAX) continue;
+      if (span != null && Math.abs(d - span) > 8) continue;           // same shape as the newest rung
+      const off = wantEnd ? Math.abs(days(f.end, wantEnd)) : 0;
+      if (wantEnd && off > 35) continue;
+      const cand = { end: f.end, start: f.start, days: d, off };
+      if (!best) { best = cand; continue; }
+      // Newest rung: the latest quarter, and the LONGEST span at it. Earlier rungs: the one whose
+      // end lands closest to a whole year back, since that is what keeps the windows twelve months
+      // apart rather than merely adjacent.
+      if (wantEnd ? cand.off < best.off : cand.end > best.end || (cand.end === best.end && cand.days > best.days)) best = cand;
     }
-    if (best) break;
   }
   return best;
 }
 
-// LTM = full year + this year's YTD − last year's same YTD. The differencing is not optional:
-// cash-flow figures in a 10-Q are CUMULATIVE from the fiscal year start, so adding a Q3 number to a
-// full year would double-count nine months of it.
-export function ltm(facts, tags) {
-  const ytd = latestYtd(facts, tags);
-  if (!ytd) return null;
-  const all = factsFor(facts, tags.find(t => facts[t])) || [];
-  const priorYtd = all.find(f => isDuration(f) && Math.abs(days(f.start, f.end) - ytd.days) <= 6 &&
-    Math.abs(days(f.end, ytd.end) - 365) <= 20);
-  const periods = annualPeriods(facts, tags, 1);
-  if (!periods.length || !priorYtd) return null;
-  const fy = pickFact(facts, tags, periods[0]);
-  if (fy.value == null) return null;
-  return { value: fy.value + ytd.val - priorYtd.val, through: ytd.end, basis: `FY${periods[0].fy} + YTD to ${ytd.end} − prior-year YTD` };
+// The ladder of year-to-date periods, newest first, one per fiscal year going back.
+//
+// It is a ladder rather than a pair of lookups because window k's PRIOR leg is window k+1's CURRENT
+// leg — the same period, seen from either side — so a series of trailing-twelve-month columns costs
+// one extra rung each rather than a fresh pair. That is what lets the LTM column carry a growth rate
+// and a three-year CAGR through the same cross-column pass the fiscal-year columns use, rather than
+// borrowing those rows from a window it is not on.
+// Has the filer reported ANY interim period past its last full year? Two very different situations
+// both produce an empty window list — "the fiscal year closed last month and there is nothing yet to
+// add", which is Microsoft in August, and "there is a quarter but the stitch could not be built",
+// which is a gap. The first means the newest annual column already IS the trailing twelve months;
+// the second means there is no honest LTM column at all. Asked separately because presenting a
+// nine-month-stale fiscal year as an LTM is precisely the misdating this whole file exists to avoid.
+export function hasInterim(facts, tags, period) {
+  return !!(period && ytdRung(facts, tags, period, { interimOnly: true }));
+}
+
+export function ltmWindows(facts, tags, periods, count = 4) {
+  if (!periods || !periods.length) return [];
+  const rungs = [ytdRung(facts, tags, periods[0], { interimOnly: true })];
+  if (!rungs[0]) return [];
+  for (let k = 1; k <= count && periods[k]; k++) {
+    const r = ytdRung(facts, tags, periods[k], { wantEnd: shift(rungs[0].end, -k * 365), span: rungs[0].days });
+    if (!r) break;
+    rungs.push(r);
+  }
+  const out = [];
+  for (let k = 0; k + 1 < rungs.length; k++)
+    out.push({ fy: periods[k], prevFy: periods[k + 1], cur: rungs[k], prior: rungs[k + 1],
+      end: rungs[k].end, days: rungs[k].days });
+  return out;                                                          // newest first, like annualPeriods
+}
+
+const pickSpan = (facts, tags, y) =>
+  pickFact(facts, tags, { end: y.end, start: y.start }, { minDays: y.days - 8, maxDays: y.days + 8 });
+
+// One line, stitched. The three legs must come from the SAME TAG, and specifically from the tag the
+// ANNUAL column already chose — not from whichever tag happens to resolve all three.
+//
+// That restriction is rule 9 again. A filer that tags `Revenues` in its 10-K and only the ASC 606
+// slice in its 10-Qs would otherwise stitch a total onto the change in a component of itself:
+// MetLife's 606 revenue is $2.4bn against $77.1bn of total, so the interim legs would move the total
+// by a rounding error on the wrong base and the result would look entirely reasonable. Falling
+// through to whichever tag resolves is how the sheet ends up with a number instead of a blank, which
+// is the trade this file keeps refusing to make.
+// Every filed version of one tag for one period shape, OLDEST filing first — the opposite order to
+// pickFact, which wants the newest. Used to ask whether a figure has been re-presented since it was
+// first reported, which is a question about the history rather than about the current answer.
+function history(facts, tag, end, minD, maxD) {
+  return (factsFor(facts, tag) || [])
+    .filter(f => isDuration(f) && f.end === end && days(f.start, f.end) >= minD && days(f.start, f.end) <= maxD)
+    .sort((a, b) => (a.filed || "").localeCompare(b.filed || ""));
+}
+const moved = (a, b) => a != null && b != null && Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b), 1) > 0.005;
+
+// Rule 2 — latest filed wins — is applied to each leg independently, and that is what usually keeps
+// the three of them on one basis: a divestiture re-presents prior periods, and taking the newest
+// version of each picks up the re-presentation everywhere at once. Honeywell's first half of 2025
+// was filed at $20.17bn and re-filed at $18.25bn after the Solstice spin; Occidental's at $13.22bn
+// and $10.96bn after OxyChem. In both the annual figure had ALREADY moved to the new basis, so the
+// stitch is coherent — Occidental's 10-K restated its own 2024 comparative from $26.7bn to $22.0bn.
+//
+// But that is a fact about those two filers, not a rule. The interim legs pick up a re-presentation
+// at the next 10-Q while the annual leg only catches up at the next 10-K, so a divestiture completed
+// mid-year leaves a window of two or three quarters where the annual leg is the OLD basis and the
+// two interim legs are the new one. FY(including a sold business) + Δ(excluding it) is neither, and
+// it is wrong by that business's half-year — a number with the right units and the wrong company in
+// it, which is the shape of error this engine keeps refusing to print.
+//
+// It is detectable, because a re-presentation always sweeps the comparatives with it: if the prior
+// leg has moved since it was first filed, then the annual leg is on the same basis only if ITS OWN
+// filing also restated the year before it. Checked against that accession specifically, not against
+// "was it ever restated". No evidence either way fails closed — this fires for 2 of 89 filers swept,
+// so a blank here is rare enough to be worth its certainty.
+function basisAgrees(facts, tag, win, fy) {
+  const pri = history(facts, tag, win.prior.end, win.days - 8, win.days + 8);
+  if (pri.length < 2 || !moved(pri[0].val, pri[pri.length - 1].val)) return true;   // nothing re-presented
+  if (!win.prevFy) return false;
+  const prev = history(facts, tag, win.prevFy.end, ANNUAL_MIN, ANNUAL_MAX);
+  const inFy = prev.filter(f => f.accn === fy.accn).pop();
+  return !!(inFy && prev.length > 1 && moved(prev[0].val, inFy.val));
+}
+
+export function pickLtm(facts, tags, win) {
+  const fy = pickFact(facts, tags, win.fy);
+  if (fy.value == null) return { value: null, status: fy.status };
+  const cur = pickSpan(facts, [fy.tag], win.cur), pri = pickSpan(facts, [fy.tag], win.prior);
+  if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit)
+    return { value: null, status: "no-interim", tag: fy.tag };
+  if (!basisAgrees(facts, fy.tag, win, fy)) return { value: null, status: "restated-basis", tag: fy.tag };
+  return { value: fy.value + cur.value - pri.value, unit: fy.unit, tag: fy.tag, status: "ltm",
+    end: win.end, start: shift(win.end, -364), accn: fy.accn, form: fy.form, filed: fy.filed,
+    basis: `FY to ${win.fy.end} + ${win.cur.start}→${win.cur.end} − ${win.prior.start}→${win.prior.end}` };
 }
 
 // ── Derived lines ──────────────────────────────────────────────────────────────────────────────
