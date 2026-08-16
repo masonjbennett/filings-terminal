@@ -374,6 +374,78 @@ sheet" and "throw away the six companies I just assembled" are not the same inst
 anchor to `?t=TICKER`, so ctrl-click opens a second tab and the address is copyable, with the in-page
 load intercepted otherwise. That is where every blank in the set gets explained.
 
+## Segments
+
+`api/segments.js`, the **Segments** tab. The only numbers on this site that do not come from
+`companyfacts`, because companyfacts carries **no dimensional data at all** — a fact there is
+`start, end, val, accn, fy, fp, form, filed, frame` and nothing else, so "Apple's revenue" exists and
+"Apple's revenue in Greater China" cannot. Breakdowns live in the XBRL instance, where a CONTEXT
+carries an `explicitMember` on an axis and a FACT points at a context. SEC extracts that instance out
+of the inline-XBRL 10-K as a standalone `<stem>_htm.xml`: 1.4MB for Apple, 14.9MB for JPMorgan.
+
+Three axes get a table — reportable segments, products & services, geography. Scope is the **newest
+10-K**, which is three years, because that is what a segment footnote presents; reaching eight would
+mean three more instances and 45MB to add two stale years of a structure that has usually been
+reorganised since. Lazy-loaded on opening the tab, so a reader who never asks pays nothing.
+
+**The claim the tab makes is that every table on it adds up**, and it is enforced rather than
+reported: a breakdown whose rows do not sum to the consolidated figure for the same period in the
+same filing is not shown. The consolidated line is printed under each block so the arithmetic is
+checkable on the page. That gate costs real tables — **17 of 30 filers swept keep a reportable-segment
+table** — and it is the right trade, because both ways this goes wrong produce a company half again
+its real size, and a reader cannot tell a good table from a bad one by looking.
+
+Five rules, each learned the same way as the others here:
+
+1. **One breakdown axis per fact, with `srt:ConsolidationItemsAxis` permitted as a qualifier.** That
+   axis says which VIEW a figure is — an operating segment, corporate, an elimination — rather than
+   subdividing it. Anything else riding along makes the fact a cell in a cross-tab: Apple files
+   revenue by segment × product, and counting those as segment rows multiplies the company. It is
+   also what separates a segment table from Chubb's claims-development triangles, which sit on the
+   segment axis with an accident-year axis beside them — 542 contexts, the largest block of
+   dimensional data in its filing.
+2. **A view is an (axis, extended-link ROLE) pair, not an axis.** One axis can carry two completely
+   different breakdowns. Apple files revenue by product twice — on the income statement as
+   {Product, Service} and in the revenue footnote as {iPhone, Mac, iPad, Wearables, Service}. Both
+   sit on `srt:ProductOrServiceAxis` and each foots to $416.2bn alone; grouped by axis they summed to
+   **$832.3bn, exactly twice the company**. No containment arc says so, because the linkbase declares
+   Product and iPhone as *siblings* under one domain. What separates them is belonging to different
+   hypercubes, and the role is where that is written down.
+3. **A member is a subtotal when the linkbase says the table already contains its children.**
+   UnitedHealth files `TotalOptum` beside Optum Health, Optum Insight and OptumRx; Caterpillar files
+   the standard `ReportableSegmentAggregationBeforeOtherOperatingSegment` beside the four segments
+   inside it. As rows they doubled both companies — UNH to $891.6bn against $447.6bn, CAT to $136.4bn
+   against $67.6bn. Matching the word "Total" is what rule 10 exists to warn against, and unnecessary:
+   `unh:TotalOptumMember → unh:OptumhealthMember` says it outright. The test is **containment of
+   members actually present**, not "has children anywhere" — deciding it on the linkbase alone removed
+   real segments, taking Chubb's premium base from $53.0bn to $37.3bn, and left Chevron with a single
+   $0.6bn "all other" row against a $184bn company because its aggregation member is the only row
+   carrying revenue at all.
+4. **Deduplicate facts by (tag, context).** Inline XBRL tags a figure everywhere it appears in the
+   document, so the extracted instance carries the same fact once per occurrence. Apple's services
+   revenue is on the face of the income statement and again in the revenue footnote — identical tag,
+   identical context, two elements. Summed as filed, its product breakdown came to **$525.3bn against
+   a $416.2bn company**, the extra $109.1bn being services counted twice. A duplicate is one fact seen
+   twice, and nothing downstream can tell the difference.
+5. **A concept allow-list, and members are not required to end in "Member".** Every table in a filing
+   that touches one of these axes becomes a candidate, and most are disclosures nobody models —
+   goodwill translation adjustments by segment, restructuring costs, a held-for-sale narrative.
+   Caterpillar produced thirteen. Separately, Apple's geographic rows are `country:US` and
+   `country:CN`, standard members with no such suffix; requiring it dropped the United States and
+   China from a geographic breakdown and left "Other countries" behind.
+
+Where nothing reconciles the tab says so and links the filing, rather than showing a table it cannot
+stand behind. That is most often a filer whose segment revenue includes intersegment sales, or whose
+segment top line is a company extension — Bank of America tags
+`bac:RevenuesNetOfInterestExpenseFullTaxEquivalentBasis`, which no standard tag list can reach.
+
+Payloads come out at **0–11KB from instances of up to 17MB**. `t-seg.mjs` runs 4,633 assertions over
+the 30 filers, the load-bearing one being the reconciliation itself. One check had to be weakened
+after it fired: a segment legitimately *exceeds* the consolidated line when another row is negative,
+which is what a corporate-and-eliminations row usually is — AT&T's Communications is $27.8bn against
+$23.5bn of consolidated operating income, and Goldman's Global Banking & Markets $11.0bn against
+$10.7bn. Both correct, both flagged by a check that assumed the parts are each smaller than the whole.
+
 ## Industry overlays
 
 Detected from the **SIC code SEC assigns** (`api/facts.js` returns `sicCode`), never inferred from
@@ -595,9 +667,11 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
-   all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
-   segment and geographic revenue need the raw XBRL instance or the R-files.
+1. **Segment coverage.** 17 of 30 keep a reportable-segment table, and the 13 that do not are not a
+   uniform problem: some tag a company extension as their segment top line, some report segment
+   revenue including intersegment sales with the eliminations row on a different member. Capturing
+   `IntersegmentEliminationMember` as an explicit row would let several of them reconcile honestly
+   rather than being dropped. Worth doing before anything else here, and `t-seg.mjs` measures it.
 2. **A small/mid-cap sweep.** The 97 were nearly all mega-caps — the best-tagged filers in the
    market — and they still yielded six real bugs. The ~10,000 tickers riding the corporate template
    mostly are not. Reuses `t-corp.mjs` with a new sample; the LTM ladder is the newest thing it would

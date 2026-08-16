@@ -22,6 +22,10 @@ const TABS = [
   { id: "statements", label: "Statements", secs: ["is", "bs", "cf", "sh"] },
   { id: "ratios", label: "Ratios", secs: ["margins", "credit", "returns"] },
   { id: "valuation", label: "Valuation", secs: ["debtlike", "addbacks", "dcf", "dilution"] },
+  // Segments is not a slice of the template like the other three. It comes off a different data
+  // path entirely — companyfacts carries no dimensional data at all — so it is fetched separately
+  // and only when opened, because it costs a 1–17MB XBRL instance to answer.
+  { id: "segments", label: "Segments", secs: [] },
 ];
 const FOOTER_SECS = ["lbo", "pta", "premia"];
 
@@ -114,6 +118,7 @@ export default function App() {
   // because "open this column's sheet" and "throw away the six companies I just assembled" are not
   // the same instruction — the way back is a button, not a re-typed list.
   const [solo, setSolo] = useState(null);
+  const [segs, setSegs] = useState(null);      // { loading } | { err } | payload from /api/segments
   const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(rows => setTickers(applyTickerFixes(rows))).catch(() => setErr("couldn't load the company list")); }, []);
@@ -159,8 +164,19 @@ export default function App() {
     return { ok, d, usedCik };
   };
 
+  // Fetched on demand, once per company, because answering it costs SEC an XBRL instance of up to
+  // 17MB — Apple's is 1.4MB and JPMorgan's 14.9MB. A reader who never opens the tab pays nothing,
+  // which is the same reason xlsx.js is lazy-imported.
+  useEffect(() => {
+    if (tab !== "segments" || !data || !data.cik || segs) return;
+    setSegs({ loading: true });
+    fetch(`/api/segments?cik=${data.cik}`)
+      .then(async r => { const j = await r.json(); setSegs(r.ok ? j : { err: j.error || "that lookup failed" }); })
+      .catch(() => setSegs({ err: "couldn't reach the filing desk" }));
+  }, [tab, data, segs]);
+
   const load = async (cik, ticker, title) => {
-    setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null); setQuote(null); setQuoteNote("");
+    setCo({ cik, ticker, title }); setQ(""); setErr(""); setBusy(true); setData(null); setSections(null); setQuote(null); setQuoteNote(""); setSegs(null);
     // The sheet becomes a URL you can send to someone. Until now every lookup lived only in the
     // session that made it — "here is Chubb's combined ratio, check the filings yourself" was not
     // something you could paste into an email. replaceState rather than pushState so the back
@@ -347,7 +363,10 @@ export default function App() {
         return { name: TABS.find(t => t.id === tabId).label, rows,
           widths: [46, ...grid.cols.map(() => 18)], freeze: { x: 1, y: 6 } };
       };
-      downloadXlsx(TABS.map(t => sheetFor(t.id)), `${tic || "filings"}-financials.xlsx`);
+      // Segments is deliberately not a sheet here. It is not a slice of `grid` like the other three —
+      // it comes off a different filing and has its own row set per table, so building it from
+      // `activeSections` would produce an empty sheet, which is how an export looks broken.
+      downloadXlsx(TABS.filter(t => t.secs.length).map(t => sheetFor(t.id)), `${tic || "filings"}-financials.xlsx`);
       setCopied("Workbook downloaded");
     } catch (e) {
       setCopied("Export failed — " + String((e && e.message) || e).slice(0, 60));
@@ -359,6 +378,25 @@ export default function App() {
   // two are different jobs: the workbook is the file you keep, this is the block you are working in
   // going straight into a model that is already open.
   const copyTsv = () => {
+    // The segments tab has its own shape — several tables, each with its own rows and its own three
+    // periods — so it is copied from the payload rather than from the grid.
+    if (tab === "segments") {
+      if (!segs || !segs.views) return;
+      const out = [];
+      for (const v of segs.views) {
+        out.push([v.source || v.title, ...segs.periods].join("\t"));
+        for (const t of v.concepts) {
+          out.push(segs.conceptLabels[t] || t);
+          for (const [mi, m] of v.members.entries())
+            out.push([m.label, ...segs.periods.map((_, pi) => { const f = v.facts.find(x => x.t === t && x.m === mi && x.p === pi); return f ? f.v : ""; })].join("\t"));
+          out.push(["Consolidated", ...segs.periods.map(p => (segs.consolidated[t] || {})[p] ?? "")].join("\t"));
+        }
+        out.push("");
+      }
+      navigator.clipboard.writeText(out.join("\n")).then(() => { setCopied("Copied — paste into Excel"); setTimeout(() => setCopied(""), 3000); })
+        .catch(() => setCopied("Clipboard blocked by the browser"));
+      return;
+    }
     if (!grid || !grid.cols) return;
     const secs = activeSections.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id) || s.tab === tab);
     const out = [["Line item", ...grid.cols.map(c => c.period.end)].join("\t")];
@@ -482,7 +520,9 @@ export default function App() {
         {/* Opens pinned to the right-hand edge — the current year, which is what you came to see —
             and scrolling left walks back through history. Model order without making the newest
             year the one you have to go looking for. */}
-        {grid.cols && <div ref={scroller} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+        {tab === "segments" && <SegmentTables segs={segs || { loading: true }} S={S} />}
+
+        {tab !== "segments" && grid.cols && <div ref={scroller} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
             {/* This row orients the whole sheet, so it is the last place to be economical with size.
                 It was 9px uppercase at 2px letter-spacing over an 8px date at 60% opacity — spaced-out
@@ -735,6 +775,93 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         {" "}{Object.entries(byTicker).map(([tic, labels]) => GAP[st](tic, labels.join(" and ").toLowerCase())).join("; ")} — open the sheet for the reported year.
       </span>)}</>}
     </p>
+  </div>;
+}
+
+// Breakdowns by segment, product and geography — the only part of this terminal whose numbers do not
+// come from companyfacts, because companyfacts carries no dimensional data at all.
+//
+// The one claim the tab makes is that EVERY TABLE HERE ADDS UP: api/segments.js drops any breakdown
+// whose rows do not sum to the consolidated figure for the same period in the same filing. That
+// costs real tables — 17 of 30 filers swept keep a reportable-segment table — and the ones it drops
+// are dropped for a reason worth stating rather than hidden, because a segment table reading 142% of
+// the company is the failure this whole project exists to avoid.
+function SegmentTables({ segs, S }) {
+  if (segs.loading) return <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12, padding: "18px 0" }}>Reading the XBRL instance…</p>;
+  if (segs.err) return <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12, padding: "18px 0" }}>{segs.err}</p>;
+
+  const fmt = v => v == null ? null : Math.abs(v) < 1000 ? (Math.round(v * 100) / 100).toLocaleString() : Math.round(v).toLocaleString();
+  const cell = { padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, whiteSpace: "nowrap" };
+
+  return <div>
+    <p style={{ fontSize: 11, color: C.faint, fontFamily: MONO, marginBottom: 14, lineHeight: 1.7 }}>
+      From the XBRL instance of the {segs.period} 10-K — the three years that filing presents, not eight:
+      a segment structure is usually reorganised before it is eight years old.{" "}
+      <a href={segs.filingUrl} target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>open the filing ↗</a>
+      <br />
+      <span style={{ color: C.ink2 }}>Every table below sums to the consolidated figure beneath it.</span>{" "}
+      A breakdown that does not reconcile is not shown — a subtotal row counted twice, or segment revenue that
+      includes intersegment sales, both read as a company half again its real size.
+    </p>
+
+    {!segs.views.length && <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, padding: "16px 18px", background: "#f6eee180" }}>
+      <span style={{ ...S.label, color: C.bronze }}>Nothing that reconciles</span>
+      <p style={{ fontSize: 12, color: C.mute, margin: "8px 0 0", lineHeight: 1.6 }}>
+        This filer tags no breakdown that adds up to its own consolidated figures — most often because its
+        segment revenue includes intersegment sales, or because the top line by segment is a company-specific
+        tag rather than a standard one. The footnote itself has the numbers.
+      </p>
+    </div>}
+
+    {segs.views.map((v, vi) => <div key={vi} style={{ marginBottom: 26 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 7 }}>
+        <span style={{ ...S.label, color: C.teal }}>{v.title}</span>
+        {/* The filing's own name for the table. Apple discloses revenue by product twice — on the
+            income statement and again in the revenue footnote — and they are different breakdowns of
+            the same axis, so naming which is which is the difference between two tables and a
+            duplicate. */}
+        {v.source && v.source !== v.title && <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>{v.source}</span>}
+        {v.subtotals.length > 0 && <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>
+          subtotal {v.subtotals.length > 1 ? "rows" : "row"} removed: {v.subtotals.join(", ")}
+        </span>}
+      </div>
+      <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          <thead><tr style={{ background: "#f6eee1" }}>
+            <th style={{ textAlign: "left", padding: "10px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 210, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.mute, borderBottom: `1px solid ${C.hair}` }}>Line</th>
+            {segs.periods.map(p => <th key={p} style={{ textAlign: "right", padding: "10px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 12, fontWeight: 600, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>{p}</th>)}
+          </tr></thead>
+          <tbody>
+            {v.concepts.map(t => <Fragment key={t}>
+              <tr><td colSpan={segs.periods.length + 1} style={{ padding: 0, borderTop: `1px solid ${C.hair}` }}>
+                <div style={{ position: "sticky", left: 0, display: "inline-block", padding: "12px 14px 4px" }}>
+                  <span style={{ ...S.label, color: C.bronze }}>{segs.conceptLabels[t] || t}</span>
+                </div>
+              </td></tr>
+              {v.members.map((m, mi) => {
+                const cells = segs.periods.map((_, pi) => (v.facts.find(f => f.t === t && f.m === mi && f.p === pi) || {}).v);
+                if (cells.every(x => x == null)) return null;
+                return <tr key={mi} style={{ borderTop: `1px solid ${C.hair2}` }}>
+                  <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.ink2 }}>{m.label}</td>
+                  {cells.map((x, i) => <td key={i} style={{ ...cell, color: x == null ? C.hair : C.ink2 }}>{fmt(x) || "—"}</td>)}
+                </tr>;
+              })}
+              {/* The consolidated line the rows above add up to, printed rather than asserted. It is
+                  the whole basis on which the table is shown at all, so it belongs on the page where
+                  a reader can add the column up and check it. */}
+              <tr style={{ borderTop: `1px solid ${C.hair}` }}>
+                <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.mute, fontStyle: "italic" }}>
+                  Consolidated <span style={{ fontSize: 8, fontFamily: MONO, color: C.teal, marginLeft: 6 }}>= Σ above</span>
+                </td>
+                {segs.periods.map(p => <td key={p} style={{ ...cell, color: C.mute, fontWeight: 600 }}>
+                  {fmt((segs.consolidated[t] || {})[p]) || "—"}
+                </td>)}
+              </tr>
+            </Fragment>)}
+          </tbody>
+        </table>
+      </div>
+    </div>)}
   </div>;
 }
 
