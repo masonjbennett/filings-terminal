@@ -109,10 +109,49 @@ Each was learned by probing real filings, and each fails **silently** if broken:
    `Revenues` is stale or absent — `pickFact` skips a tag with no fact for the period, so Apple
    (never files it) and Equinix (stopped in 2020) fall through exactly as before.
 
+10. **The ticker→CIK map itself can be wrong, and then nothing downstream matters.** SEC's
+    `company_tickers.json` is the only thing turning "XOM" into a company, and the corporate sweep
+    found two ways it fails. A **holding-company reorganisation** moves the ticker to a newly
+    registered entity: XOM points at CIK 2115436, "ExxonMobil Holdings Corp", which has filed no
+    10-K, one 10-Q and not a single annual revenue fact, while eight years of Exxon sit under CIK
+    34088 — which no longer carries a ticker at all. The terminal rendered an **empty sheet for the
+    largest energy company in the country**, under a message blaming IFRS. And **outright omission**:
+    American Electric Power is in neither `company_tickers.json` nor `company_tickers_exchange.json`,
+    though its own submissions file lists AEP against seven 10-Ks, so no refresh will ever fix it.
+    Both are repaired in `src/tickerFixes.js` rather than by editing `public/tickers.json`, which the
+    annual chore regenerates wholesale. An entry goes in only with the evidence that the CIK's
+    submissions file carries the 10-Ks and the ticker's does not — a guess here points a ticker at
+    another company's financials, which is the worst failure this tool has.
+
+11. **Where a debt tag sits in the list decides whether it fixes or breaks eight filers.** The sweep
+    added `LongTermDebtAndCapitalLeaseObligations`, without which Southern Co reported **$722m of
+    total debt — its short-term borrowings alone — against $66bn**; Sempra read $4.2bn, Cigna a
+    confident **$0.0bn**, and Dow, Nucor and Snowflake rendered blank. Placed with its siblings
+    (third) it *also* displaced the tags above it, which include current maturities, quietly removing
+    the current portion from eight filers that were already right — Coca-Cola fell $1.8bn, Comcast
+    $5.9bn, RTX $3.4bn. It belongs **last**, where it only fires for a filer that tags nothing else.
+
+    The related trap, deliberately **not** fixed: `LongTermDebt` means "including current maturities"
+    at some filers and "excluding" at others — Duke tags it inclusively (non-current 80.1 + current
+    7.1 = 87.2), Home Depot appears to use it for the non-current balance alone. Adding a
+    current-portion tag on top therefore moved twelve filers by billions with no way to tell which
+    had just been double counted, so it was backed out. Fixing it needs a per-filer test, not a tag.
+
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
 adjacent columns both rendered "FY2019". Columns run **oldest → newest**, the way a model does, and
 the sheet opens scrolled to the right-hand edge.
+
+The end date fixed that cause and the sweep found the same wrong label arriving by another: a
+**52/53-week filer** drifts backwards until a fiscal year ends on 1 January, and then two periods end
+in the same calendar year. J&J's ran to 2023-01-01 and 2023-12-31 and the sheet printed "FY2023" over
+both — two columns a full year apart with nothing to tell them apart. The label is **not** recomputed
+from a fiscal-year convention, because filers do not share one: Walmart calls the year ending 31 Jan
+2026 "fiscal 2026" while Home Depot calls the year ending 1 Feb 2026 "fiscal 2025", so either rule
+mislabels the other company. Only **uniqueness** is enforced — the earlier of a colliding pair drops a
+year, cascading newest-to-oldest so a fix cannot create the next collision — and the exact period end
+stays printed underneath, which is what actually disambiguates. On J&J and Kenvue the cascade lands
+on each company's own naming.
 
 ## Layout
 
@@ -297,6 +336,70 @@ ESS $15.18** — seven of ten within a rounding of the filed figure.
 Still missing, and genuinely not in any filing as a tagged figure: **AFFO/Core FFO** (every REIT
 defines it differently), same-store NOI, and occupancy. AFFO is a `manual` row that says so.
 
+## The corporate cross-sector sweep
+
+The corporate template carries ~10,000 of the 10,387 tickers and had only ever been checked against a
+handful. Swept against **97 filers across 14 sectors** — energy, retail, staples, pharma, industrials,
+software, semis, media, utilities, autos, materials, transport, health services, and recent IPOs and
+spin-offs — chosen for structural variety rather than size, because every bug this project has found
+was about filing shape rather than sector.
+
+There is no external truth source to diff against, and inventing one would put an unverified number
+in the loop. So every check is either **an identity the filing must satisfy** (gross profit =
+revenue − COGS, EBITDA = EBIT + D&A, assets = liabilities + equity, FCF = CFO − capex) or **a
+structural impossibility** (a revenue smaller than a component of itself, a total debt smaller than
+the long-term debt inside it). A filer failing one of those is wrong on its own terms, which is
+provable without knowing the right answer. `t-corp.mjs` in the session scratchpad runs it.
+
+What held: 93 of 95 resolve eight columns oldest→newest, no stale or out-of-order calendars, the
+balance sheet foots for 94, every computed EBITDA satisfies EBIT + D&A, and young filers correctly
+render four or five columns rather than padding. Findings went 9 → 4; rules 10 and 11 above and the
+52/53-week label fix are what closed them.
+
+**The ceiling it measured, which is not a bug and is bigger than it looks: 19 of 95 filers — 20% —
+have no EBIT in the newest year, and therefore no EBITDA, no EBITDA margin, no Net debt/EBITDA and no
+EV/EBITDA.** Fourteen never tag `OperatingIncomeLoss`; five stopped (Schlumberger and Sherwin-Williams
+after 2023, Deere after 2024, J&J after 2014, GE after 2012). Verified filer by filer: SLB now tags no
+operating subtotal at all, its highest income line being pre-tax. The population is Chevron, Conoco,
+Oxy, Phillips 66, SLB, Pfizer, Merck, Lilly, BMY, J&J, GE, Nike, HCA, Dow, Newmont, Nucor,
+Sherwin-Williams, Sempra and Deere — and the failure is worse than a uniform blank, because SLB's EBIT
+row populates through FY2023 and stops exactly at the column the valuation block divides into. The
+EBIT row now carries a `blankNote` saying so, since "n/a" reads as a gap the reader should go close.
+
+### Bottom-up EBIT: tested against 422 filer-years, and rejected
+
+The obvious repair is to build EBIT as **pre-tax + interest expense − interest income**, which is what
+an analyst does when a filer presents no operating income, and which is *not* the `CostsAndExpenses`
+trap of rule 8 — it is an identity over two reported figures rather than a mislabelled subtotal. It
+was not argued about, it was measured: ~76 filers in the sample report `OperatingIncomeLoss` **and**
+everything the construction needs, so they are ground truth. Every column of every filer, 422
+observations.
+
+Median absolute error **5.3%**, which sounds tolerable, and p75 **14.8%**, p90 **38.2%**, which is
+not — half the filer-years land outside ±5%. Carried into EBITDA the tail is still 30% at p90.
+
+It fails worst exactly where it would be used. By sector, median and p90 absolute error: **energy
+25.0% / 347.6%**, **autos 83.5% / 389.0%** against semis 1.3% / 16.3% and retail 2.3% / 19.6%. Four of
+the fifteen filers it could reach are energy. Impairments and equity-method income from affiliates sit
+below the operating line for those filers and the construction sweeps them all in.
+
+Schlumberger settles it, because it is both a candidate and checkable — it only stopped tagging in
+2023, so its earlier years have an answer. **FY2019: reported +$4.0bn, computed −$9.8bn. FY2020:
+reported +$2.4bn, computed −$10.8bn.** Not drift, a sign flip, on a company this would have been
+applied to. And a reader cannot tell a 1.3% case from a 348% case, which is the same argument that
+removed the derivation in rule 8.
+
+So the ceiling stands. Worth keeping for whoever proposes this again: the construction is accurate to
+1–2% for semiconductors, retail and transport, so it is defensible **per sector** if that is ever
+wanted explicitly. As a global rule it is not. It would also have reached only 15 of the 19 — Oxy,
+Phillips 66, Nike, GE and Newmont tag no interest expense or no pre-tax income and stay blank either
+way. `t-ebit.mjs` in the session scratchpad reruns the whole calibration.
+
+Three findings left open, all single filers: Williams tags `Revenues` $11.95bn against a 606 tag of
+$14.90bn (needs the filing to adjudicate); Altria's income statement does not foot on the page because
+excise tax sits inside its cost of sales but outside `CostOfGoodsAndServicesSold`, understating the
+COGS row while gross profit and margin stay right; and Instacart's balance sheet is $0.2bn out.
+
 ## Deploying
 
 Vercel project → this repo. One environment variable: `FINNHUB_KEY` (same value as the main site;
@@ -322,18 +425,18 @@ development exercises the real code path against real SEC responses.
 
 - **Annually**, alongside the January refresh on the main site: re-download `public/tickers.json`
   from `https://www.sec.gov/files/company_tickers.json` (needs a declared User-Agent) so newly
-  listed companies are searchable.
+  listed companies are searchable. Re-check `src/tickerFixes.js` at the same time — a repair there
+  goes stale the day SEC fixes its own file, and a stale override is a ticker pointing at a CIK on
+  purpose for no reason. Worth folding in then: `company_tickers_exchange.json` is **not** a
+  drop-in replacement (it carries 35 tickers this file lacks but is missing 26 that it has), so the
+  upgrade is a UNION of the two, not a swap.
 - SEC requires a User-Agent with real contact details and caps traffic at 10 requests/second. Both
   are honoured in `api/*.js`. **Do not remove the UA** — requests without one are refused, and the
   failure looks like a network error rather than a policy rejection.
 
 ## Next
 
-1. **Corporate cross-sector sweep.** The corporate template carries ~10,000 of the 10,387 tickers
-   and has only ever been checked against a handful. Every shared-engine change in the insurance/
-   REIT session — revenue tag order, the calendar rule, EBITDA, total debt — lands hardest here.
-   Sample across energy, retail, pharma, industrials and software.
-2. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
+1. **Segments** — a genuinely different data path: `companyfacts` carries **no dimensional data at
    all** (facts are `start, end, val, accn, fy, fp, form, filed, frame` and nothing else), so
    segment and geographic revenue need the raw XBRL instance or the R-files.
 3. **Multi-company comps** — metric definitions already exist in the template; needs a second

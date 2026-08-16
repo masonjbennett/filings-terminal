@@ -49,7 +49,12 @@ export const SECTIONS = [
   // profit line and excludes cost of revenue. Reported as its own row rather than folded into the
   // one above, since which of the two a filer uses changes what the number means.
   { k: "totalCosts", label: "Total costs & expenses", how: "fetched", tags: ["CostsAndExpenses"] },
-  { k: "ebit", label: "Operating income (EBIT)", how: "fetched", tags: ["OperatingIncomeLoss"] },
+  // `blankNote` shows only when the newest column is empty, because "n/a" is technically right and
+  // reads as a gap the reader should go and close. This is the widest blank on the corporate sheet —
+  // 20% of the cross-sector sample, Chevron and J&J among them — and it takes EBITDA, the margins,
+  // Net debt/EBITDA and EV/EBITDA with it, so the row that starts the chain should say why.
+  { k: "ebit", label: "Operating income (EBIT)", how: "fetched", tags: ["OperatingIncomeLoss"],
+    blankNote: "This filer's recent statements present no operating income subtotal. Deriving one from pre-tax income was tested against 422 filer-years and missed by up to 350%, so the row is left blank rather than estimated." },
   { k: "da", label: "Depreciation & amortisation", how: "fetched", tags: ["DepreciationDepletionAndAmortization","DepreciationAmortizationAndAccretionNet","DepreciationAndAmortization","Depreciation"] },
   { k: "ebitda", label: "EBITDA", how: "computed", formula: "ebit + da", note: "Not a GAAP concept — always computed, never tagged" },
   { k: "sbc", label: "Stock-based compensation", how: "fetched", tags: ["ShareBasedCompensation","AllocatedShareBasedCompensationExpense"] },
@@ -85,6 +90,14 @@ export const SECTIONS = [
   { k: "accrued", label: "Accrued liabilities", how: "fetched", tags: ["AccruedLiabilitiesCurrent","EmployeeRelatedLiabilitiesCurrent"] },
   { k: "defRevCur", label: "Deferred revenue, current", how: "fetched", tags: ["ContractWithCustomerLiabilityCurrent","DeferredRevenueCurrent"] },
   { k: "stDebt", label: "Short-term borrowings", how: "fetched", tags: ["ShortTermBorrowings","CommercialPaper","OtherShortTermBorrowings"] },
+  // Left at the one unambiguous tag ON PURPOSE. `LongTermDebtAndCapitalLeaseObligationsCurrent` and
+  // `DebtCurrent` were both added during the corporate sweep and both backed out, because adding a
+  // current portion is only correct when the long-term figure it is added to EXCLUDES it — and
+  // `LongTermDebt`, the tag that resolves for most large filers, means both things in the wild.
+  // Duke tags it inclusively (non-current 80.1 + current 7.1 = 87.2); Home Depot appears to use it
+  // for the non-current balance alone. Adding a current portion on top moved 12 filers by billions
+  // with no way to tell which had just been double counted. See README "the current-maturities
+  // ambiguity" — it needs a per-filer test, not a tag.
   { k: "ltdCur", label: "Current portion of long-term debt", how: "fetched", tags: ["LongTermDebtCurrent"] },
   { k: "olCur", label: "Operating lease liability, current", how: "fetched", tags: ["OperatingLeaseLiabilityCurrent"] },
   { k: "flCur", label: "Finance lease liability, current", how: "fetched", tags: ["FinanceLeaseLiabilityCurrent"] },
@@ -106,7 +119,19 @@ export const SECTIONS = [
   // all in the three tags below it. Confining this to the carrier overlays left every broker-dealer
   // unable to reach it.
   { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
-  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations"] },
+  // `LongTermDebtAndCapitalLeaseObligations` is the corporate sweep's addition, and WHERE it sits
+  // matters more than that it is here. Without it Southern reported $722m of total debt — its
+  // short-term borrowings alone — against $66bn, the Capital One failure in a utility; Sempra read
+  // $4.2bn, Cigna a confident $0.0bn, and Dow and Nucor rendered blank.
+  //
+  // It goes LAST rather than with its siblings because it is the NON-CURRENT balance while the two
+  // above it include current maturities. Placed third it displaced them and quietly REMOVED the
+  // current portion from eight filers that were already right — Coca-Cola fell $1.8bn, Comcast
+  // $5.9bn, RTX $3.4bn. Reached last, it only ever fires for a filer that tags nothing else, which
+  // is exactly the population that was broken. It carries finance leases inside it, which the sheet
+  // also lists separately as debt-like items; a filer that reaches it is one presenting debt and
+  // leases as a single balance, so counting it as debt is what its own balance sheet does.
+  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations","LongTermDebtAndCapitalLeaseObligations","ConvertibleDebtNoncurrent"] },
   { k: "olNon", label: "Operating lease liability, non-current", how: "fetched", tags: ["OperatingLeaseLiabilityNoncurrent"] },
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },

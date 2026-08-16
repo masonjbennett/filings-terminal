@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
 import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY } from "./extract.js";
+import { applyTickerFixes } from "./tickerFixes.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -86,6 +87,13 @@ const secFilingUrl = (cik, accn) =>
 // One stylesheet instead of ~1,300 pairs of inline hover handlers — the sheet is 168 lines by 8
 // columns and every cell is a candidate. Restraint is deliberate: underlining a thousand numbers
 // would wreck the paper-and-ink page, so a source link is invisible until the cursor asks for it.
+// The cell is nowrap so a label and its status chip stay on one line, and white-space INHERITS — so
+// a note was forced onto one line too and set the width of the whole sticky column. Apple's is
+// 303px; the insurance notes took Progressive's to 503px and pushed three year columns off the right
+// edge of an 8-year sheet. Wrapping inside a fixed measure caps the damage for any note ever added,
+// not just the ones that exist today, which is why this is shared rather than written per note.
+const NOTE_STYLE = { fontSize: 9, color: "#8a8072", fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 };
+
 const CELL_CSS = `
 .srcnum { color: inherit; text-decoration: none; cursor: pointer; border-bottom: 1px dotted transparent; }
 .srcnum:hover { color: ${"#0d6d56"}; border-bottom-color: ${"#0d6d5666"}; }
@@ -105,7 +113,7 @@ export default function App() {
   const [quoteNote, setQuoteNote] = useState("");
   const scroller = useRef(null);
 
-  useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(setTickers).catch(() => setErr("couldn't load the company list")); }, []);
+  useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(rows => setTickers(applyTickerFixes(rows))).catch(() => setErr("couldn't load the company list")); }, []);
 
   // Client-side search over 10,387 companies — the whole map is 432KB and ships once, so there is
   // no round trip and no serverless call just to turn "APPLE" into a CIK.
@@ -445,7 +453,16 @@ export default function App() {
           {copied && <span style={{ color: C.teal, marginLeft: 12 }}>{copied}</span>}
         </p>
 
-        {grid.empty && <p style={{ color: C.bronze, fontFamily: MONO, fontSize: 12 }}>No annual XBRL periods on file — this filer may report under IFRS (20-F) or predate tagging.</p>}
+        {/* Named all three causes after the sweep found Exxon rendering empty under a message that
+            confidently blamed the first one. A wrong diagnosis is worse than none here: it sends the
+            reader away believing the data does not exist, when for a holdco reorganisation it exists
+            in full under the predecessor's CIK. The EDGAR link is the way to check in one click. */}
+        {grid.empty && <p style={{ color: C.bronze, fontFamily: MONO, fontSize: 12 }}>
+          No annual XBRL periods on file. That usually means the filer reports under IFRS (20-F), predates tagging,
+          or is a newly registered holding company whose history sits under a predecessor CIK.{" "}
+          <a href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${Number(data.cik)}&type=10-K`}
+            target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>check this CIK's filings on EDGAR ↗</a>
+        </p>}
 
         {/* The valuation summary rides above every tab on purpose. It is four numbers a banker reads
             first — EV, the multiple, the price it came from — and burying it one click deep would
@@ -570,6 +587,8 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
       // three-year revenue CAGR; those are blank because an input above them is blank, and the
       // input is already carrying its own label. Sending a reader into a 10-K to hunt for a figure
       // that exists in no filing is the most expensive kind of wrong label on this page.
+      const newest = cells[cells.length - 1];
+      const newestBlank = !!newest && newest.v == null && newest.m.status !== "not-applicable";
       const status = has ? null
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : line.how === "manual" ? "judgement"
@@ -582,13 +601,14 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           <span style={{ color: has ? C.ink2 : C.faint }}>{line.label}</span>
           {line.how === "computed" && <span style={{ fontSize: 8, fontFamily: MONO, color: C.navy, marginLeft: 7 }} title={line.formula}>ƒ</span>}
           {status && <span style={{ fontSize: 8, fontFamily: MONO, color: statusColor, marginLeft: 8, letterSpacing: .5 }}>{status}</span>}
-          {/* The cell is nowrap so the label and its status chip stay on one line, and white-space
-              INHERITS — so a note was also forced onto one line and set the width of the whole
-              sticky column. Apple's column is 303px; the insurance notes took Progressive's to
-              503px and pushed three year columns off the right edge of an 8-year sheet. The note
-              wraps inside a fixed measure instead, which caps the damage for any note ever added
-              rather than for the ones that happen to exist today. */}
-          {line.note && <div style={{ fontSize: 9, color: C.faint, fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 }}>{line.note}</div>}
+          {line.note && <div style={NOTE_STYLE}>{line.note}</div>}
+          {/* A note that only exists when the row is empty. Keyed off the NEWEST column rather than
+              the whole row, because the case that misleads is the half-blank one: Schlumberger's EBIT
+              populates through FY2023 and stops exactly at the column the valuation block divides
+              into, so a row-wide test would stay silent on the filers it matters most for. Never
+              shown where NOT_APPLICABLE did the blanking — a bank's EBIT is already saying "n/a for
+              a bank", which is a different and better answer. */}
+          {newestBlank && line.blankNote && <div style={NOTE_STYLE}>{line.blankNote}</div>}
         </td>
         {cells.map((x, i) => {
           const shown = display(line.k, x.v, x.m.unit);

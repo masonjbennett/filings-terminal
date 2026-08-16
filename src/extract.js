@@ -103,7 +103,30 @@ export function annualPeriods(facts, tags, limit = 8) {
   const newest = calendars.map(newestOf).sort().pop();
   const current = calendars.filter(m => Math.abs(days(newestOf(m), newest)) <= ANNUAL_MAX);
   const best = current.reduce((a, b) => (b.size > a.size ? b : a));
-  return [...best.values()].sort((a, b) => b.end.localeCompare(a.end)).slice(0, limit);
+  return dedupeLabels([...best.values()].sort((a, b) => b.end.localeCompare(a.end)).slice(0, limit));
+}
+
+// A 52/53-week filer drifts backwards through the calendar until a fiscal year ends on 1 January,
+// and then TWO periods end in the same year: J&J's ran to 2023-01-01 and 2023-12-31, so the sheet
+// printed "FY2023" over both. Labelling from the period end already fixed this for its other cause
+// (XBRL's `fy`, which is the year of the REPORT a fact was filed in) — this is the same wrong label
+// arriving by a different route, and it is worse than it looks, because the two columns are a full
+// year apart and nothing on the page says which is which.
+//
+// The label is NOT recomputed from a fiscal-year convention, because filers do not share one:
+// Walmart calls the year ending 31 Jan 2026 "fiscal 2026" and Home Depot calls the year ending
+// 1 Feb 2026 "fiscal 2025". Picking either rule would mislabel the other company. All that is
+// enforced is uniqueness — the earlier of a colliding pair drops a year, which is the convention a
+// 52/53-week filer uses anyway (J&J's year to 1 Jan 2023 is its fiscal 2022) — and the exact period
+// end stays printed underneath, which is what actually disambiguates.
+// Walks NEWEST to OLDEST so a decrement cascades into the pair behind it. Running the other way
+// fixes the first collision and creates a second: J&J's 2023-01-01 became FY2022 and promptly
+// collided with the real 2022-01-02, printing "FY2022" twice instead of "FY2023" twice.
+function dedupeLabels(periods) {
+  for (let i = 1; i < periods.length; i++) {               // the list arrives newest-first
+    if (periods[i].fy === periods[i - 1].fy) periods[i] = { ...periods[i], fy: periods[i].fy - 1 };
+  }
+  return periods;
 }
 
 // Some facts are "as of the latest filing", not "as of a fiscal period". The cover-page share
