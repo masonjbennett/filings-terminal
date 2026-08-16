@@ -119,9 +119,31 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     American Electric Power is in neither `company_tickers.json` nor `company_tickers_exchange.json`,
     though its own submissions file lists AEP against seven 10-Ks, so no refresh will ever fix it.
     Both are repaired in `src/tickerFixes.js` rather than by editing `public/tickers.json`, which the
-    annual chore regenerates wholesale. An entry goes in only with the evidence that the CIK's
-    submissions file carries the 10-Ks and the ticker's does not — a guess here points a ticker at
-    another company's financials, which is the worst failure this tool has.
+    annual chore regenerates wholesale — and they need **two different mechanisms**. An omission has
+    no row to correct, so the row is added. A reorganisation does have a row, and hard-remapping it
+    would be right today and wrong the moment the successor files its own first 10-K, at which point
+    it would pin the ticker to stale predecessor data silently, a year before the chore looks again.
+    So `PREDECESSOR` is a **fallback consulted only when a lookup produced no annual periods**: it
+    fires while the successor is empty and stops firing the day it is not. The retry also has to
+    cover a **failed** response, not just an empty one — an entity that has never filed has no
+    companyfacts document at all and data.sec.gov answers 404, which is CBAT's case exactly.
+
+    **Is XOM the only one? No — there are five, and the scan that found them is `t-tickers.mjs`.**
+    Fetching 10,387 companyfacts documents would be tens of gigabytes; EDGAR's quarterly `form.idx`
+    answers the same question for ~120MB, since it lists every filing with form type, CIK and company
+    name. 2,123 of the 10,387 tickers have filed no 10-K since 2024 — overwhelmingly ETFs, trusts,
+    funds and SPACs, for which a blank sheet is the right answer — so the signature to hunt is
+    narrower: no annual report under this CIK, while a **near-identical company name** has them.
+    That yields five, all confirmed against submissions data: XOM, **NVRI** (successor "Enviri Corp",
+    history under CIK 45876, now named ENVIRI LLC), **DMRC** (predecessor is literally named "Old
+    Digimarc CORP"), **CBAT** (a redomiciliation; both entities list the ticker) and **FSSL**.
+
+    The scan also produced one **false positive, deliberately excluded**: CNTMF's CIK is Cansortium,
+    renamed Fluent Corp, a cannabis company — and its name-match is Fluent, Inc., an unrelated
+    advertising firm with its own ticker FLNT and a former-name chain running back to Tiger Media. A
+    name match is not evidence. An entry goes in only when the predecessor's submissions file carries
+    the 10-Ks, the ticker's does not, and the two are demonstrably the same company; a guess here
+    points a ticker at another company's financials, which is the worst failure this tool has.
 
 11. **Where a debt tag sits in the list decides whether it fixes or breaks eight filers.** The sweep
     added `LongTermDebtAndCapitalLeaseObligations`, without which Southern Co reported **$722m of

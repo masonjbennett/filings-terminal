@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
 import { annualPeriods, pickFact, latestFact, DERIVED, DERIVED_BY_INDUSTRY, YOY } from "./extract.js";
-import { applyTickerFixes } from "./tickerFixes.js";
+import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -92,6 +92,15 @@ const secFilingUrl = (cik, accn) =>
 // 303px; the insurance notes took Progressive's to 503px and pushed three year columns off the right
 // edge of an 8-year sheet. Wrapping inside a fixed measure caps the damage for any note ever added,
 // not just the ones that exist today, which is why this is shared rather than written per note.
+// "Did this payload contain a usable sheet at all?" — the same question the grid asks, asked early
+// enough to do something about it. Uses the industry's own period anchors rather than a fixed list,
+// because a bank keyed off `Revenues` would look empty when it is merely a bank.
+const hasAnnualPeriods = d => {
+  if (!d || !d.facts) return false;
+  const ind = INDUSTRY(d.sicCode);
+  return annualPeriods(d.facts, [...(PERIOD_TAGS[ind] || PERIOD_TAGS.corporate), ...PERIOD_TAGS_FALLBACK], 1).length > 0;
+};
+
 const NOTE_STYLE = { fontSize: 9, color: "#8a8072", fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 };
 
 const CELL_CSS = `
@@ -139,11 +148,29 @@ export default function App() {
     if (ticker) try { history.replaceState(null, "", `?t=${encodeURIComponent(ticker)}`); } catch {}
     try {
       const r = await fetch(`/api/facts?cik=${cik}`);
-      const d = await r.json();
-      if (!r.ok) { setErr(d.error || "that lookup failed"); setBusy(false); return; }
+      let d = await r.json();
+      let ok = r.ok, usedCik = cik;
+      // A holding-company reorganisation leaves the ticker pointing at an entity that has filed
+      // nothing, and the sheet comes out empty — see PREDECESSOR. The fallback runs off the DATA
+      // rather than off the table: only a lookup that produced no annual periods triggers a second
+      // one, so the day the successor files its own 10-K this stops firing by itself instead of
+      // pinning the ticker to stale predecessor figures until someone reviews the list.
+      //
+      // The !ok half is not defensive padding: an entity that has never filed has no companyfacts
+      // document at all, and data.sec.gov answers 404. CBAT's successor is exactly that, so gating
+      // the retry on a successful response would have skipped the one case with nothing to show.
+      if ((!ok || !hasAnnualPeriods(d)) && PREDECESSOR[ticker]) {
+        const p = PREDECESSOR[ticker];
+        try {
+          const r2 = await fetch(`/api/facts?cik=${p.cik}`);
+          const d2 = await r2.json();
+          if (r2.ok && hasAnnualPeriods(d2)) { d = d2; ok = true; usedCik = p.cik; }
+        } catch {}
+      }
+      if (!ok) { setErr(d.error || "that lookup failed"); setBusy(false); return; }
       setData(d);
       const k10 = (d.filings || []).find(f => f.form === "10-K");
-      if (k10) fetch(`/api/sections?cik=${cik}&accn=${k10.accn}`).then(r => r.json()).then(setSections).catch(() => {});
+      if (k10) fetch(`/api/sections?cik=${usedCik}&accn=${k10.accn}`).then(r => r.json()).then(setSections).catch(() => {});
       // The price is a nice-to-have on top of the filings, so it never blocks the sheet and never
       // fails it: no key, no coverage, no answer — the valuation rows just stay "needs price".
       const sym = (d.tickers && d.tickers[0]) || ticker;
