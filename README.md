@@ -188,6 +188,29 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     change in a component of itself. Costco is exactly that and its LTM revenue is **blank**, which
     is the honest answer and is marked as one on the page.
 
+13. **Only the periodic reports are the financial statements, and rule 2 was handing the sheet to
+    everything else.** A 10-K or 10-Q *is* the statements. An 8-K exhibit is a press release, a
+    pro-forma, or a recast of a combination; a DEF 14A carries `NetIncomeLoss` inside the
+    pay-versus-performance table. All three are filed under the same tags for the same periods, and
+    "newest filed wins" made them win.
+
+    Black Diamond Therapeutics reported net income of **minus $69.68bn against a real minus $70m**,
+    from a proxy statement — an ROE of −83,660%, which the small/mid-cap sweep had first filed under
+    "correct for a biotech". Essential Utilities is subtler and worse. Its FY2023 operating income is
+    **$0.692bn in three successive 10-Ks and $1.504bn in an 8-K filed a month after the newest**,
+    with D&A and net income doubled to match — a bigger entity than the one it reports. The sheet
+    paired the 10-K's revenue with the 8-K's operating income and printed **EBITDA above revenue for
+    three straight years**. That impossibility was read as a revenue-tag problem first, and
+    "fixing" it by reordering the rule 9 list would have made revenue wrong as well.
+
+    Preferring the periodic filings is **not enough**, because a concept can appear only outside
+    them: Essential Utilities files `NetIncomeLossAvailableToCommonStockholdersBasic` in that 8-K and
+    nowhere else, and the Schwab repair then lifted it straight into net income. So non-periodic
+    filings are excluded outright. Measured across 167 filers before and after: **864 values
+    corrected, 39 lost** — seven cells in total, all in the oldest column of two sheets and all minor
+    lines (Disney's FY2018 investing and financing flows, a preferred dividend of zero). 228 values
+    moved from an 8-K to a 10-K, 148 from a DEF 14A, 12 from a 6-K to a 20-F.
+
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
 adjacent columns both rendered "FY2019". Columns run **oldest → newest**, the way a model does, and
@@ -626,13 +649,13 @@ distinguishing the two is the whole exercise:
   of its own, added into no total — it is neither debt nor common equity, and which one a reader
   treats it as depends on redemption terms that are in the footnote and not in XBRL. This does **not**
   explain Instacart's $0.2bn, which stays open.
-- **`Revenues` is not always the total, and Essential Utilities is the second case.** It tags
-  `Revenues` at $2.475bn against a 606 tag of $5.121bn — the reverse of the MetLife failure rule 9
-  exists for. The filing contradicts itself out loud: FY2023 EBITDA of $2.208bn against revenue of
-  $2.054bn, and EBITDA cannot exceed the revenue it is computed from. With Williams that is two, so
-  it is a class rather than a one-off, and **the structural test for it is EBITDA > revenue** — which
-  is decisive without needing to know the right answer. Not fixed here: rule 9 is the most
-  load-bearing tag order in the file and reordering it needs its own before/after diff.
+- **An 8-K and a proxy statement were outranking the 10-K** — the largest finding of the three, and
+  the one that nearly went the wrong way. Essential Utilities printed EBITDA above revenue for three
+  straight years, which reads as a revenue-tag problem and is not one: its operating income was
+  coming from an 8-K pro-forma while its revenue came from the 10-K. Reordering the rule 9 revenue
+  list would have "fixed" the impossibility by making revenue wrong too. See **rule 13** — the real
+  fix corrected 864 values across 167 filers, and it also closed most of the "out-of-range" noise
+  below, including Black Diamond's ROE of −83,660%.
 
 Two checks in `t-corp.mjs` were wrong rather than the engine. A **zero total debt** is only a finding
 when the filing contradicts it — Hycroft tags both long-term debt lines as literally 0 after repaying
@@ -724,10 +747,10 @@ development exercises the real code path against real SEC responses.
    revenue including intersegment sales with the eliminations row on a different member. Capturing
    `IntersegmentEliminationMember` as an explicit row would let several of them reconcile honestly
    rather than being dropped. Worth doing before anything else here, and `t-seg.mjs` measures it.
-2. **`Revenues` is not always the total** — Williams and Essential Utilities both tag it below their
-   606 figure, and EBITDA exceeding revenue is a decisive structural test for it. Reordering rule 9
-   is the most load-bearing tag change available here and needs its own before/after diff over every
-   filer, which is why it is a task rather than a fix.
+2. **`Revenues` is not always the total** — Williams tags it at $11.95bn against a 606 figure of
+   $14.90bn. Essential Utilities looked like the second case and turned out to be rule 13 instead,
+   so this is back to one filer and still needs the filing to adjudicate; nothing in its own data
+   contradicts either number.
 3. **Revenue for BDCs and mortgage REITs** — `InterestAndDividendIncomeOperating` and
    `NetInvestmentIncome` are in no list, so Ladder and Carlyle Secured Lending have no top line.
 4. **The three remaining single-filer findings** — Altria, Instacart, Colgate. Rhythm turned out to

@@ -48,9 +48,32 @@ export function pickFact(facts, tags, period, opts = {}) {
       if (!wantDuration) return true;
       const d = days(f.start, f.end);
       return d >= minD && d <= maxD;
-    });
+      // ── Only the periodic reports ──────────────────────────────────────────────────────────
+      // A 10-K or 10-Q IS the financial statements. An 8-K exhibit is a press release, a pro-forma
+      // or a recast of a combination, and a DEF 14A carries `NetIncomeLoss` inside the
+      // pay-versus-performance table. All three are filed under the same tags for the same periods,
+      // and rule 2 — newest filed wins — was handing them the sheet.
+      //
+      // Black Diamond Therapeutics reported net income of MINUS $69.68bn from a proxy statement
+      // against a real minus $70m, printing an ROE of −83,660%, which the small/mid-cap sweep had
+      // filed under "correct for a biotech". Essential Utilities is subtler and worse: its FY2023
+      // operating income is $0.692bn in three successive 10-Ks and $1.504bn in an 8-K filed a month
+      // after the newest, with D&A and net income doubled to match — a bigger entity than the one it
+      // reports. The sheet paired the 10-K's revenue with the 8-K's operating income and printed
+      // EBITDA ABOVE REVENUE for three straight years. That impossibility was first read as a
+      // revenue-tag problem, and "fixing" it by reordering the rule 9 list would have made revenue
+      // wrong as well.
+      //
+      // Preferring periodic filings is not enough, because a concept can appear ONLY outside them:
+      // Essential Utilities files `NetIncomeLossAvailableToCommonStockholdersBasic` in the 8-K and
+      // nowhere else, and the Schwab repair below then lifted it straight into net income. So they
+      // are excluded outright. Measured across 167 filers: 864 values corrected, 39 lost — seven
+      // cells in total, all in the oldest column of two sheets and all minor lines.
+    }).filter(f => periodic(f.form));
     if (!matches.length) { if (all.length) sawTagOtherPeriod = true; continue; }
-    // Rule 2 — newest filing wins, and among equals prefer the annual report over an 8-K exhibit.
+    // Rule 2 — newest filing wins, and among equals prefer the annual report over a quarterly one.
+    // Everything reaching here is already a periodic report, so the filed date is deciding between
+    // a 10-K and the 10-Q that restated it, which is exactly what it should decide.
     matches.sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form));
     const f = matches[0];
     return { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported" };
@@ -59,6 +82,9 @@ export function pickFact(facts, tags, period, opts = {}) {
   return { value: null, status: sawTagOtherPeriod ? "untagged-this-period" : sawTag ? "untagged-this-period" : "never-tagged" };
 }
 const rank = form => (form === "10-K" ? 3 : form === "10-Q" ? 2 : 1);
+// The periodic reports, their transition-period variants and their amendments — the filings that ARE
+// the financial statements. Everything else is supplementary, and this engine does not read it.
+const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ? 1 : 0);
 
 // The fiscal years available, newest first, derived from whichever revenue tag the filer uses.
 // Built from facts rather than from a calendar because fiscal years are not calendar years — Apple
