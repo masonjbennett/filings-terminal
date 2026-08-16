@@ -35,7 +35,31 @@ export const SECTIONS = [
   // and Morgan Stanley rendered with NO revenue line whatsoever (they are SIC 6211, so they take
   // the corporate sheet and get no bank overlay to fall back on), and Wells Fargo lost its top line
   // in 2019 when it stopped tagging `Revenues`. GS $58bn, MS $71bn, WFC $84bn.
-  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["Revenues","RevenuesNetOfInterestExpense","RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet"] },
+  // The last two are the LENDING top lines, and they are last for the reason rule 11 exists: a tag
+  // that only fires where nothing else resolves cannot displace a filer that was already right. A
+  // BDC and a mortgage REIT state no "revenue" at all — Ladder Capital and Carlyle Secured Lending
+  // rendered with a blank top line and therefore no margin, no growth and no EV/Revenue.
+  //
+  // `NetInvestmentIncome` is the obvious candidate for a BDC and is WRONG, in exactly the way rule 9
+  // is about: it is struck AFTER operating expenses. Carlyle's is $102.7m against $255.6m of gross
+  // investment income and $152.9m of expenses — a profit measure sitting in the revenue row, which
+  // would have made every margin below it meaningless. `GrossInvestmentIncomeOperating` is the line
+  // the filing calls total investment income.
+  { k: "revenue", label: "Total revenue", how: "fetched", tags: ["Revenues","RevenuesNetOfInterestExpense","RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","SalesRevenueNet","GrossInvestmentIncomeOperating","InterestAndDividendIncomeOperating"],
+    // A row that resolved from one of those is not reporting the same thing the label says, and rule
+    // 5's discipline — a blank is not one thing — applies just as much to a figure that IS there.
+    tagNote: {
+      GrossInvestmentIncomeOperating: "Total investment income, which is what a business development company reports instead of revenue. Net investment income, the line below it in the filing, is struck after operating expenses.",
+      InterestAndDividendIncomeOperating: "Total interest and dividend income. A lender presents no total-revenue line, so this is the top of the interest margin and excludes any fee or property income reported beside it.",
+    },
+    // A DEPOSITORY must never take gross interest income as its revenue, and this is the whole
+    // reason `omitFor` exists. A bank's top line is net interest income plus fees, which
+    // `DERIVED_BANK.revenue` reconstructs — but only when the fetched row came back empty, so simply
+    // adding the tag above filled the row and switched the reconstruction off. Five small banks in
+    // the sweep moved to gross interest income and none of them looked broken: Hawthorn's FY2019
+    // read $64m against a real $58m of net revenue, with every margin under it quietly rebased.
+    // Caught by diffing all 167 filers, not by any assertion.
+    omitFor: { bank: ["InterestAndDividendIncomeOperating"] } },
   { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"] },
   { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"], fallback: "revenue - cogs" },
   { k: "rnd", label: "Research & development", how: "fetched", tags: ["ResearchAndDevelopmentExpense"] },

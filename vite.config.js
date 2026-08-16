@@ -30,4 +30,10 @@ const apiDev = () => ({
   },
 });
 
-export default defineConfig({ plugins: [react(), apiDev()] });
+// PORT is honoured so the dev server can be told where to bind rather than picking the next free port
+// itself. Vite's default is to auto-increment off 5173, which means a second session gets a port
+// nobody told it about — and a tool pointed at 5173 then quietly loads whatever is already there.
+export default defineConfig({
+  plugins: [react(), apiDev()],
+  server: { port: Number(process.env.PORT) || 5173 },
+});

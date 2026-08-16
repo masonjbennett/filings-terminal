@@ -153,6 +153,12 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     the current portion from eight filers that were already right — Coca-Cola fell $1.8bn, Comcast
     $5.9bn, RTX $3.4bn. It belongs **last**, where it only fires for a filer that tags nothing else.
 
+    A third case, added when the lending top lines went in: **a tag can be right for most filers and
+    wrong for one industry**, which is a different thing from a tag being wrong. `omitFor` on a line
+    removes named tags for a named industry, and the industry sets could not express it before —
+    `NOT_APPLICABLE` blanks a whole LINE, which is too blunt when the line is right and one candidate
+    on it is not. See rule 14.
+
     The related trap, deliberately **not** fixed: `LongTermDebt` means "including current maturities"
     at some filers and "excluding" at others — Duke tags it inclusively (non-current 80.1 + current
     7.1 = 87.2), Home Depot appears to use it for the non-current balance alone. Adding a
@@ -210,6 +216,34 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     corrected, 39 lost** — seven cells in total, all in the oldest column of two sheets and all minor
     lines (Disney's FY2018 investing and financing flows, a preferred dividend of zero). 228 values
     moved from an 8-K to a 10-K, 148 from a DEF 14A, 12 from a 6-K to a 20-F.
+
+14. **A lender files no revenue concept at all, and the obvious substitute is a profit measure.** A
+    business development company and a mortgage REIT rendered with a blank top line — and therefore
+    no margin, no growth, no asset turn and no EV/Revenue — because neither tags `Revenues` or any
+    ASC 606 concept. Carlyle Secured Lending and Ladder Capital are the two in the sweep.
+
+    `NetInvestmentIncome` is the obvious candidate for a BDC and is **wrong in exactly the way rule 9
+    is about**: it is struck AFTER operating expenses. Carlyle's is $102.7m against $255.6m of gross
+    investment income and $152.9m of expenses, so it would have put an operating profit in the revenue
+    row and made every margin beneath it meaningless. The line the filing calls total investment
+    income is `GrossInvestmentIncomeOperating`, and it also had to be added to `api/facts.js`'s KEEP —
+    the harness caught that as a still-blank row, which is the whole reason it drives the shipping
+    handler rather than a copy of it.
+
+    **Where the tag sits was decided by rule 11 and where it applies had to be invented.** Both new
+    tags go LAST, so they only fire for a filer nothing else reaches. That is not sufficient: a
+    depository files `InterestAndDividendIncomeOperating` too, as its GROSS interest income, and
+    filling the revenue row from it also switched off `DERIVED_BANK.revenue` — the reconstruction that
+    produces the correct bank top line of net interest income plus fees, which only runs when the
+    fetched row is empty. Five small banks moved to gross interest income and **not one of them looked
+    broken**: Hawthorn's FY2019 read $64m against a real $58m, with every margin under it rebased.
+    Hence `omitFor` on the line, and hence the standing rule — `full-diff.mjs` over all 167 filers
+    before and after, which is what showed 7 filers moving where 2 were intended. After the fix: **2
+    filers moved, 0 values changed, 95 appeared, 0 vanished.**
+
+    The row that results does not mean what its label says, so it says so: `tagNote` is `blankNote`'s
+    opposite — a note keyed to the newest column's RESOLVED TAG rather than to the row being empty, so
+    it appears only on the filers it describes. Rule 5's discipline applied to a figure that is there.
 
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
@@ -414,11 +448,19 @@ reorganised since. Lazy-loaded on opening the tab, so a reader who never asks pa
 **The claim the tab makes is that every table on it adds up**, and it is enforced rather than
 reported: a breakdown whose rows do not sum to the consolidated figure for the same period in the
 same filing is not shown. The consolidated line is printed under each block so the arithmetic is
-checkable on the page. That gate costs real tables — **17 of 30 filers swept keep a reportable-segment
-table** — and it is the right trade, because both ways this goes wrong produce a company half again
-its real size, and a reader cannot tell a good table from a bad one by looking.
+checkable on the page. That gate costs real tables — **24 of 30 filers swept keep a reportable-segment
+table**, up from 17 once the reconciliation's own rows were captured — and it is the right trade,
+because both ways this goes wrong produce a company half again its real size, and a reader cannot tell
+a good table from a bad one by looking.
 
-Five rules, each learned the same way as the others here:
+**The tolerance is 0.1%, and it was 1%.** On a $400bn company 1% is $4bn, bigger than most of the
+rows, and it let two tables through that a reader adding the column up would catch: Exxon's revenue by
+product sat $1.7bn under the consolidated line printed directly beneath it. The distribution says a
+looser number buys nothing, because it is not a distribution at all — **317 of the 336 cells shown foot
+to the DOLLAR**, 19 more are inside 0.05%, and everything else is wrong by a whole missing row. There
+is nothing in between. Tightening cost exactly one concept on one filer across the sweep.
+
+Eight rules, each learned the same way as the others here:
 
 1. **One breakdown axis per fact, with `srt:ConsolidationItemsAxis` permitted as a qualifier.** That
    axis says which VIEW a figure is — an operating segment, corporate, an elimination — rather than
@@ -457,17 +499,88 @@ Five rules, each learned the same way as the others here:
    `country:CN`, standard members with no such suffix; requiring it dropped the United States and
    China from a geographic breakdown and left "Other countries" behind.
 
-Where nothing reconciles the tab says so and links the filing, rather than showing a table it cannot
-stand behind. That is most often a filer whose segment revenue includes intersegment sales, or whose
-segment top line is a company extension — Bank of America tags
-`bac:RevenuesNetOfInterestExpenseFullTaxEquivalentBasis`, which no standard tag list can reach.
+6. **The reconciliation's own rows are rows, and they are not on the breakdown axis at all.**
+   Corporate, intersegment eliminations and "all other" are filed with `srt:ConsolidationItemsAxis`
+   ALONE and no segment member, so a pipeline that only looked at contexts carrying a breakdown member
+   never saw them — and the segments then sum to the company less that row. JPMorgan's came to
+   $178.6bn against $182.5bn, Procter & Gamble's to 98.9% of itself, Bank of America's to 102.7%.
+   All three foot **exactly** once the corporate row is on the page, which is the point: the row that
+   was missing is the row that makes the arithmetic work. This is what took coverage from 17 to 24.
+   Which table a reconciling row belongs to is the filer's own statement — the definition linkbase
+   declares it on the role, the same way it declares a member.
 
-Payloads come out at **0–11KB from instances of up to 17MB**. `t-seg.mjs` runs 4,633 assertions over
-the 30 filers, the load-bearing one being the reconciliation itself. One check had to be weakened
-after it fired: a segment legitimately *exceeds* the consolidated line when another row is negative,
-which is what a corporate-and-eliminations row usually is — AT&T's Communications is $27.8bn against
-$23.5bn of consolidated operating income, and Goldman's Global Banking & Markets $11.0bn against
-$10.7bn. Both correct, both flagged by a check that assumed the parts are each smaller than the whole.
+   Two things it must not do, and both were found by doing them:
+
+   - **`OperatingSegmentsMember` filed alone is the SUBTOTAL**, "the total of the operating segments",
+     not a row beside them. 14 of the 30 file one and adding it doubles the table. Name-matching is
+     not enough either, which is rule 10's warning arriving on a different axis: **Coca-Cola files its
+     $48.806bn segment total under `MaterialReconcilingItemsMember`**, the member every other filer
+     uses for a genuine reconciling item. So the test is the VALUE — a reconciling row carrying the
+     sum of the segments beside it is the subtotal restated — and it is decided against the segment
+     rows in that table, not against the consolidated figure, which is what the gate is for.
+   - **A breakdown that already closes does not get one.** If the rows already sum to consolidated,
+     the reconciling item is inside them and adding it beside them is the same double count from the
+     other end. AT&T's revenue categories foot to $122.43bn exactly and its linkbase also declares
+     `CorporateAndReconcilingItems` on that role, so its $458m went in and left a table summing to
+     $122.89bn under a printed consolidated line of $122.43bn — inside the old 1% gate, which is the
+     worst way to be wrong here. **"Already closes" means to the dollar, not within the gate's
+     tolerance**: reusing the gate's number was the first version and cost AT&T's segment revenue the
+     row that closes it, because 0.37% short is inside 1%. Decided per CONCEPT, which is how a footnote
+     is actually laid out — Apple's revenue by geography foots without a corporate row because every
+     dollar of revenue belongs to a region, while its operating income by geography cannot, because
+     corporate expense is unallocated by construction. Its footnote prints the corporate line against
+     operating income and not against revenue, and so does this.
+
+7. **One member, one concept, one period is ONE row — a filer files several VIEWS of it.**
+   Caterpillar files Construction Industries three times for the same year: external sales, the
+   intersegment elimination, and the total of the two. Summed as filed its revenue came to **345% of
+   the company**. The qualifier axis was "permitted" but never used to choose, so every view was added
+   up.
+
+   The UNQUALIFIED fact leads, and that was not the first guess. `OperatingSegmentsMember` is the
+   measure the ASC 280 reconciliation starts from, so it looked like the natural head of the list, and
+   it cost Exxon its table: Exxon files the three revenue lines of its income statement unqualified and
+   ALSO tags the operating-segment portion of one of them — **$323.820bn against the statement's own
+   $323.905bn** — under that member. Ranked that way the table swapped one line for a subset of itself.
+   An unqualified fact is the figure as the statement presents it; a qualified one is a view of it.
+   Measured both ways over the 30 filers, at the 1% gate that was still in force when the two orders
+   were compared: unqualified-first foots **320 of 342 cells to the dollar against 302**, and keeps one
+   more filer and two more concepts. Choosing one view for the whole
+   TABLE was also tried and is wrong — different members legitimately carry different views, and it
+   dropped AT&T's corporate row and left D&A $76m short. The choice is per member. Which views were
+   not shown is printed beside the table, because it is why a figure here can differ from the footnote.
+
+   Both rules here match the prefix as `[\w-]+`, not `\w+`, and that is not a detail: the member they
+   are about is `us-gaap:OperatingSegmentsMember` and the standard prefix contains a **hyphen**.
+   Written `\w+` neither rule ever fires on the one member it exists for, and neither fails loudly —
+   the subtotal simply renders as a row called "Operating Segments" beside the segments it is the
+   total of, which is how it was caught.
+
+8. **A row label can be the taxonomy's DEFINITION rather than a name.** JPMorgan's corporate row came
+   out of the label linkbase as "Segment Reporting, Reconciling Item, Excluding Corporate Nonsegment" —
+   67 characters into a sticky column that does not wrap, which is how three year-columns got pushed
+   off an eight-year sheet once already. Linde's read "Corporate Segment and Other Operating Segment".
+
+   Which label is which cannot be told from the ROLE it sits in: Coca-Cola files a `terseLabel` whose
+   text is the standard label verbatim, so preferring terse and falling back does nothing. Nor can the
+   member simply be overridden, because most filers do supply a real name for exactly these members
+   and it is better than a generic one — UnitedHealth calls its intersegment row "Optum Eliminations",
+   Bank of America calls its corporate row "All Other". So the match is on the taxonomy's **exact
+   string**, collected from the linkbases themselves; anything else is the filer's own words and is
+   kept. Same job the concept `LABEL` map does, and the reason `t-seg.mjs` now asserts on label length.
+
+Where nothing reconciles the tab says so and links the filing, rather than showing a table it cannot
+stand behind. The six left are Realty Income (a single-segment REIT), Exxon (segment × geography
+cross-tabs only), Caterpillar, GE, NextEra and Blackstone.
+
+Payloads come out at **0–17KB from instances of up to 17MB**. `t-seg.mjs` runs 10,932 assertions over
+the 30 filers, the load-bearing one being the reconciliation itself — **at the shipping tolerance, not
+a looser one**. A suite that asserts 1% while the code gates at 0.1% is testing nothing; at 1% this one
+passed on Exxon's $1.7bn gap. One check had to be weakened after it fired: a segment legitimately
+*exceeds* the consolidated line when another row is negative, which is what a corporate-and-eliminations
+row usually is — AT&T's Communications is $27.8bn against $23.5bn of consolidated operating income, and
+Goldman's Global Banking & Markets $11.0bn against $10.7bn. Both correct, both flagged by a check that
+assumed the parts are each smaller than the whole.
 
 ## Industry overlays
 
@@ -488,6 +601,13 @@ which tags are present — a corporate with a finance arm reports loans too.
   that holds exactly at JPMorgan; and Wells Fargo's and American Express's loan balances are
   company extensions, so they stay blank. Amex's revenue also moved $41bn → $72bn, the same ASC 606
   slice problem as MetLife.
+
+  The reconstruction holds even where it produces a startling number, and it is worth knowing that
+  before assuming it broke. **Bank of Marin's FY2025 revenue reads $29m against $106m of net interest
+  income**, because its non-interest income is **minus $76.7m** — its statement carries *"Net losses on
+  sale of investment securities (88,202)"* from a portfolio restructuring. NII + fees is the reported
+  truth; a bank really can earn a quarter of its net interest income in a year it sells its securities
+  book at a loss. Checked against the filing, not assumed either way.
 - **Insurance** (SIC 6300–6411) — DONE, as **four** overlays rather than one. See below.
 - **REIT** (SIC 6798) — DONE. Property operations, FFO, real estate and REIT ratios. See below.
 - **Broker-dealer / advisory / alt manager** (SIC 6200–6299) — DONE. One code range, three
@@ -666,9 +786,11 @@ identity had to learn about mezzanine equity before it could be trusted.
 What the population is actually like, none of it a bug: **10 filers have no revenue at all** (six
 clinical-stage biotechs, a development-stage miner, two SPACs), **two SPACs resolve no columns** and
 render empty, and **18 ratios sit outside any plausible range** because a biotech with $3m of revenue
-and $150m of losses really does have a −5,041% EBITDA margin. Two coverage gaps are real and unfixed:
-a mortgage REIT (Ladder) and a BDC (Carlyle Secured Lending) have no revenue line, because theirs is
-`InterestAndDividendIncomeOperating` and `NetInvestmentIncome` — neither in any list here.
+and $150m of losses really does have a −5,041% EBITDA margin. The two coverage gaps it found — a
+mortgage REIT (Ladder) and a BDC (Carlyle Secured Lending) with no revenue line — are **closed by rule
+14**, which also corrects the tag this paragraph originally named: a BDC's top line is
+`GrossInvestmentIncomeOperating`, and `NetInvestmentIncome` is struck after operating expenses.
+Findings **32 → 30**.
 
 ### Bottom-up EBIT: tested against 422 filer-years, and rejected
 
@@ -699,12 +821,63 @@ wanted explicitly. As a global rule it is not. It would also have reached only 1
 Phillips 66, Nike, GE and Newmont tag no interest expense or no pre-tax income and stay blank either
 way. `t-ebit.mjs` in the session scratchpad reruns the whole calibration.
 
-Four findings left open, all single filers: Williams tags `Revenues` $11.95bn against a 606 tag of
-$14.90bn (needs the filing to adjudicate); Altria's income statement does not foot on the page because
-excise tax sits inside its cost of sales but outside `CostOfGoodsAndServicesSold`, understating the
-COGS row while gross profit and margin stay right; Instacart's balance sheet is $0.2bn out; and
-Colgate's ROE reads 3948% on near-zero equity. The last two reappear in the LTM column, which is the
-right behaviour — a column that inherits the sheet's engine inherits its open questions too.
+### The four single-filer findings, adjudicated against the filings
+
+All four were resolved by reading the rendered statement out of the 10-K rather than reasoning from
+companyfacts — which is the point: two of them were undecidable from the facts alone because the
+question was what the STATEMENT says, and companyfacts carries facts without their presentation.
+`rfile.mjs` in the session scratchpad pulls any R-file by name. **Two were the sheet being right and a
+check being wrong, one is a measured rejection, and one is a hard limit of the data source.**
+
+- **Williams — the sheet is correct, and the check was the mirror of MetLife.** Its consolidated
+  statement of income reads *"Revenues $11,950"* and that is what the sheet shows. The $14,899m is the
+  **"Total revenues from contracts with customers"** line in its revenue-disaggregation footnote — a
+  *component*, which exceeds the top line because the other component (Gas & NGL marketing
+  derivatives) is negative. Rule 9 put `Revenues` first and rule 9 is right here for the opposite
+  reason it was right at MetLife: the 606 figure was **3%** of MetLife's top line and is **125%** of
+  Williams'. Essential Utilities is the same shape — $5.1bn against a filed **$2,474,615 thousand**.
+
+  So the `t-corp` check was wrong, not the engine, and its first form said *any* revenue-ish tag
+  exceeding the chosen one means a slice was picked. That is only true when the other tag is a
+  component **of the one chosen**. It now fires only on the actual failure: the sheet resolved
+  something other than `Revenues` while `Revenues` exists and is larger. Findings **4 → 3** on the
+  mega sweep and **30 → 29** on the small-cap one, with no engine change at all.
+
+- **Altria — the fix was measured and rejected, and it would have broken Philip Morris by $53bn.**
+  Altria's statement presents *Net revenues 23,279 · Cost of sales 5,597 · Excise taxes on products
+  3,140 · Gross profit 14,542*, and it tags that excise line `us-gaap:OtherCostOfOperatingRevenue`.
+  Subtracting it makes Altria foot exactly. It is not a general rule: **that tag means something
+  different at every filer that uses it** — AT&T's is $25.4bn of cost of services (with no
+  `CostOfGoodsAndServicesSold` at all), Netflix's $5.7bn, Deere's $82m. And its sibling
+  `ExciseAndSalesTaxes` is worse: **Philip Morris files $53.21bn of it against $40.65bn of total
+  revenue**, because PM's revenue is already net of excise and the line is a separate disclosure.
+  `revenue − cogs = gross profit` holds at PM exactly; subtracting the excise gives **minus
+  $25.93bn**. Tested across all eight filers that report either tag: the subtraction is right for
+  Altria alone, right-by-doing-nothing for PM, and unverifiable for the six that tag no gross profit.
+  Same shape as rule 8 and the bottom-up EBIT rejection — right for the filer that prompted it,
+  catastrophic elsewhere. Altria's COGS row stays understated and its gross profit and margin stay
+  right, which is the honest version.
+
+- **Instacart — it IS mezzanine equity, and it is unreachable.** The earlier note that it was not was
+  wrong. Its balance sheet ends *"Total liabilities, redeemable convertible preferred stock, and
+  stockholders' equity 3,687"*, and the missing $195m is **$196m of Series A redeemable convertible
+  preferred**, tagged `us-gaap:TemporaryEquityCarryingAmountAttributableToParent` — the tag already
+  FIRST in the mezzanine row's list. It does not arrive because Instacart tags it **only inside a
+  class-of-stock dimension**, and companyfacts carries no dimensional data at all: the same fact the
+  Segments tab exists because of. In 2022 the balance was one undimensioned line and it resolved
+  correctly at $2,822m; from 2023 the series is broken out and every occurrence carries the axis.
+  Nothing in `api/facts.js` can reach it — only the XBRL instance can, which is a different data path
+  and a different function. This is a **limit with a named cause**, not an open question.
+
+- **Colgate — 3948% is arithmetically correct.** Its balance sheet foots to the dollar in all eight
+  columns, and its parent equity really is **$54m**: −$102m in 2018, $117m in 2019, $54m in 2025, the
+  residue of decades of buybacks. Net income $2,132m over $54m is 3948%, and the whole equity-
+  denominated block moves with it — Debt/equity runs −62.29x to 147.89x. ROIC (36.2%) and ROA (13.1%)
+  are steady because their denominators are not equity. Same category as the biotech's −5,041% EBITDA
+  margin: the population is genuinely strange, not broken. It is left as filed, because suppressing a
+  correctly derived number is the one thing this page must not do — but it reads as a broken tool on a
+  household name, and whether a near-zero denominator deserves a mark is a presentation question that
+  is still open.
 
 ## Deploying
 
@@ -742,21 +915,27 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Segment coverage.** 17 of 30 keep a reportable-segment table, and the 13 that do not are not a
-   uniform problem: some tag a company extension as their segment top line, some report segment
-   revenue including intersegment sales with the eliminations row on a different member. Capturing
-   `IntersegmentEliminationMember` as an explicit row would let several of them reconcile honestly
-   rather than being dropped. Worth doing before anything else here, and `t-seg.mjs` measures it.
-2. **`Revenues` is not always the total** — Williams tags it at $11.95bn against a 606 figure of
-   $14.90bn. Essential Utilities looked like the second case and turned out to be rule 13 instead,
-   so this is back to one filer and still needs the filing to adjudicate; nothing in its own data
-   contradicts either number.
-3. **Revenue for BDCs and mortgage REITs** — `InterestAndDividendIncomeOperating` and
-   `NetInvestmentIncome` are in no list, so Ladder and Carlyle Secured Lending have no top line.
-4. **The three remaining single-filer findings** — Altria, Instacart, Colgate. Rhythm turned out to
-   be mezzanine equity and is closed.
-5. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
-   than another tag.
+1. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
+   than another tag, and it is now the oldest thing on this list.
+2. **Whether a near-zero denominator deserves a mark.** Colgate's 3948% ROE is correct and reads as a
+   broken tool; so does Debt/equity swinging −62.29x to 147.89x on the same $54m. Nothing should be
+   suppressed, but nothing currently says why either. Related: the small-cap sweep's 18 out-of-range
+   ratios are all correct for what they describe.
+3. **Mezzanine equity tagged inside a class-of-stock dimension** is invisible to companyfacts, which
+   is why Instacart's balance sheet is $195m out. Reaching it means reading the XBRL instance for
+   balance-sheet facts, which `api/segments.js` already does for breakdowns — a real option, and a
+   much larger one than it looks.
+4. **The last six segment filers**, which are now genuinely six different problems rather than one:
+   Realty Income tags a single `ReportableSegment` member and is a one-segment company; Exxon files
+   segment × geography and segment × product cross-tabs with no single-axis segment table at all;
+   Caterpillar reports intersegment eliminations PER SEGMENT rather than as one reconciling row, so
+   rule 7 takes the total-including-intersegment view and there is nothing left to subtract it with;
+   GE, NextEra and Blackstone each need their own look. A per-segment elimination could be summed
+   into one row, which is the obvious next move and should be measured before it is believed.
+5. **Segment coverage beyond the newest 10-K.** Scope is three years by construction; a reader
+   comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
+   and a structure that has usually been reorganised, which is why it was not done — but the tab now
+   carries enough filers that the question is worth re-asking.
 
 ## A note on how this got built
 
@@ -791,3 +970,14 @@ same session's second one came from an existing tool rather than a new eye: addi
 row to the comps workbook put company names inside the frozen data area, and the Excel check written
 for a different export refused it as text in a numeric column. Checks outlive the thing they were
 written for, which is an argument for making them structural rather than specific.
+
+The segment-coverage session's two are both a check agreeing with the code for the wrong reason.
+`t-seg.mjs` asserted reconciliation at 1% because the handler gated at 1%, so the suite could never
+disagree with it — and both were wrong together, passing a table $1.7bn short of the consolidated line
+printed directly beneath it. **A test that shares a constant with the code it tests is not a second
+opinion**; the number is written down once now and the suite reads the same one. The other is smaller
+and worse: two new rules matched the QName prefix as `\w+`, and the member they exist for is
+`us-gaap:OperatingSegmentsMember`, whose standard prefix contains a **hyphen**. Neither rule ever
+fired, neither failed, 8,987 assertions passed, and the only symptom was a row on the page labelled
+"Operating Segments" sitting beside the four segments it is the total of. Looking at the page found it
+in seconds.

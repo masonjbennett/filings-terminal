@@ -70,7 +70,14 @@ function fillCol(facts, sections, industry, get) {
   const v = {}, meta = {};
   for (const sec of sections) for (const line of sec.lines) {
     if (line.how !== "fetched" || !line.tags) continue;
-    const got = get(line, isInstant(sec, line));
+    // A tag can be right for most filers and wrong for one industry, and the industry sets so far
+    // have only ever been able to blank a whole LINE (`NOT_APPLICABLE`) — which is too blunt when the
+    // line is right and one candidate on it is not. `InterestAndDividendIncomeOperating` is a
+    // mortgage REIT's top line and a bank's GROSS interest income, and for a bank it also suppressed
+    // the reconstruction that produces the correct one.
+    const line2 = line.omitFor && line.omitFor[industry]
+      ? { ...line, tags: line.tags.filter(t => !line.omitFor[industry].includes(t)) } : line;
+    const got = get(line2, isInstant(sec, line));
     v[line.k] = got.value; meta[line.k] = got;
   }
   const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };

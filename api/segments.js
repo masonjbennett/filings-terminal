@@ -37,6 +37,42 @@ const VIEWS = [
 // contexts, and the single largest block of dimensional data in the filing.
 const QUALIFIER = "srt:ConsolidationItemsAxis";
 
+// That axis does two jobs, and both of them break a table if it is only ever "permitted".
+//
+// RIDING ALONGSIDE A MEMBER it says which view of that segment a figure is, and a filer routinely
+// files two or three views of the SAME row for the same period. Caterpillar files Construction
+// Industries three times — external sales, the intersegment elimination, and the total of the two —
+// so the rows summed to 345% of the company. One member, one period, one concept is ONE row, and
+// which view of it to take has to be decided rather than added up.
+//
+// The UNQUALIFIED fact leads. That was not the first guess: `OperatingSegmentsMember` is the measure
+// the ASC 280 reconciliation starts from, so it looked like the natural head of the list, and it cost
+// Exxon its table. Exxon files the three revenue lines of its income statement unqualified and ALSO
+// tags the operating-segment portion of one of them — $323.820bn against the statement's own
+// $323.905bn — under that member. Ranked that way the table quietly swapped one line for a subset of
+// itself and read $1.0bn short of a consolidated figure printed directly beneath it. An unqualified
+// fact is the figure as the statement presents it; a qualified one is a view of it, so the plain one
+// is the table's own number. Measured both ways over the 30 filers: unqualified-first foots 320 of 342
+// cells to the dollar against 302, and keeps one more filer and two more concepts.
+//
+// The prefix pattern is `[\w-]+`, not `\w+`, and that is not a detail: the member these two rules are
+// about is `us-gaap:OperatingSegmentsMember` and the standard prefix contains a HYPHEN. Written `\w+`
+// both rules simply never fire on the one member they exist for, and neither fails loudly — the rank
+// silently falls through to "component" and the subtotal renders as a row called "Operating Segments"
+// sitting beside the segments it is the total of.
+const QUAL_RANK = q => (!q ? 0 : /^(?:[\w-]+:)?OperatingSegmentsMember$/.test(q) ? 1 : 2);
+
+// FILED ALONE, with no member on any breakdown axis, it is the reconciliation's own rows — corporate,
+// intersegment eliminations, "all other". Those are rows of the table and were invisible to a
+// pipeline that only looked at contexts carrying a breakdown member, which is why JPMorgan's segments
+// summed to $178.6bn against $182.5bn and Procter & Gamble's to 98.9% of itself. Both foot exactly
+// once the corporate row is on the page.
+//
+// One value alone there is NOT a row: `OperatingSegmentsMember` means "the total of the operating
+// segments", so it is the subtotal the table already contains, and 14 of the 30 filers swept file
+// one. Adding it doubles them.
+const SEGMENT_TOTAL = /^(?:[\w-]+:)?OperatingSegments(?:ExcludingIntersegmentElimination)?Member$/;
+
 // The concepts a segment build is made of, and nothing else — the same allow-list discipline
 // api/facts.js uses, for the same reason. Every table in a filing that touches one of these axes
 // becomes a candidate view, and most of them are disclosures nobody puts in a model: goodwill
@@ -77,6 +113,25 @@ const LABEL = {
 };
 
 const ANNUAL_MIN = 300, ANNUAL_MAX = 400;
+// How close "the parts equal the whole" has to be for the gate to show a table at all.
+//
+// It was 1%, which on a $400bn company is $4bn — bigger than most of the rows. The page prints the
+// consolidated line under every table precisely so a reader can add the column up, and at 1% a table
+// that visibly does not add up passes: Exxon's revenue by product was $1.7bn short and Johnson &
+// Johnson's cost of sales 0.44%. The distribution says a looser number buys nothing, because it is
+// not a distribution at all — 320 of the 342 cells shown foot to the DOLLAR, 19 more are inside
+// 0.05%, and the rest are wrong by a whole missing row. Tightening to 0.1% costs exactly one concept
+// on one filer across the sweep and makes the claim on the page true.
+const TOL = 0.001;
+// And how close it has to be to say a breakdown ALREADY closes, so a reconciling row would be a
+// second copy of something inside it. That is a different question and it wants a far tighter number:
+// measured over the 345 (view, concept, period) cells the sweep shows, 312 foot to the DOLLAR and the
+// rest are wrong by a real reconciling item. There is nothing in between, so the test is exactness.
+//
+// Reusing TOL here was written first and was wrong in the one way that costs a table: AT&T's revenue
+// by segment is 0.37% short of consolidated, which is its corporate revenue missing, and 0.37% is
+// inside 1% — so the table was declared closed and the $458m row that closes it exactly was dropped.
+const EXACT = 1e-6;
 const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const pad = c => String(c).padStart(10, "0");
 // Labels arrive as filed, entities and all: Walmart's segment is "Walmart&#160;U.S." and Caterpillar
@@ -201,6 +256,26 @@ function parseLabels(xml) {
   return out;
 }
 
+// A few members carry the TAXONOMY'S OWN DEFINITION where a name should be, and it is a definition
+// rather than a name: JPMorgan's corporate row came out as "Segment Reporting, Reconciling Item,
+// Excluding Corporate Nonsegment" — 67 characters into a sticky label column that does not wrap, which
+// is how three year-columns got pushed off an eight-year sheet once already. Linde's corporate segment
+// reads "Corporate Segment and Other Operating Segment".
+//
+// Which label is which cannot be told from the ROLE it sits in — Coca-Cola files a terseLabel whose
+// text is the standard label verbatim — and it must not be told by overriding the member outright,
+// because most filers do supply a real name for exactly these members and it is better than a generic
+// one: UnitedHealth calls its intersegment row "Optum Eliminations" and Bank of America calls its
+// corporate row "All Other". So the match is on the taxonomy's exact string, collected from the
+// linkbases themselves. Anything else is the filer's own words and is kept.
+const TAXONOMY_LABEL = {
+  "Segment Reporting, Reconciling Item, Corporate Nonsegment": "Corporate",
+  "Segment Reporting, Reconciling Item, Excluding Corporate Nonsegment": "Reconciling items",
+  "Segment Reporting, Reconciling Item": "Reconciling items",
+  "Consolidation, Eliminations": "Eliminations",
+  "Corporate Segment and Other Operating Segment": "Corporate and other",
+};
+
 export default async function handler(req, res) {
   const cik = String(req.query.cik || "").replace(/\D/g, "");
   if (!cik || cik.length > 10) return res.status(400).json({ error: "cik must be digits" });
@@ -254,9 +329,40 @@ export default async function handler(req, res) {
       if (onAxis(c) && c.start && days(c.start, c.end) >= ANNUAL_MIN && days(c.start, c.end) <= ANNUAL_MAX) annual.add(c.end);
     const periods = [...annual].sort().slice(-4);            // oldest → newest, as the sheet reads
 
+    // The reconciliation's own rows: contexts carrying the qualifier axis and NOTHING else. They
+    // belong to no breakdown axis, so they are collected once and offered to every view — which role
+    // they are a row of is settled below, by the definition linkbase, exactly as a member is.
+    const reconCtx = new Map();
+    for (const [id, c] of ctxs) {
+      if (c.instant || !periods.includes(c.end) || c.n !== 1 || !c.dims[QUALIFIER]) continue;
+      if (!c.start || days(c.start, c.end) < ANNUAL_MIN || days(c.start, c.end) > ANNUAL_MAX) continue;
+      if (SEGMENT_TOTAL.test(c.dims[QUALIFIER])) continue;
+      reconCtx.set(id, c);
+    }
+    const reconFacts = reconCtx.size ? parseFacts(xml, id => reconCtx.has(id)) : [];
+    const reconPresent = new Set([...reconCtx.values()].map(c => c.dims[QUALIFIER]));
+
+    // The consolidated value of every concept, from an UNDIMENSIONED context in the same instance.
+    // This is what the gate below reconciles against, and taking it from the same document means there
+    // is no second source to disagree and no scaling question to get wrong. It is read HERE, before
+    // the views are built, because a reconciling row cannot be judged without it — see below.
+    const plain = new Set();
+    for (const [id, c] of ctxs) if (!c.n && !c.instant && c.start && periods.includes(c.end)) plain.add(id);
+    const consolidated = {};
+    for (const f of parseFacts(xml, id => plain.has(id))) {
+      const end = ctxs.get(f.ctx).end;
+      if (days(ctxs.get(f.ctx).start, end) < ANNUAL_MIN) continue;
+      (consolidated[f.tag] = consolidated[f.tag] || {})[end] = f.val;
+    }
+
     const views = [];
     const wantedTags = new Set();
-    const nameOf = q => labels[q] || unent(q.split(":").pop().replace(/Member$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+    const nameOf = q => TAXONOMY_LABEL[labels[q]]
+      || labels[q] || unent(q.split(":").pop().replace(/Member$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+    // A group's line items, where the role declares any. Applied to a reconciling row for the same
+    // reason it is applied to a segment row: a role that declares its concepts is saying which table
+    // this is, and a fact for a different one belongs to a different table.
+    const wantedHere = (g, tag) => !g.concepts.size || g.concepts.has(tag);
 
     for (const v of VIEWS) {
       // Contexts on this axis, one breakdown axis only, with the qualifier permitted.
@@ -278,11 +384,17 @@ export default async function handler(req, res) {
       const groups = roles.filter(r => r.axes.has(v.axis) && r.members.some(m => present.has(m)))
         .map(r => ({ role: r.role, kids: r.kids,
           members: r.members.filter(m => present.has(m)),
+          // A role declares its reconciling members alongside its segments, so which table the
+          // corporate row belongs to is the filer's own statement rather than a guess. Where the
+          // linkbase is missing the axis-wide fallback takes them all, and the gate below is what
+          // decides whether that was right.
+          recons: r.members.filter(m => reconPresent.has(m)),
           // Whatever the role declares that is NOT one of this filing's dimension members is a line
           // item of that table. Used to keep Apple's geographic revenue out of its geographic
           // long-lived-assets table, which shares all three of its members.
-          concepts: new Set(r.members.filter(m => !present.has(m))) }));
-      if (!groups.length) groups.push({ role: null, kids: new Map(), members: [...present], concepts: new Set() });
+          concepts: new Set(r.members.filter(m => !present.has(m) && !reconPresent.has(m))) }));
+      if (!groups.length) groups.push({ role: null, kids: new Map(), members: [...present],
+        recons: [...reconPresent], concepts: new Set() });
 
       for (const g of groups) {
         // A parent only DOUBLE-COUNTS when its children are also in the same table, and that has to
@@ -297,38 +409,92 @@ export default async function handler(req, res) {
           return inside && [...inside].some(c => inGroup.has(c));
         });
         const drop = new Set(subtotals);
-        const members = g.members.filter(m => !drop.has(m)).map(q => ({ q, label: nameOf(q) }));
-        if (!members.length) continue;
+        const segMembers = g.members.filter(m => !drop.has(m)).map(q => ({ q, label: nameOf(q) }));
+        if (!segMembers.length) continue;
+        // Reconciling rows go UNDER the segments, which is where the footnote prints them.
+        const members = segMembers.concat(g.recons.map(q => ({ q, recon: true,
+          label: nameOf(q) })));
         const mi = new Map(members.map((m, n) => [m.q, n]));
 
-        const out = [];
+        // One member, one concept, one period is ONE row, and a filer may have filed several views of
+        // it. Pick ONE view for the whole column rather than one per row: a total that takes some
+        // segments including intersegment sales and others excluding them is neither figure, and it
+        // is wrong by an amount nothing on the page can explain.
+        //
+        // Choosing ONE view for the whole table was tried and is wrong, because different members
+        // legitimately carry different views: AT&T's two segments are `OperatingSegments` and its
+        // corporate row is `CorporateAndReconcilingItems`, so a table-wide choice dropped the
+        // corporate row and left D&A $76m short. The choice is per member, by rank.
+        const best = new Map(), otherViews = new Set();
         for (const f of facts) {
           const c = keep.get(f.ctx), m = mi.get(c.dims[v.axis]);
-          if (m == null) continue;
-          if (g.concepts.size && !g.concepts.has(f.tag)) continue;
-          wantedTags.add(f.tag);
-          out.push({ t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit,
-            c: c.dims[QUALIFIER] ? c.dims[QUALIFIER].split(":").pop().replace(/Member$/, "") : null });
+          if (m == null || !wantedHere(g, f.tag)) continue;
+          const q = c.dims[QUALIFIER] || "", key = `${f.tag}|${m}|${c.end}`;
+          const prev = best.get(key);
+          if (prev) otherViews.add(QUAL_RANK(q) < QUAL_RANK(prev.q) ? prev.q : q);
+          if (prev && QUAL_RANK(q) >= QUAL_RANK(prev.q)) continue;
+          best.set(key, { t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit, q });
         }
-        if (!out.length) continue;
+        if (!best.size) continue;
+        const out = [...best.values()].map(({ q, ...f }) => ({ ...f,
+          c: q ? q.split(":").pop().replace(/Member$/, "") : null }));
+
+        // A reconciling row is an ADDENDUM to the segments, so one carrying their SUM is not a row at
+        // all — it is the subtotal restated, and adding it doubles the table. Coca-Cola tags exactly
+        // that: its $48.806bn of total reportable-segment revenue is filed under
+        // `MaterialReconcilingItemsMember`, the same member every other filer uses for a genuine
+        // reconciling item. So the test is the value, not the name — the same reason rule 10 says a
+        // member called "Total" proves nothing — and it is decided against the segment rows in this
+        // table rather than against the consolidated figure, which is what the gate is for.
+        const segSum = {};
+        for (const f of out) if (f.m < segMembers.length)
+          segSum[`${f.t}|${f.p}`] = (segSum[`${f.t}|${f.p}`] || 0) + f.v;
+        const restated = new Set();
+        for (const f of reconFacts) {
+          const c = reconCtx.get(f.ctx), m = mi.get(c.dims[QUALIFIER]);
+          if (m == null || !wantedHere(g, f.tag)) continue;
+          const s = segSum[`${f.tag}|${periods.indexOf(c.end)}`];
+          if (s != null && s !== 0 && Math.abs(f.val - s) <= Math.abs(s) * 1e-6) restated.add(c.dims[QUALIFIER]);
+        }
+        // A reconciling row belongs to a breakdown that does NOT already close on its own. Where the
+        // rows already sum to the consolidated figure, the reconciling item is inside them, and adding
+        // it beside them is the same double count the subtotal rule exists to stop — just reached from
+        // the other end. AT&T is the case: its revenue categories foot to $122.43bn exactly, and its
+        // linkbase also declares `CorporateAndReconcilingItems` on that role, so the corporate $458m
+        // went in and left a table summing to $122.89bn under a printed consolidated line of $122.43bn.
+        // It survived the gate — 0.38% is inside the tolerance — which is the worst way to be wrong
+        // here, because the page's whole claim is that a reader can add the column up.
+        //
+        // This is decided PER CONCEPT, not per table, and that is not a compromise: it is how a
+        // footnote is actually laid out. Apple's revenue by geography foots without a corporate row
+        // because every dollar of revenue belongs to a region, while its operating income by geography
+        // cannot, because corporate expense is unallocated by construction. Its footnote prints the
+        // corporate line against operating income and not against revenue, and so does this.
+        const closes = (tag, p) => {
+          const con = (consolidated[tag] || {})[periods[p]];
+          const s = segSum[`${tag}|${p}`];
+          return con != null && con !== 0 && s != null && Math.abs(s / con - 1) <= EXACT;
+        };
+        for (const f of reconFacts) {
+          const c = reconCtx.get(f.ctx), m = mi.get(c.dims[QUALIFIER]);
+          if (m == null || restated.has(c.dims[QUALIFIER]) || !wantedHere(g, f.tag)) continue;
+          const p = periods.indexOf(c.end);
+          // Only concepts the segments themselves report. A reconciling row for a line no segment
+          // carries is a footnote of its own, and printing it under a table it does not belong to
+          // would break the arithmetic the table is shown for.
+          if (segSum[`${f.tag}|${p}`] == null || closes(f.tag, p)) continue;
+          out.push({ t: f.tag, m, p, v: f.val, u: f.unit,
+            c: c.dims[QUALIFIER].split(":").pop().replace(/Member$/, "") });
+        }
+        for (const f of out) wantedTags.add(f.t);
         views.push({ id: v.id, axis: v.axis, role: g.role,
           title: v.title, source: g.role ? (roleNames[g.role] || null) : null,
-          members, facts: out, subtotals: subtotals.map(nameOf) });
+          members, facts: out, subtotals: subtotals.map(nameOf),
+          otherViews: [...otherViews].filter(Boolean).map(q => q.split(":").pop().replace(/Member$/, "")) });
       }
     }
 
-    // The consolidated value of every concept a view uses, from an UNDIMENSIONED context in the same
-    // instance. This is what everything below reconciles against, and taking it from the same
-    // document means there is no second source to disagree and no scaling question to get wrong.
-    const plain = new Set();
-    for (const [id, c] of ctxs) if (!c.n && !c.instant && c.start && periods.includes(c.end)) plain.add(id);
-    const consolidated = {};
-    for (const f of parseFacts(xml, id => plain.has(id))) {
-      if (!wantedTags.has(f.tag)) continue;
-      const end = ctxs.get(f.ctx).end;
-      if (days(ctxs.get(f.ctx).start, end) < ANNUAL_MIN) continue;
-      (consolidated[f.tag] = consolidated[f.tag] || {})[end] = f.val;
-    }
+    for (const t of Object.keys(consolidated)) if (!wantedTags.has(t)) delete consolidated[t];
 
     // ── The gate: a breakdown is shown only if it ADDS UP ──────────────────────────────────────
     //
@@ -345,7 +511,6 @@ export default async function handler(req, res) {
     // too. This DOES drop real tables, Microsoft's product disaggregation among them; that is the
     // trade this file keeps making, because "we do not show this" is recoverable and a segment table
     // reading 142% of the company is not.
-    const TOL = 0.01;
     const reconciles = (view, tag) => {
       let tested = 0;
       for (let p = periods.length - 1; p >= 0; p--) {

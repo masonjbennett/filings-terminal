@@ -387,8 +387,12 @@ export default function App() {
         out.push([v.source || v.title, ...segs.periods].join("\t"));
         for (const t of v.concepts) {
           out.push(segs.conceptLabels[t] || t);
+          // A reconciling row is marked here too. The page distinguishes it with a chip, and a copy
+          // that drops the distinction hands someone a column of segments with a corporate line
+          // hidden among them — the same mistake as the comps table throwing away a blank's status.
           for (const [mi, m] of v.members.entries())
-            out.push([m.label, ...segs.periods.map((_, pi) => { const f = v.facts.find(x => x.t === t && x.m === mi && x.p === pi); return f ? f.v : ""; })].join("\t"));
+            out.push([m.label + (m.recon ? " (reconciling item)" : ""),
+              ...segs.periods.map((_, pi) => { const f = v.facts.find(x => x.t === t && x.m === mi && x.p === pi); return f ? f.v : ""; })].join("\t"));
           out.push(["Consolidated", ...segs.periods.map(p => (segs.consolidated[t] || {})[p] ?? "")].join("\t"));
         }
         out.push("");
@@ -782,10 +786,10 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
 // come from companyfacts, because companyfacts carries no dimensional data at all.
 //
 // The one claim the tab makes is that EVERY TABLE HERE ADDS UP: api/segments.js drops any breakdown
-// whose rows do not sum to the consolidated figure for the same period in the same filing. That
-// costs real tables — 17 of 30 filers swept keep a reportable-segment table — and the ones it drops
-// are dropped for a reason worth stating rather than hidden, because a segment table reading 142% of
-// the company is the failure this whole project exists to avoid.
+// whose rows do not sum to the consolidated figure for the same period in the same filing, to within
+// 0.1%. That costs real tables — 24 of 30 filers swept keep a reportable-segment table — and the ones
+// it drops are dropped for a reason worth stating rather than hidden, because a segment table reading
+// 142% of the company is the failure this whole project exists to avoid.
 function SegmentTables({ segs, S }) {
   if (segs.loading) return <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12, padding: "18px 0" }}>Reading the XBRL instance…</p>;
   if (segs.err) return <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12, padding: "18px 0" }}>{segs.err}</p>;
@@ -801,7 +805,10 @@ function SegmentTables({ segs, S }) {
       <br />
       <span style={{ color: C.ink2 }}>Every table below sums to the consolidated figure beneath it.</span>{" "}
       A breakdown that does not reconcile is not shown — a subtotal row counted twice, or segment revenue that
-      includes intersegment sales, both read as a company half again its real size.
+      includes intersegment sales, both read as a company half again its real size. Where a filer reports
+      corporate, eliminations or an "all other" line to close that reconciliation, it is a row here too,
+      marked <em style={{ color: C.bronze, fontStyle: "normal" }}>recon</em>, because a table that adds up
+      without them would be leaving out the part that makes it add up.
     </p>
 
     {!segs.views.length && <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, padding: "16px 18px", background: "#f6eee180" }}>
@@ -824,6 +831,13 @@ function SegmentTables({ segs, S }) {
         {v.subtotals.length > 0 && <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>
           subtotal {v.subtotals.length > 1 ? "rows" : "row"} removed: {v.subtotals.join(", ")}
         </span>}
+        {/* A filer routinely files the same row two or three ways for one period — external sales, the
+            intersegment elimination, and the total of the two — and summing them counted Caterpillar
+            about 2.4 times. One is shown, and which ones were not is worth saying, because it is the
+            reason a figure here can differ from the same line in the footnote. */}
+        {v.otherViews && v.otherViews.length > 0 && <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>
+          also filed on another basis: {v.otherViews.map(o => o.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()).join(", ")}
+        </span>}
       </div>
       <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
         <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
@@ -841,9 +855,18 @@ function SegmentTables({ segs, S }) {
               {v.members.map((m, mi) => {
                 const cells = segs.periods.map((_, pi) => (v.facts.find(f => f.t === t && f.m === mi && f.p === pi) || {}).v);
                 if (cells.every(x => x == null)) return null;
+                // A reconciling row is not an operating segment and must not read as one. It is the
+                // corporate, elimination or "all other" line that closes the reconciliation, so it
+                // says so and sits in the muted weight the consolidated line below it uses.
                 return <tr key={mi} style={{ borderTop: `1px solid ${C.hair2}` }}>
-                  <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.ink2 }}>{m.label}</td>
-                  {cells.map((x, i) => <td key={i} style={{ ...cell, color: x == null ? C.hair : C.ink2 }}>{fmt(x) || "—"}</td>)}
+                  <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: m.recon ? C.mute : C.ink2 }}>
+                    {m.label}
+                    {/* The space is inside the span deliberately: the margin is the visual gap, but
+                        the text layer has no margins, and without it the row reads "CorporateRECON"
+                        to anything that takes the page as text. */}
+                    {m.recon && <span style={{ fontSize: 8, fontFamily: MONO, color: C.bronze, marginLeft: 6, letterSpacing: 1 }}>{" RECON"}</span>}
+                  </td>
+                  {cells.map((x, i) => <td key={i} style={{ ...cell, color: x == null ? C.hair : m.recon ? C.mute : C.ink2 }}>{fmt(x) || "—"}</td>)}
                 </tr>;
               })}
               {/* The consolidated line the rows above add up to, printed rather than asserted. It is
@@ -938,6 +961,12 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
               shown where NOT_APPLICABLE did the blanking — a bank's EBIT is already saying "n/a for
               a bank", which is a different and better answer. */}
           {newestBlank && line.blankNote && <div style={NOTE_STYLE}>{line.blankNote}</div>}
+          {/* And its opposite: a note for a row that IS populated, but from a tag that does not mean
+              what the label says. A mortgage REIT's "Total revenue" is its interest income and a
+              BDC's is its investment income, because neither files a revenue concept at all. Keyed
+              off the newest column's resolved tag, so it appears only for the filers it describes. */}
+          {newest && newest.m.tag && line.tagNote && line.tagNote[newest.m.tag]
+            && <div style={NOTE_STYLE}>{line.tagNote[newest.m.tag]}</div>}
         </td>
         {cells.map((x, i) => {
           const shown = display(line.k, x.v, x.m.unit);

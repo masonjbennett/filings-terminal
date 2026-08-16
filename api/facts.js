@@ -21,6 +21,12 @@ const KEEP = new Set(["RevenueFromContractWithCustomerExcludingAssessedTax","Rev
 // Bank-specific. A depository reports a different income statement entirely — interest in, interest
 // out, provision, and the two noninterest lines — none of which appear in a corporate template.
 "InterestAndDividendIncomeOperating","InterestIncomeExpenseAfterProvisionForLoanLoss","InterestExpenseDeposits","LoansAndLeasesReceivableNetOfDeferredIncome","FinancingReceivableAllowanceForCreditLosses","AvailableForSaleSecuritiesDebtSecurities","HeldToMaturitySecurities","LoansAndLeasesReceivableGrossCarryingAmount","NotesReceivableNet",
+// A business development company's top line. It is here rather than with the insurance investment
+// tags below because it is a REVENUE concept: `GrossInvestmentIncomeOperating` is what the filing
+// calls total investment income, while `NetInvestmentIncome` two blocks down is struck after
+// operating expenses. Carlyle Secured Lending files no revenue concept of any kind, so without this
+// the top line is blank and every margin under it goes with it.
+"GrossInvestmentIncomeOperating",
 // Post-CECL equivalents. The tags above stop around 2016-2021; these are what banks file today, and
 // both eras must be kept or the sheet is blank at one end of its history or the other.
 "FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss","FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss","FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest","DebtSecuritiesAvailableForSaleExcludingAccruedInterest","DebtSecuritiesHeldToMaturityExcludingAccruedInterestAfterAllowanceForCreditLoss",
