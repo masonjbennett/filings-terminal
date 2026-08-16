@@ -309,6 +309,19 @@ const sum = (...xs) => (xs.every(x => x == null) ? null : xs.reduce((n, x) => n 
 // sector. Shared by every industry override, because each one falls back to exactly this.
 const corpDebt = v => (v.ltdCur != null && v.ltDebt == null ? null : sum(v.stDebt, v.ltdCur, v.ltDebt));
 
+// An industry's own all-in debt tag is preferred over the three-way corporate sum — but a "total"
+// that is SMALLER than the long-term debt inside it is not a total, and rule 7 says a partial total
+// is worse than none. The small/mid-cap sweep found the REIT override doing exactly that: both
+// `NotesPayable` and `LongTermDebt` are in the REIT debt list, `NotesPayable` resolves first, and at
+// some filers it is only part of the stack. BrightSpire reported **$414m against $2.47bn** of
+// long-term debt it had already tagged, and Regency $4.62bn against $4.74bn — a total smaller than
+// a component of itself, which is impossible on its own terms rather than merely wrong.
+//
+// Falling back rather than taking the larger of the two: the corporate sum is a defined quantity
+// (short-term + current maturities + long-term), and "whichever number is bigger" is how a
+// tax-inclusive or gross-of-eliminations tag wins an argument it should lose.
+const allIn = (total, v) => (total != null && (v.ltDebt == null || total >= v.ltDebt) ? total : null);
+
 // Deriving a missing EBIT as revenue − CostsAndExpenses was tried and REMOVED. It looks like the
 // operating subtotal and is not one: `CostsAndExpenses` is "total costs and expenses", which for
 // most filers includes interest, so the difference is pre-tax income. Welltower derived to MINUS
@@ -352,7 +365,7 @@ export const DERIVED = {
   // missing rather than zero, and reporting the stub as the total is the Progressive failure in a
   // quieter register — Equinix printed $1.3bn against $33.8bn of real estate, a 3.8% debt load for
   // one of the most leveraged names in the sector. Blank instead.
-  totalDebt: v => (v.debtAllIn != null ? v.debtAllIn : corpDebt(v)),
+  totalDebt: v => { const a = allIn(v.debtAllIn, v); return a != null ? a : corpDebt(v); },
   debtLikeTotal: v => sum(v.olCur, v.olNon, v.flCur, v.flNon, v.pensionUnderfunded, v.deferredComp, v.assetRetirement),
   totalDebtLeases: v => sum(v.totalDebt, v.olCur, v.olNon, v.flCur, v.flNon),
   netDebt: v => (v.totalDebt == null ? null : v.totalDebt - (v.cash || 0) - (v.sti || 0)),
@@ -496,14 +509,17 @@ export const DERIVED_ADVISORY = {
 
 export const DERIVED_REIT = {
   // Same all-in-debt override as the carriers, different tag names. See reitDebt in the template.
-  totalDebt: v => (v.reitDebt != null ? v.reitDebt : corpDebt(v)),
+  totalDebt: v => { const a = allIn(v.reitDebt, v); return a != null ? a : corpDebt(v); },
   noi: v => (all(v.rentalRevenue, v.propOpex) ? v.rentalRevenue - v.propOpex : null),
   noiMargin: v => (all(v.rentalRevenue, v.propOpex) ? div(v.rentalRevenue - v.propOpex, v.rentalRevenue) : null),
   ffo: reitFfo,
   ffoPerShare: v => div(reitFfo(v), v.wasoDil),
   ffoPayout: v => div(v.dividends, reitFfo(v)),
   reNet: v => (all(v.reGross, v.reAccumDep) ? v.reGross - v.reAccumDep : null),
-  debtToGrossRE: v => div(v.reitDebt != null ? v.reitDebt : v.totalDebt, v.reGross),
+  // Reads `totalDebt`, which the override above has already resolved, rather than preferring
+  // `reitDebt` a second time — otherwise this row would keep using the partial figure that the
+  // total had just rejected, and the two would disagree on the same sheet.
+  debtToGrossRE: v => div(v.totalDebt, v.reGross),
   accumDepPct: v => div(v.reAccumDep, v.reGross),
 };
 

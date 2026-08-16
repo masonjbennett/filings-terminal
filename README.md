@@ -595,6 +595,58 @@ Sherwin-Williams, Sempra and Deere — and the failure is worse than a uniform b
 row populates through FY2023 and stops exactly at the column the valuation block divides into. The
 EBIT row now carries a `blankNote` saying so, since "n/a" reads as a gap the reader should go close.
 
+### The small/mid-cap sweep
+
+The 97 were nearly all mega-caps — the best-tagged filers in the market — and the template carries
+~10,000 tickers that mostly are not. **70 filers, selected rather than remembered**: `tickers.json`
+is SEC's own file and is ordered by size descending, so the frame is rows 700–5,200 walked at a fixed
+stride, screened on the small submissions document for a 10-K since Jun-2024. That is reproducible
+without a seed and cannot be talked into a friendlier sample — hand-picking small caps means picking
+the ones you have heard of, which are the large ones. It lands 17 mid, 17 small, 20 smaller and 16
+micro, across 47 distinct SIC descriptions, SPACs and clinical-stage biotechs included on purpose.
+`SAMPLE_MODULE=./smallcap-sample.mjs node t-corp.mjs` runs the same checks; not one of them assumes
+anything about company size.
+
+**40 findings, of which three were real.** The rest is the population being genuinely strange, and
+distinguishing the two is the whole exercise:
+
+- **A total-debt override could report less debt than the filer had already tagged.** Both
+  `NotesPayable` and `LongTermDebt` are in the REIT debt list, `NotesPayable` resolves first, and at
+  some filers it is only part of the stack. BrightSpire reported **$414m against $2.47bn** of
+  long-term debt on its own balance sheet, Regency $4.62bn against $4.74bn. A total smaller than a
+  component of itself is impossible on its own terms, so an all-in tag failing that test now falls
+  back to the corporate sum — the same guard on the carrier path moved Phillips 66 $19.52bn →
+  $19.72bn. Diffed across all 165 filers: **3 moved, none appeared, none vanished.** Taking the
+  larger of the two was the tempting version and is how a tax-inclusive tag wins an argument it
+  should lose.
+- **Mezzanine equity was missing, so filers that have any did not foot.** Redeemable preferred sits
+  BETWEEN liabilities and equity on the face of the balance sheet and is in neither `Liabilities` nor
+  `StockholdersEquity`. Rhythm Pharmaceuticals showed $480m of assets against $210m + $139m, and the
+  missing **$131m was `TemporaryEquityCarryingAmountAttributableToParent`, to the dollar**. Now a row
+  of its own, added into no total — it is neither debt nor common equity, and which one a reader
+  treats it as depends on redemption terms that are in the footnote and not in XBRL. This does **not**
+  explain Instacart's $0.2bn, which stays open.
+- **`Revenues` is not always the total, and Essential Utilities is the second case.** It tags
+  `Revenues` at $2.475bn against a 606 tag of $5.121bn — the reverse of the MetLife failure rule 9
+  exists for. The filing contradicts itself out loud: FY2023 EBITDA of $2.208bn against revenue of
+  $2.054bn, and EBITDA cannot exceed the revenue it is computed from. With Williams that is two, so
+  it is a class rather than a one-off, and **the structural test for it is EBITDA > revenue** — which
+  is decisive without needing to know the right answer. Not fixed here: rule 9 is the most
+  load-bearing tag order in the file and reordering it needs its own before/after diff.
+
+Two checks in `t-corp.mjs` were wrong rather than the engine. A **zero total debt** is only a finding
+when the filing contradicts it — Hycroft tags both long-term debt lines as literally 0 after repaying
+$126m during the year, and printing 0 is the reported truth; Progressive's tell was $6.9bn sitting
+under another tag, so the check now asks for interest expense as corroboration. And the balance-sheet
+identity had to learn about mezzanine equity before it could be trusted.
+
+What the population is actually like, none of it a bug: **10 filers have no revenue at all** (six
+clinical-stage biotechs, a development-stage miner, two SPACs), **two SPACs resolve no columns** and
+render empty, and **18 ratios sit outside any plausible range** because a biotech with $3m of revenue
+and $150m of losses really does have a −5,041% EBITDA margin. Two coverage gaps are real and unfixed:
+a mortgage REIT (Ladder) and a BDC (Carlyle Secured Lending) have no revenue line, because theirs is
+`InterestAndDividendIncomeOperating` and `NetInvestmentIncome` — neither in any list here.
+
 ### Bottom-up EBIT: tested against 422 filer-years, and rejected
 
 The obvious repair is to build EBIT as **pre-tax + interest expense − interest income**, which is what
@@ -672,12 +724,15 @@ development exercises the real code path against real SEC responses.
    revenue including intersegment sales with the eliminations row on a different member. Capturing
    `IntersegmentEliminationMember` as an explicit row would let several of them reconcile honestly
    rather than being dropped. Worth doing before anything else here, and `t-seg.mjs` measures it.
-2. **A small/mid-cap sweep.** The 97 were nearly all mega-caps — the best-tagged filers in the
-   market — and they still yielded six real bugs. The ~10,000 tickers riding the corporate template
-   mostly are not. Reuses `t-corp.mjs` with a new sample; the LTM ladder is the newest thing it would
-   test, and thin interim tagging is exactly where it should be pointed.
-3. **The four open single-filer findings** listed above, none of them fixed.
-4. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
+2. **`Revenues` is not always the total** — Williams and Essential Utilities both tag it below their
+   606 figure, and EBITDA exceeding revenue is a decisive structural test for it. Reordering rule 9
+   is the most load-bearing tag change available here and needs its own before/after diff over every
+   filer, which is why it is a task rather than a fix.
+3. **Revenue for BDCs and mortgage REITs** — `InterestAndDividendIncomeOperating` and
+   `NetInvestmentIncome` are in no list, so Ladder and Carlyle Secured Lending have no top line.
+4. **The three remaining single-filer findings** — Altria, Instacart, Colgate. Rhythm turned out to
+   be mezzanine equity and is closed.
+5. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
    than another tag.
 
 ## A note on how this got built

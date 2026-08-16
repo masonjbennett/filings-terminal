@@ -137,6 +137,16 @@ export const SECTIONS = [
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },
   { k: "pension", label: "Pension & post-retirement", how: "fetched", tags: ["DefinedBenefitPensionPlanLiabilitiesNoncurrent","LiabilityDefinedBenefitPlanNoncurrent"] },
   { k: "totalLiab", label: "Total liabilities", how: "fetched", tags: ["Liabilities"] },
+  // Mezzanine equity — redeemable preferred, usually a VC round that has not converted. It sits
+  // BETWEEN liabilities and equity on the face of the balance sheet and is in neither `Liabilities`
+  // nor `StockholdersEquity`, so without this row a filer that has any simply does not foot. The
+  // small/mid-cap sweep found it exactly: Rhythm Pharmaceuticals reports $480m of assets against
+  // $210m of liabilities and $139m of equity, and the missing $131m is this line to the dollar.
+  // Not added into any total here — it is neither debt nor common equity, and which one a reader
+  // treats it as depends on the redemption terms, which are in the footnote and not in XBRL.
+  { k: "tempEquity", label: "Mezzanine (redeemable) equity", how: "fetched",
+    tags: ["TemporaryEquityCarryingAmountAttributableToParent", "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterest", "TemporaryEquityCarryingAmount"],
+    note: "Between liabilities and equity — counted in neither total above" },
   { k: "preferred", label: "Preferred stock", how: "fetched", tags: ["PreferredStockValue"] },
   { k: "retained", label: "Retained earnings", how: "fetched", tags: ["RetainedEarningsAccumulatedDeficit"] },
   { k: "treasury", label: "Treasury stock", how: "fetched", tags: ["TreasuryStockValue","TreasuryStockCommonValue"] },
