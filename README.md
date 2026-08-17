@@ -1524,13 +1524,26 @@ development exercises the real code path against real SEC responses.
    shrink — and its FY2019 revenue reads `'4,000,000`, the tail of 260,174,000,000. On the ticker the
    search box suggests.
 
-   **Snapping the scroll to a column boundary was considered and is worse**, which is worth recording
-   so it is not proposed again: it would put Apple's scroll at 135 and clip 55px off the RIGHT of
-   FY2025, trading a truncated oldest column for a truncated newest one — the column the valuation
-   card divides into. There is no scroll position that shows every column whole, because the label and
-   the columns do not share a factor. So the remaining fix is visual: fade or shadow the ~14px beside
-   the sticky label so a clipped cell reads as clipped rather than as a small number. It is a change
-   to how the table LOOKS rather than to when it scrolls, which is why it is separate.
+   **Two approaches are already ruled out, and both were tried rather than argued about.**
+
+   *Snapping the scroll to a column boundary* would put Apple's scroll at 135 and clip 55px off the
+   RIGHT of FY2025, trading a truncated oldest column for a truncated newest one — the column the
+   valuation card divides into. There is no scroll position that shows every column whole, because the
+   label width and the column width share no factor.
+
+   *A shadow on the sticky label cell* — the obvious version of the mask, and the standard affordance
+   for "content continues under here" — **is inert here**. These tables are `border-collapse: collapse`,
+   where a sticky cell paints at `z-index: auto` and the cells after it in the row paint on top. Adding
+   `z-index: 1` does not fix it either: an 18px SOLID RED shadow rendered as nothing at all, which is
+   how it was established rather than assumed. Anything in this direction needs
+   `border-collapse: separate` with `border-spacing: 0`, which re-renders every hairline on every table
+   on the site — and the last change to this column's geometry pushed three year-columns off an
+   eight-year sheet. So it is a real change with a real blast radius, not a CSS one-liner.
+
+   What is left: an overlay element inside the scroll container rather than a style on the cell — a
+   sticky `div` at `left: 0` with a gradient, sitting above the table in z-order and outside its
+   border-collapse rules. That is the version to try next, and it should be measured on AAPL (which is
+   permanently in the band) and CBL (which is no longer) before and after.
 2. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
    honest and marked the comps columns, which is right as far as it goes — the ratio and multiple rows
    are dimensionless and compare fine, and the median is taken only over those. But **Revenue, EBITDA
