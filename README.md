@@ -620,6 +620,32 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     167: **34 values changed rather than 37** — the three that moved back are Anterix's, corrected by
     the filer's own figures rather than by a preference.
 
+24. **A zero is a fact, and on some rows it is not evidence of absence.** `pickFact` takes the first
+    candidate with a fact for the period, and a fact of `0` is a fact. That is the mechanism behind
+    rule 7's Progressive case — it tagged `LongTermDebtCurrent` as literally 0 while reporting its real
+    $6.9bn under another concept, and the sheet printed "Total debt 0". The mechanism was fixed there
+    for debt and never looked at anywhere else.
+
+    Swept across every fetched row with more than one candidate, over all six frames: **115 cells
+    resolve to zero while a LATER candidate in the same list reports over $1m**, and 75 of them are one
+    row. The impairment line covers goodwill *and* asset impairment, and a filer with none of the first
+    and real amounts of the second tags `GoodwillImpairmentLoss` as 0 — which displaced the figure it
+    actually reported. **38 filers, and not small ones: Williams showed 0 against $1.915bn, Kenvue
+    against $578m, Intel against $522m, PepsiCo against $498m, Lilly against $497.8m.**
+
+    **It is opt-in per row, and the counter-example is why.** A zero is usually the reported truth, and
+    the same guard applied to the debt rows would be wrong in exactly the population this project has
+    swept most recently: `LongTermDebtNoncurrent` filed as 0 by a company in Chapter 11 is **correct** —
+    its debt has been reclassified — and taking the non-zero sibling would put **$15.2bn of
+    iHeartMedia's debt back on a line the filing had deliberately emptied**. Seven of the 115 are that
+    shape. So the row declares `preferNonZero`, the cost of being wrong is confined to rows where the
+    label covers both concepts, and the suite asserts iHeartMedia keeps its filed zero.
+
+    Where every candidate reports zero, zero is what the filer says and zero is what is shown — the
+    guard falls back to the first hit rather than blanking, because "the company had no impairment" and
+    "the company reported nothing" are different answers and rule 5 is about not confusing them.
+    `full-diff.mjs`: **65 values changed across the 167** (34 of them rules 21 and 23), 0 vanished.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

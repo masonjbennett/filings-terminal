@@ -80,6 +80,7 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
     // Rule 21: a row whose candidates were ranked once for this filer uses that ranking in every
     // column, because a line cannot mean one concept in 2021 and another in 2022. See `tagsByRun`.
     if (pinned && pinned[line.k]) line2 = { ...line2, tags: pinned[line.k] };
+    if (line.preferNonZero) line2 = { ...line2, preferNonZero: true };
     const got = get(line2, isInstant(sec, line));
     v[line.k] = got.value; meta[line.k] = got;
   }
@@ -277,7 +278,7 @@ export function buildGrid(data, quote, limit = 8) {
   }
 
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
-    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy }), scopeOf, pinned) }));
+    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
@@ -294,7 +295,7 @@ export function buildGrid(data, quote, limit = 8) {
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.latest ? latestFact(facts, line.tags)
-      : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy })
+      : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy, preferNonZero: line.preferNonZero })
       : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned),
   }));
   crossColumn(ltmCols);

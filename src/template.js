@@ -311,7 +311,11 @@ export const SECTIONS = [
 // and let him choose. That is the difference between helping and inventing.
 { id: "addbacks", title: "Add-Back Candidates", feeds: "Adjusted EBITDA · QoE", lines: [
   { k: "restructuring", label: "Restructuring charges", how: "fetched", tags: ["RestructuringCharges","RestructuringSettlementAndImpairmentProvisions"] },
-  { k: "impairment", label: "Goodwill / asset impairment", how: "fetched", tags: ["GoodwillImpairmentLoss","AssetImpairmentCharges"] },
+  // Rule 24. The row covers BOTH kinds, and a filer with no goodwill impairment and real asset
+  // impairment tags `GoodwillImpairmentLoss` as literally 0 — which displaced the figure it actually
+  // reported. 75 cells on 38 filers, and not small ones: Williams showed 0 against $1.915bn, Kenvue
+  // against $578m, Intel against $522m, PepsiCo against $498m, Lilly against $497.8m.
+  { k: "impairment", label: "Goodwill / asset impairment", how: "fetched", tags: ["GoodwillImpairmentLoss","AssetImpairmentCharges"], preferNonZero: true },
   { k: "acquisitionCosts", label: "Acquisition-related costs", how: "fetched", tags: ["BusinessCombinationAcquisitionRelatedCosts"] },
   { k: "litigation", label: "Litigation settlements", how: "fetched", tags: ["LitigationSettlementExpense","LossContingencyAccrualAtCarryingValue"] },
   { k: "gainOnSale", label: "Gains/(losses) on disposal", how: "fetched", tags: ["GainLossOnDispositionOfAssets","GainLossOnSaleOfBusiness"] },

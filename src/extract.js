@@ -121,7 +121,7 @@ export function reportingCurrency(facts, tags) {
 export function pickFact(facts, tags, period, opts = {}) {
   const wantDuration = !!period.start;
   const minD = opts.minDays ?? ANNUAL_MIN, maxD = opts.maxDays ?? ANNUAL_MAX;
-  let sawTag = false, sawTagOtherPeriod = false, otherCcy = null;
+  let sawTag = false, sawTagOtherPeriod = false, otherCcy = null, zeroHit = null;
 
   for (const tag of tags || []) {
     const all = factsFor(facts, tag);
@@ -174,8 +174,22 @@ export function pickFact(facts, tags, period, opts = {}) {
     // a 10-K and the 10-Q that restated it, which is exactly what it should decide.
     matches.sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form));
     const f = descaled(matches, matches[0]);
-    return { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported" };
+    const hit = { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported" };
+    // ── Rule 24: a ZERO is a fact, and on some rows it is not evidence of absence ─────────────────
+    // `pickFact` takes the first candidate with a fact for the period, and a fact of 0 is a fact — the
+    // mechanism behind rule 7's Progressive case, which tagged `LongTermDebtCurrent` as literally 0
+    // while reporting its real $6.9bn under another concept, and printed "Total debt 0".
+    //
+    // Opt-in per row, because a zero is usually the reported truth and displacing it would be worse.
+    // See the row that declares it for the evidence, and the README for the counter-example that keeps
+    // this off the debt rows: `LongTermDebtNoncurrent` filed as 0 by a company in Chapter 11 is
+    // CORRECT — its debt has been reclassified — and taking the non-zero sibling there would put
+    // $15.2bn of iHeartMedia's debt back on a line the filing had deliberately emptied.
+    if (opts.preferNonZero && f.val === 0) { if (!zeroHit) zeroHit = hit; continue; }
+    return hit;
   }
+  // Every candidate that had a fact for this period reported zero, so zero is what the filer says.
+  if (zeroHit) return zeroHit;
   // Nothing landed. Which kind of nothing is it? Rule 5 — and rule 20 added a fifth kind.
   //
   // "Not tagged" means *disclosed in the filing but never tagged — go and look*, which is the one
