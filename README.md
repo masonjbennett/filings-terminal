@@ -537,6 +537,41 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     tag list holds two concepts a filer might file together — but each row needs its own measurement
     before it does, which is the whole lesson of rule 11.
 
+22. **A formula written in the template is not an implementation, and this is the second time.**
+    `revCagr3` and `revCagr5` were declared in the template with formulas and never wired to anything,
+    so they rendered blank on every sheet ever served until comps needed them. Three rows also declare
+    a `fallback:`, and only one of the three — a bank's net interest income — was ever implemented.
+
+    **`grossProfit` declares `fallback: "revenue - cogs"` and nothing ran it.** That is **446 cells on
+    84 filers, 15.8% of all columns**, and the population is not obscure: Chevron, Conoco, Walmart,
+    Costco, Target, P&G, Pfizer, Merck, Lilly, AbbVie, Amgen and Caterpillar all report revenue and
+    cost of revenue and no gross-profit subtotal, so the row *and the gross margin under it* were empty
+    on every one of them. Nothing could fail, because a blank cannot be mis-computed.
+
+    It is an **identity over two rows directly above it**, which is what separates it from rule 8's
+    rejected `revenue − CostsAndExpenses` — that inferred a subtotal from a tag meaning something else,
+    while this is arithmetic the statement itself satisfies. Checked where a filer tags gross profit
+    *and* both inputs: **1,051 columns agree to within 0.5% and 49 do not**, and the 49 are a
+    population rather than an error rate — near-zero-revenue shells where a percentage is meaningless,
+    plus the **excise-tax category** (Altria, RLX) which presents a third line between cost and gross
+    profit. Every one of those tags its own gross profit, so the derivation never fires on them, and
+    Altria's sheet is unchanged.
+
+    **It returns null when the row was fetched**, which is the part that would have broken quietly.
+    `fillCol` overwrites `meta` with `computed` for any derivation returning non-null, so a derivation
+    that handed back the existing figure would strip the **per-cell EDGAR link** from every filer that
+    does tag the subtotal. Apple keeps `status: reported` and its accession number, and the suite
+    asserts both.
+
+    **`niToCommon` declares `fallback: "netIncome - nci - prefDiv"` and it was measured and REJECTED.**
+    It would fill 1,750 cells, but **1,276 of them have neither `nci` nor `prefDiv` tagged**, so the
+    "derivation" is `netIncome` unchanged — asserting that a company has no minority interest and no
+    preferred, on no evidence. Rule 7 exactly: a missing input treated as zero. And where the filer
+    *does* tag the row so the identity can be checked, it **disagrees 482 times against 591 agreements**
+    — the inputs are routinely untagged even when they exist. The declaration is removed rather than
+    left in the template, because a formula nobody implemented is a lie told to the next reader of the
+    file. `full-diff.mjs`: **602 cells appeared, 0 values changed, 0 vanished.**
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

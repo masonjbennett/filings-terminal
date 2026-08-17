@@ -756,6 +756,30 @@ export const DERIVED = {
     && v.equityAll !== v.equity ? v.equityAll - v.equity : null),
   ebitda: v => (v.ebit == null ? null : v.ebit + (v.da || 0)),
   ebitdaSbc: v => (v.ebitda == null ? null : v.ebitda - (v.sbc || 0)),
+  // ── Gross profit, where the filer reports the two lines above it and not the subtotal ──────────
+  // The template has declared `fallback: "revenue - cogs"` on this row since the first version and
+  // NOTHING EVER IMPLEMENTED IT — the same defect as `revCagr3`/`revCagr5`, which were also written
+  // in the template as formulas, rendered to a reader as the line's definition, and never wired to
+  // anything. A blank cannot be mis-computed, so nothing could fail and nothing did.
+  //
+  // It is 446 cells on 84 filers, 15.8% of all columns, and they are not obscure: Chevron, Conoco,
+  // Walmart, Costco, Target, P&G, Pfizer, Merck, Lilly, AbbVie, Amgen and Caterpillar all report
+  // revenue and cost of revenue and no gross-profit subtotal, so the row and the gross margin under
+  // it were empty on every one of them.
+  //
+  // This is an identity over two rows directly above it, not a subtotal inferred from a tag that
+  // means something else — which is exactly what separates it from rule 8's rejected
+  // `revenue − CostsAndExpenses` derivation. Checked where the filer tags gross profit AND both
+  // inputs: 1,051 columns agree to within 0.5% and 49 do not, and the 49 are a population rather
+  // than a rate — near-zero-revenue shells where a percentage is meaningless, plus the excise-tax
+  // category (Altria, RLX) which presents a third line between cost and gross profit. Every one of
+  // those tags its own gross profit, so the derivation never fires on them.
+  //
+  // Returns null when the row was fetched, so the fetched value keeps its "reported" status and its
+  // link to the filing: a derivation that returned the existing figure would overwrite `meta` with
+  // `computed` and silently break the per-cell EDGAR link on every filer that does tag it.
+  grossProfit: v => (v.grossProfit == null && v.revenue != null && v.cogs != null
+    ? v.revenue - v.cogs : null),
   grossMargin: v => div(v.grossProfit, v.revenue),
   ebitdaMargin: v => div(v.ebitda, v.revenue),
   ebitMargin: v => div(v.ebit, v.revenue),

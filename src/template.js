@@ -105,7 +105,7 @@ export const SECTIONS = [
   { k: "tax", label: "Income tax expense", how: "fetched", tags: ["IncomeTaxExpenseBenefit"] },
   { k: "netIncome", label: "Net income", how: "fetched", tags: ["NetIncomeLoss","ProfitLoss"] },
   { k: "nci", label: "Less: noncontrolling interest", how: "fetched", tags: ["NetIncomeLossAttributableToNoncontrollingInterest"] },
-  { k: "niToCommon", label: "Net income to common", how: "fetched", tags: ["NetIncomeLossAvailableToCommonStockholdersBasic"], fallback: "netIncome - nci - prefDiv" },
+  { k: "niToCommon", label: "Net income to common", how: "fetched", tags: ["NetIncomeLossAvailableToCommonStockholdersBasic"] },
   { k: "prefDiv", label: "Preferred dividends", how: "fetched", tags: ["PreferredStockDividendsIncomeStatementImpact"] },
 ]},
 // ─────────────────────────────────────────────────────────────── HISTORICALS: BALANCE SHEET
