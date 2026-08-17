@@ -16,7 +16,37 @@
 // 4. A BLANK IS NOT ONE THING. "The filer has no such item", "reported inside another line" and
 //    "disclosed but untagged" are different answers and only the last is worth hunting by hand.
 
-export const ANNUAL_MIN = 300, ANNUAL_MAX = 400;   // a "year" in filings runs 52-53 weeks
+// ── How long a fiscal year is, and what lives in the slack ──────────────────────────────────────
+// A "year" in filings runs 52–53 weeks, and this window was originally drawn at 300–400 days to be
+// safely wider than that. Nothing had ever landed in the slack until the Chapter 11 frame, where
+// FRESH-START ACCOUNTING splits the year of emergence into a predecessor stub and a successor stub —
+// neither twelve months, both filed under the same annual tags. Six of them sat inside 300–400 and
+// rendered as fiscal years: CBL's 303-day period ran 1 Jan to 31 Oct 2021 and was labelled FY2021,
+// ten months of a company in a column beside twelve-month ones, with a growth rate against it.
+//
+// 358 is the measured boundary, not a round number, and it is a JUDGEMENT in the sense the
+// near-cancelled-equity note is — but a better-evidenced one, because the population below it is
+// small enough to enumerate rather than describe. Across every duration fact filed under a
+// period-anchor tag in the cached filers, 44,728 of 44,897 are 363/364/365/370 days (a 52-week year,
+// a calendar year, a leap year, a 53-week year) and 43 distinct (filer, period) pairs are shorter
+// than 358. Every one of the 43 was identified: Chapter 11 stubs (CBL, California Resources, Chord,
+// Noble, Seadrill, Expand, Weatherford's year to its 13 Dec 2019 emergence), fiscal-year transition
+// stubs (Greif, MediaCo, Jefferies, Zhanling — all on 10-KT), inception and IPO periods (Kinder
+// Morgan 2011, Shoals, UWM, Vroom), and CleanSpark, which tags two years seven days short and never
+// reaches a column with them.
+//
+// **363 is the number that looks principled and is wrong.** 52 weeks is 364 calendar days, so "at
+// least 52 weeks" reads as the definition of a fiscal year — and 362 carries Kraft Heinz's FY2016
+// and H.B. Fuller's FY2024, both genuine 52-week years at two real companies, because the year
+// before each was a 53-week year that ate a day. A rule drawn on what a fiscal year *is* would have
+// dropped a mega-cap's year to fix a stub.
+//
+// ANNUAL_MAX is deliberately NOT tightened to match. Nothing in 2,834 rendered columns exceeds 370
+// days and only 4 facts anywhere exceed 372, so there is no population to measure a tighter maximum
+// against — and `annualPeriods` reuses ANNUAL_MAX for something else entirely (whether a candidate
+// tag reaches the newest period at all), so moving it would change a rule this evidence says nothing
+// about.
+export const ANNUAL_MIN = 358, ANNUAL_MAX = 400;
 export const QUARTER_MIN = 80, QUARTER_MAX = 100;
 
 const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
@@ -31,23 +61,91 @@ function factsFor(facts, tag) {
   return out;
 }
 
+// ── The sheet has ONE currency, and it is the filer's ───────────────────────────────────────────
+// A companyfacts unit is `USD`, `EUR`, `shares`, `USD/shares`, `pure`, or a count the filer invented
+// (`property`, `numberOfProperty`). Only an ISO-4217-shaped code is money, and only money and the
+// per-share figures built on it have to agree across a sheet.
+const isCurrency = u => /^[A-Z]{3}$/.test(String(u));
+const currencyOf = u => (isCurrency(u) ? String(u) : /^[A-Z]{3}\/shares$/.test(String(u)) ? String(u).slice(0, 3) : null);
+
+// Which currency this filer reports in, read from the facts that BUILD THE CALENDAR — the period
+// anchors of rule 6. The currency of the top line is the currency of the sheet, which is the same
+// reasoning that makes those tags the anchors in the first place: whatever else a filer does, the
+// figure it reports revenue in is the figure it reports in.
+//
+// Needed because `factsFor` flattens `def.units` in OBJECT-KEY ORDER and `pickFact` sorts only on
+// filed date and form rank — so where a filer files one line in two currencies, which one wins was
+// decided by the order SEC happened to serialise the units map, independently per tag. That is not a
+// labelling problem, it is a wrong number: All In FutureTech tags `ShortTermBorrowings` at BOTH
+// `JPY 948.2m` and `USD 6.3m` for the same instant, JPY first, so the sheet reported 948,200,000 of
+// short-term debt for a company with $6.3m of it. 45 of 426 filers swept carry a second currency,
+// and a foreign private issuer publishing a USD convenience translation beside its own statements is
+// the ordinary case rather than the exotic one.
+export function reportingCurrency(facts, tags) {
+  const byEnd = new Map();
+  for (const tag of tags || []) {
+    const all = factsFor(facts, tag);
+    if (!all) continue;
+    for (const f of all) {
+      if (!isDuration(f) || !periodic(f.form)) continue;
+      const d = days(f.start, f.end);
+      if (d < ANNUAL_MIN || d > ANNUAL_MAX) continue;
+      const c = currencyOf(f.unit);
+      if (!c) continue;
+      if (!byEnd.has(f.end)) byEnd.set(f.end, new Map());
+      const m = byEnd.get(f.end);
+      m.set(c, (m.get(c) || 0) + 1);
+    }
+  }
+  if (!byEnd.size) return null;
+  // ── Recent first, which is rule 6 again ────────────────────────────────────────────────────────
+  // Decided on the NEWEST anchor period alone, not on a majority across all history, because a filer
+  // that CHANGES reporting currency has more of the old one on file and reports today in the new one.
+  // BetterLife Pharma files 21 USD annual anchors against 14 CAD and its newest year is CAD only: a
+  // majority picked USD and blanked 90 cells, the newest column among them — the one the valuation
+  // divides into. Silver North is the same shape. The newest period is also the only one whose
+  // currency a reader can check against the filing they are most likely to open.
+  const newest = [...byEnd.keys()].sort().pop();
+  const m = byEnd.get(newest);
+  // ── A USD figure filed BESIDE a local one is the translation, not the statements ───────────────
+  // A foreign private issuer publishing a convenience translation files both for every period, so the
+  // newest period is a tie and the tie-break decides the whole sheet. USD is the wrong half to keep:
+  // the translation is what gets added, and Futu, Vipshop, Recon and SFHG all file their statements
+  // in HKD or CNY with a USD column beside them. A filer that genuinely reports in USD — Israeli tech,
+  // shipping — files USD alone at the anchors and never reaches this line.
+  return [...m].sort((a, b) => b[1] - a[1] || (a[0] === "USD" ? 1 : b[0] === "USD" ? -1 : a[0].localeCompare(b[0])))[0][0];
+}
+
 // Pick the single best fact for a template line in a given period.
 // `period` is { end, start } for durations, or { end } for instants.
 export function pickFact(facts, tags, period, opts = {}) {
   const wantDuration = !!period.start;
   const minD = opts.minDays ?? ANNUAL_MIN, maxD = opts.maxDays ?? ANNUAL_MAX;
-  let sawTag = false, sawTagOtherPeriod = false;
+  let sawTag = false, sawTagOtherPeriod = false, otherCcy = null;
 
   for (const tag of tags || []) {
     const all = factsFor(facts, tag);
     if (!all) continue;
     sawTag = true;
     const matches = all.filter(f => {
+      // Money must be in the sheet's currency. Anything that is not money — share counts, ratios,
+      // the filer's own count units — is unaffected, and a fact in the wrong currency is skipped
+      // rather than converted: there is no exchange rate anywhere in this data path and there is not
+      // going to be one. Mixing them is what would make `revenue − cogs` wrong by an FX rate while
+      // both figures still looked like the numbers the filer reported.
+      //
+      // Tested AFTER the period tests, not before, so that what gets remembered in `otherCcy` is a
+      // fact this line would OTHERWISE HAVE USED. Ordered the other way it remembers any fact in
+      // another currency anywhere in the filer's history, and the row then claims a figure exists for
+      // a year it does not — the note would be a worse lie than the blank it replaces.
       if (wantDuration !== isDuration(f)) return false;
       if (f.end !== period.end) return false;
-      if (!wantDuration) return true;
-      const d = days(f.start, f.end);
-      return d >= minD && d <= maxD;
+      if (wantDuration) { const d = days(f.start, f.end); if (d < minD || d > maxD) return false; }
+      if (opts.ccy) {
+        const c = currencyOf(f.unit);
+        if (c && c !== opts.ccy) { if (periodic(f.form)) otherCcy = c; return false; }
+      }
+      return true;
       // ── Only the periodic reports ──────────────────────────────────────────────────────────
       // A 10-K or 10-Q IS the financial statements. An 8-K exhibit is a press release, a pro-forma
       // or a recast of a combination, and a DEF 14A carries `NetIncomeLoss` inside the
@@ -75,13 +173,64 @@ export function pickFact(facts, tags, period, opts = {}) {
     // Everything reaching here is already a periodic report, so the filed date is deciding between
     // a 10-K and the 10-Q that restated it, which is exactly what it should decide.
     matches.sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form));
-    const f = matches[0];
+    const f = descaled(matches, matches[0]);
     return { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported" };
   }
-  // Nothing landed. Which kind of nothing is it?
+  // Nothing landed. Which kind of nothing is it? Rule 5 — and rule 20 added a fifth kind.
+  //
+  // "Not tagged" means *disclosed in the filing but never tagged — go and look*, which is the one
+  // blank worth spending time on. A line the filer DID tag, for THIS period, in another currency is
+  // not that: it is tagged, it is findable, and it is in dollars on a sheet denominated in yuan.
+  // Sending a reader into a 20-F to hunt for a figure that is sitting there in the wrong unit is the
+  // same wasted trip rule 5 exists to prevent, and it is the ordinary case rather than the rare one —
+  // a foreign issuer quotes its ADS option strikes and dividends per share in USD while reporting the
+  // statements in its own currency. 112 cells across 11 filers, against 2 columns on one filer for
+  // the whole-column version of this (a filer that actually CHANGED reporting currency, which is
+  // BetterLife Pharma and nobody else in 389 filers — too rare to have earned a mechanism of its own,
+  // and it falls out of this one anyway as a column of these).
+  if (otherCcy) return { value: null, status: "other-currency", ccy: otherCcy };
   return { value: null, status: sawTagOtherPeriod ? "untagged-this-period" : sawTag ? "untagged-this-period" : "never-tagged" };
 }
 const rank = form => (form === "10-K" ? 3 : form === "10-Q" ? 2 : 1);
+
+// ── Rule 17: an AMENDMENT can carry the right digits at the wrong scale ─────────────────────────
+// Rule 13 shut the door on the pay-versus-performance table by excluding DEF 14A. The restatement
+// frame found the same failure with a second door: an amendment IS a periodic report by rule 13's own
+// regex, and rule 2 gives it the sheet. **Identiv filed FY2021 net income as $1,620,000 in three
+// consecutive 10-Ks and as $1,620,000,000,000 in a 10-K/A** — the same digits with six extra zeros —
+// and the terminal printed a $1.62 TRILLION net income for a company with $110m of revenue.
+//
+// Two hypotheses were measured first and both failed, which is why this one is so narrow.
+// "A Part III amendment carries no financial statements, so it supplies few tags" does not separate
+// them at all: the amendments that disagree wildly supply a MEDIAN OF 46 template tags, because they
+// are genuine re-filings. And amendments that disagree are overwhelmingly LEGITIMATE — of 109 sheet
+// cells where one overrode a periodic report with a different value, 108 are restatements that a
+// reader wants, and rule 2 is right about every one of them.
+//
+// What separates the one is that a restatement changes the DIGITS and a scale error moves the decimal
+// point. So the test is an exact power of ten — and that alone is still not enough, because it fires
+// in both directions: Middlesex Water tags its share count in thousands in some filings and in units
+// in others, and there the AMENDMENT is the correct one. The discriminator is corroboration. Across
+// all 29 power-of-ten disagreements in the frame, Identiv's is the only one where **no periodic filing
+// anywhere agrees with the amendment's value** while two or more agree with the other. Middlesex's
+// amended scale is corroborated by two; National HealthCare's by two, and there the amendment is right
+// and rule 2 already takes it.
+//
+// So: uncorroborated, off by exactly a power of ten, and outvoted. Anything less than all three leaves
+// the sort exactly as it was, which is what 108 of the 109 get.
+const POW10 = (a, b) => {
+  if (!a || !b) return false;
+  const e = Math.log10(Math.abs(a) / Math.abs(b));
+  return Math.abs(e - Math.round(e)) < 1e-9 && Math.round(e) !== 0;
+};
+function descaled(matches, winner) {
+  if (!/\/A$/.test(winner.form || "")) return winner;
+  const accns = v => new Set(matches.filter(m => !/\/A$/.test(m.form || "") && m.val === v).map(m => m.accn));
+  if (accns(winner.val).size) return winner;            // some report agrees with it — not a scale slip
+  const rival = matches.find(m => !/\/A$/.test(m.form || "") && POW10(winner.val, m.val)
+    && accns(m.val).size >= 2);
+  return rival || winner;
+}
 // The periodic reports, their transition-period variants and their amendments — the filings that ARE
 // the financial statements. Everything else is supplementary, and this engine does not read it.
 const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ? 1 : 0);
@@ -114,6 +263,19 @@ export function annualPeriods(facts, tags, limit = 8) {
       if (!isDuration(f)) continue;
       const d = days(f.start, f.end);
       if (d < ANNUAL_MIN || d > ANNUAL_MAX) continue;
+      // Rule 13 applies HERE too, and it did not. `pickFact` refuses to fill a cell from anything but
+      // a periodic report, but this function — which decides that a column EXISTS — took any form at
+      // all, so the two halves of the engine disagreed about which filings count. A period only a
+      // proxy statement reports is not a fiscal year the sheet has a column for.
+      //
+      // Invisible until the annual window tightened, because the same end date was also carried by a
+      // fresh-start stub that got there first. Seadrill files its 2022 as a 311-day successor period
+      // in the 20-F and as a full 364-day year in a DEF 14A; Vroom's 2025 is the same shape. With the
+      // stub excluded, the proxy's period was the only one left, so both rendered a column the whole
+      // of rule 13 then refused to fill — every duration line blank under a populated equity balance,
+      // which reads as "the filer did not tag this" when the truth is that the year does not exist in
+      // this shape at all. Rule 5's complaint, arriving on a whole column.
+      if (!periodic(f.form)) continue;
       // The column label comes from the PERIOD END, never from `fy`. `fy` is the fiscal year of the
       // report a fact was filed in, not of the period it covers: the year to Sept-2018 carries
       // fy=2019 and fy=2020 when it reappears as a comparative, and the oldest year in the file may
@@ -128,8 +290,59 @@ export function annualPeriods(facts, tags, limit = 8) {
   const newestOf = m => [...m.keys()].sort().pop();
   const newest = calendars.map(newestOf).sort().pop();
   const current = calendars.filter(m => Math.abs(days(newestOf(m), newest)) <= ANNUAL_MAX);
-  const best = current.reduce((a, b) => (b.size > a.size ? b : a));
-  return dedupeLabels([...best.values()].sort((a, b) => b.end.localeCompare(a.end)).slice(0, limit));
+  // "Deepest" has to mean deepest WITHOUT A HOLE, or a discontinuous tag wins on a count of years it
+  // does not actually cover. Thermo Fisher tags `NetIncomeLoss` for 2007–2013 and again for 2021–2025
+  // and nothing in between, which is twelve periods against the ten contiguous ones its ASC 606
+  // revenue tag reaches — so counting years picked the tag with the hole and the sheet rendered
+  // FY2011, FY2012, FY2013, FY2021 … FY2025: three of its eight columns twelve years old, on a
+  // mega-cap. Rule 6 already says recent first, then deep; this is what "deep" had to mean, and the
+  // measure is the run back from the newest period rather than the size of the set.
+  const contiguous = m => {
+    const ps = [...m.values()].sort((a, b) => b.end.localeCompare(a.end));
+    let n = 1;
+    while (n < ps.length && ps[n - 1].start && days(ps[n].end, ps[n - 1].start) <= 1) n++;
+    return n;
+  };
+  const best = current.reduce((a, b) => {
+    const [ca, cb] = [contiguous(a), contiguous(b)];
+    return cb > ca || (cb === ca && b.size > a.size) ? b : a;
+  });
+  // Filter BEFORE the slice, or a discarded calendar eats column slots the real one needed.
+  return dedupeLabels(nonOverlapping([...best.values()].sort((a, b) => b.end.localeCompare(a.end))).slice(0, limit));
+}
+
+// ── Two calendars at once ───────────────────────────────────────────────────────────────────────
+// A filer that CHANGES ITS FISCAL YEAR END reports on both calendars for the years either side of
+// the change, and the periods are keyed above by END DATE, so both survive as distinct entries and
+// the sheet interleaves them. Powerfleet moved from December to March and rendered eight annual
+// columns whose periods were 2021-01-01→2021-12-31, 2021-04-01→2022-03-31, 2022-01-01→2022-12-31,
+// 2022-04-01→2023-03-31 … — each pair overlapping by NINE MONTHS, eight "years" spanning about five,
+// and every growth rate between adjacent columns comparing a period with itself. Republic Airways
+// and three others are the same. It is rule 6's failure a third way: a sheet that foots, reconciles
+// and is not about the years it says.
+//
+// The duplicate FY labels were only the symptom, and the label cascade is why it was visible at all —
+// with two calendars in play it produced "2021 2022 2021 2022 2023", running BACKWARDS, which is the
+// one thing a reader cannot miss. Renaming them would have hidden the overlap instead of fixing it.
+//
+// The rule is structural and needs no fiscal-year convention, which matters because filers do not
+// share one: walking NEWEST to OLDEST, keep a period only if it ends on or before the start of the
+// last one kept. That anchors on the current calendar — the same "recent first, then deep" discipline
+// as the tag selection above — and the abandoned calendar falls away on its own. Touching periods are
+// kept (`<=`), because some filers tag the next year as starting on the previous year's end date and
+// a strict test would silently drop a real column.
+//
+// The stub period the change creates is already excluded by the 300–400 day window, so a gap can
+// remain where it sat: Republic keeps years to Sep-2022 and Dec-2023 with the three-month transition
+// between them absent, which is correct — it is not twelve months and nothing on this sheet pretends
+// a period is longer than it is.
+function nonOverlapping(desc) {
+  const out = [];
+  for (const p of desc) {
+    if (!p.start) continue;
+    if (!out.length || p.end <= out[out.length - 1].start) out.push(p);
+  }
+  return out;
 }
 
 // A 52/53-week filer drifts backwards through the calendar until a fiscal year ends on 1 January,
@@ -258,8 +471,8 @@ export function ltmWindows(facts, tags, periods, count = 4) {
   return out;                                                          // newest first, like annualPeriods
 }
 
-const pickSpan = (facts, tags, y) =>
-  pickFact(facts, tags, { end: y.end, start: y.start }, { minDays: y.days - 8, maxDays: y.days + 8 });
+const pickSpan = (facts, tags, y, ccy) =>
+  pickFact(facts, tags, { end: y.end, start: y.start }, { minDays: y.days - 8, maxDays: y.days + 8, ccy });
 
 // One line, stitched. The three legs must come from the SAME TAG, and specifically from the tag the
 // ANNUAL column already chose — not from whichever tag happens to resolve all three.
@@ -308,10 +521,10 @@ function basisAgrees(facts, tag, win, fy) {
   return !!(inFy && prev.length > 1 && moved(prev[0].val, inFy.val));
 }
 
-export function pickLtm(facts, tags, win) {
-  const fy = pickFact(facts, tags, win.fy);
+export function pickLtm(facts, tags, win, ccy) {
+  const fy = pickFact(facts, tags, win.fy, { ccy });
   if (fy.value == null) return { value: null, status: fy.status };
-  const cur = pickSpan(facts, [fy.tag], win.cur), pri = pickSpan(facts, [fy.tag], win.prior);
+  const cur = pickSpan(facts, [fy.tag], win.cur, ccy), pri = pickSpan(facts, [fy.tag], win.prior, ccy);
   if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit)
     return { value: null, status: "no-interim", tag: fy.tag };
   if (!basisAgrees(facts, fy.tag, win, fy)) return { value: null, status: "restated-basis", tag: fy.tag };
@@ -334,10 +547,68 @@ const sum = (...xs) => (xs.every(x => x == null) ? null : xs.reduce((n, x) => n 
 // $1.3bn against $33.8bn of real estate, a 4% debt load for one of the most leveraged names in the
 // sector. Shared by every industry override, because each one falls back to exactly this.
 const corpDebt = v => (v.ltdCur != null && v.ltDebt == null ? null
-  // `ltdCurInLtDebt` is the per-filer verdict from `debtScope` below: when the long-term tag already
-  // contains the current maturities, adding them again is a double count, so the slice is dropped
-  // from the SUM while the row itself stays on the sheet as the filed figure it is.
-  : sum(v.stDebt, v.ltdCurInLtDebt ? null : v.ltdCur, v.ltDebt));
+  // Two independent verdicts, each dropping one row from the SUM while leaving it on the sheet as the
+  // filed figure it is. `stDebtIsLtdCur` is rule 16 — the two rows are one line the filer tagged
+  // twice, so the figure enters once, through `ltdCur`. `ltdCurInLtDebt` is rule 15's per-filer
+  // verdict from `debtScope` below — the current maturities are already inside the long-term tag.
+  // They compose: a filer with both drops the figure from the sum entirely, because the one line it
+  // describes is already inside `ltDebt`, which is exactly right.
+  : sum(v.stDebtIsLtdCur ? null : v.stDebt, v.ltdCurInLtDebt ? null : v.ltdCur, v.ltDebt));
+
+// ── Rule 16 ────────────────────────────────────────────────────────────────────────────────────
+// Two debt rows filed at the same non-zero value on the same date are ONE line, not two.
+//
+// Iridium tags `ShortTermBorrowings` and `LongTermDebtCurrent` at the same $3m and the three-way sum
+// counted it twice. Its balance sheet has a single current-liability debt line — "Short-Term Debt
+// 3,402" — carrying both tags, and so does every other filer this fires for: UPS files "Current
+// maturities of long-term debt and commercial paper", AMD "Current portion of long-term debt, net",
+// Target "Unsecured debt and other borrowings". One line, two tags, one figure.
+//
+// Equality is the whole test, and it is safe because the population is not close. Across the 167
+// filers swept, at every date either concept was ever filed: **20 non-zero equal observations against
+// 1,548 differing**. A filer with two genuinely distinct balances is nowhere near — Exxon $201m
+// against $348m, Walmart $1.51bn against $5.85bn — so there is no near-miss regime for a coincidence
+// to hide in. All seven filers producing an equal pair were checked against their rendered balance
+// sheets and all seven have a single line.
+//
+// Zero is excluded because it is not evidence: 38 observations have both rows at zero, which says
+// nothing about whether they are the same line.
+//
+// Two other tests were measured and are NOT what shipped, because each reaches only part of it:
+// asking whether the filer ever files the two differently (rule 15's shape) is over-strict — AMD's
+// interim quarters differ by $3m because one leg is the balance sheet and the other the debt
+// footnote, and its statement still carries one line; and checking that the filer's own
+// `LiabilitiesCurrent` has no room for the figure twice misses Iridium, whose operating lease
+// liability is tagged separately and also sits inside the accrued line.
+export const dupCurrentDebt = v => v.stDebt != null && v.ltdCur != null && v.stDebt === v.ltdCur && v.stDebt !== 0;
+
+// ── A near-cancelled denominator ────────────────────────────────────────────────────────────────
+// Colgate's ROE reads 3948% and is arithmetically correct: its parent equity really is $54m after
+// decades of buybacks. Nothing here suppresses a correctly derived number — that is the one thing
+// this page must not do — but nothing said why either, and on a household name it reads as a broken
+// tool rather than as a fact about the company.
+//
+// The mark is NOT keyed to how big the ratio came out, which would catch the wrong thing. A biotech's
+// −5,041% EBITDA margin is huge and correct and is a different situation entirely: its denominator is
+// $3m of revenue, which genuinely IS the company's revenue, and the ratio means exactly what it says.
+// Equity is a RESIDUAL — assets less liabilities — and when it has nearly cancelled the ratio stops
+// describing returns and starts describing buyback history, because a 1% revision anywhere on the
+// balance sheet moves it by tens of percent. That is a fact about STABILITY, not about magnitude.
+//
+// So the test is |equity| against total assets, and the threshold is a JUDGEMENT rather than a
+// reading, which is worth saying plainly because most numbers in this file are the other kind. The
+// segment gate could point at a distribution with nothing in the middle; this one is smooth —
+// measured over 1,193 filer-columns the median is 34.3% of assets, p10 9.3%, p5 5.7%, p1 0.9%, with
+// no gap anywhere. 2% is chosen because it is the point where a 1% move in the balance sheet moves
+// the ratio by more than half (assets/equity > 50x), and the note prints the filer's ACTUAL
+// percentage so the threshold only decides when to speak, never what is claimed.
+//
+// It is not one filer. 23 columns across 13, and they are not obscure: McKesson's FY2021 ROE is
+// 21,614% on MINUS $21m of equity against $65bn of assets, Boeing's FY2018 3,085%, Home Depot's
+// FY2024 1,450%, Oracle's FY2023 792%, HCA's FY2020 656%.
+export const THIN_EQUITY = 0.02;
+export const thinEquity = v => v.equity != null && v.totalAssets != null && v.totalAssets !== 0
+  && Math.abs(v.equity) / Math.abs(v.totalAssets) < THIN_EQUITY;
 
 // ── Rule 11's open question, answered ───────────────────────────────────────────────────────────
 // Does the tag that filled the long-term debt row already contain the current maturities? It decides
@@ -422,6 +693,22 @@ export const DERIVED = {
   // against $4.0bn of revenue, and Net debt/EBITDA came out at 4,041x. Its leases are sales-type,
   // so it genuinely has almost no depreciation — the $4m was real, the label on it was not. A
   // missing D&A still yields EBIT, which understates rather than fabricates, so only EBIT is hard.
+  // The flag has to be computed BEFORE the row it describes is filled, or it can never see that the
+  // row was empty. Object order is the execution order here, the same reason `revenue` reserves the
+  // first slot. Returning null leaves nothing behind, so an unaffected filer carries no flag.
+  // A ZERO difference is not a derivation, it is the absence of one — the two totals are equal
+  // because the filer has no minority interest, and printing "Noncontrolling interest 0" on a sheet
+  // denominated in billions reads as a broken tool exactly the way an exported "Preferred dividends
+  // 0.00" does. It cost 700-odd cells across 100 filers before this test went in, and the blank it
+  // replaced was already the right answer.
+  nciDerived: v => (v.nciBs == null && v.equityIsParent && v.equityAll != null && v.equity != null
+    && v.equityAll !== v.equity ? true : null),
+  // Fills the non-controlling interest from the filer's own two equity totals when it has stopped
+  // tagging the interest directly. Only where `equity` is the PARENT figure — otherwise the two totals
+  // are the same fact and the difference is a meaningless zero. See the template row for what the
+  // residual can contain besides NCI.
+  nciBs: v => (v.nciBs == null && v.equityIsParent && v.equityAll != null && v.equity != null
+    && v.equityAll !== v.equity ? v.equityAll - v.equity : null),
   ebitda: v => (v.ebit == null ? null : v.ebit + (v.da || 0)),
   ebitdaSbc: v => (v.ebitda == null ? null : v.ebitda - (v.sbc || 0)),
   grossMargin: v => div(v.grossProfit, v.revenue),

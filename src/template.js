@@ -16,6 +16,21 @@
 // `tags` are ordered fallbacks: filers tag the same economic line differently, and Revenue alone
 // has three common spellings. First hit wins.
 
+// The near-cancelled-equity note, shared by the three rows that divide by equity. It PRINTS THE
+// FILER'S OWN percentage rather than asserting a category, which is the whole reason the threshold in
+// `thinEquity` is allowed to be a judgement: it decides only when to speak. The tail is per row,
+// because what a reader should take from it differs — a swinging leverage ratio, a return on a
+// residual, a book multiple against nearly no book.
+// The rows whose denominator IS equity, named once so the sheet's notes and the comps table cannot
+// drift apart about which figures a near-cancelled equity makes incomparable. `debtCap` is not here
+// on purpose — it divides by debt + equity and stays near 1.0x rather than exploding.
+export const EQUITY_DENOMINATED = new Set(["roe", "debtEquity", "pb"]);
+
+const EQUITY_THIN_NOTE = tail => col =>
+  `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
+  + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
+  + tail;
+
 export const SECTIONS = [
 // ─────────────────────────────────────────────────────────────── HISTORICALS: INCOME STATEMENT
 { id: "is", title: "Income Statement", feeds: "Historicals · 3-statement", lines: [
@@ -113,7 +128,13 @@ export const SECTIONS = [
   { k: "ap", label: "Accounts payable", how: "fetched", tags: ["AccountsPayableCurrent","AccountsPayableAndAccruedLiabilitiesCurrent"] },
   { k: "accrued", label: "Accrued liabilities", how: "fetched", tags: ["AccruedLiabilitiesCurrent","EmployeeRelatedLiabilitiesCurrent"] },
   { k: "defRevCur", label: "Deferred revenue, current", how: "fetched", tags: ["ContractWithCustomerLiabilityCurrent","DeferredRevenueCurrent"] },
-  { k: "stDebt", label: "Short-term borrowings", how: "fetched", tags: ["ShortTermBorrowings","CommercialPaper","OtherShortTermBorrowings"] },
+  // Rule 16: where this row and the current portion below it carry the same non-zero figure, they are
+  // ONE line on the balance sheet that the filer tagged twice — Iridium's "Short-Term Debt 3,402",
+  // UPS's "Current maturities of long-term debt and commercial paper". Counted once in total debt,
+  // and the row stays because it is a figure the filer reported. Same obligation rule 15 took on: a
+  // column whose rows do not visibly sum to the total printed below them has to say why.
+  { k: "stDebt", label: "Short-term borrowings", how: "fetched", tags: ["ShortTermBorrowings","CommercialPaper","OtherShortTermBorrowings"],
+    flagNote: { stDebtIsLtdCur: "The same figure as the current portion of long-term debt below — one line on the balance sheet carrying both tags. Counted once in total debt." } },
   // Left at the one unambiguous tag ON PURPOSE. `LongTermDebtAndCapitalLeaseObligationsCurrent` and
   // `DebtCurrent` were both added during the corporate sweep and both backed out, because adding a
   // current portion is only correct when the long-term figure it is added to EXCLUDES it — and
@@ -182,7 +203,21 @@ export const SECTIONS = [
   { k: "treasury", label: "Treasury stock", how: "fetched", tags: ["TreasuryStockValue","TreasuryStockCommonValue"] },
   { k: "aoci", label: "AOCI", how: "fetched", tags: ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"] },
   { k: "equity", label: "Total shareholders' equity", how: "fetched", tags: ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"] },
-  { k: "nciBs", label: "Noncontrolling interest", how: "fetched", tags: ["MinorityInterest"] },
+  // The filer's own ALL-IN equity total, tagged by 129 of the 235 filers swept. It is a real line on a
+  // consolidated balance sheet and it is also what makes the row below derivable when the filer stops
+  // tagging the piece directly — see the `nciBs` derivation.
+  { k: "equityAll", label: "Total equity incl. NCI", how: "fetched", tags: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"] },
+  // `MinorityInterest` is the direct tag and a filer can simply stop filing it: AMTD Idea Group last
+  // tagged it in 2023 and reports the residual only through the two equity totals, which left its
+  // balance sheet $389m out — 16.9% of assets. Where the direct tag is missing and both totals are
+  // there, the difference between them IS that residual, built from figures the filer already filed.
+  //
+  // The label is right for almost every filer and not for all of them, so it says so: at AMTD the
+  // difference is non-controlling interests $177m PLUS perpetual securities $207m and warrants $6m,
+  // which is $389,427k against a $389,427k gap — to the dollar, and not one thing. Rule 14's
+  // discipline, applied to a figure that was derived rather than to one that was fetched.
+  { k: "nciBs", label: "Noncontrolling interest", how: "fetched", tags: ["MinorityInterest"],
+    flagNote: { nciDerived: "Derived as the filer's total equity less the parent's — it stopped tagging the interest directly. That residual is non-controlling interests at almost every filer, and where a company also issues perpetual securities or warrants inside total equity they are in here too." } },
 ]},
 // ─────────────────────────────────────────────────────────────── HISTORICALS: CASH FLOW
 { id: "cf", title: "Cash Flow", feeds: "Historicals · DCF · LBO", lines: [
@@ -240,7 +275,13 @@ export const SECTIONS = [
   { k: "grossLev", label: "Total debt / EBITDA", how: "computed", formula: "totalDebt / ebitda" },
   { k: "intCover", label: "EBITDA / interest expense", how: "computed", formula: "ebitda / intExp" },
   { k: "fccr", label: "(EBITDA − capex) / interest", how: "computed", formula: "(ebitda - capex) / intExp", note: "Fixed-charge coverage proxy" },
-  { k: "debtEquity", label: "Debt / equity", how: "computed", formula: "totalDebt / equity" },
+  // Nothing is suppressed and the figure is exactly right — Debt/equity really does run −62.29x to
+  // 147.89x at Colgate, because its equity is $54m. What the row was missing is the reason, without
+  // which a correct number reads as a broken tool. See `thinEquity`.
+  { k: "debtEquity", label: "Debt / equity", how: "computed", formula: "totalDebt / equity",
+    flagNote: { equityThin: EQUITY_THIN_NOTE("This ratio swings violently between columns for that reason, and each value is correct as filed.") } },
+  // Deliberately NOT marked. It divides by debt + equity, so a near-cancelled equity leaves it near
+  // 1.0 rather than exploding — Colgate reads 0.99x. The mark belongs where the instability is.
   { k: "debtCap", label: "Debt / total capital", how: "computed", formula: "totalDebt / (totalDebt + equity)" },
   { k: "currentRatio", label: "Current ratio", how: "computed", formula: "curAssets / curLiab" },
   { k: "quickRatio", label: "Quick ratio", how: "computed", formula: "(curAssets - inventory) / curLiab" },
@@ -271,7 +312,8 @@ export const SECTIONS = [
   { k: "nopat", label: "NOPAT", how: "computed", formula: "ebit * (1 - taxRate)" },
   { k: "investedCap", label: "Invested capital", how: "computed", formula: "totalDebt + equity - cash" },
   { k: "roic", label: "ROIC", how: "computed", formula: "nopat / investedCap" },
-  { k: "roe", label: "ROE", how: "computed", formula: "netIncome / equity" },
+  { k: "roe", label: "ROE", how: "computed", formula: "netIncome / equity",
+    flagNote: { equityThin: EQUITY_THIN_NOTE("So this is a return on what buybacks left behind rather than on capital employed; ROIC and ROA divide by figures that are not residuals and are the comparable ones here.") } },
   { k: "roa", label: "ROA", how: "computed", formula: "netIncome / totalAssets" },
   { k: "assetTurn", label: "Asset turnover", how: "computed", formula: "revenue / totalAssets" },
   { k: "dso", label: "DSO", how: "computed", formula: "ar / revenue * 365" },
@@ -293,6 +335,11 @@ export const SECTIONS = [
   { k: "evEbit", label: "EV / EBIT", how: "market", formula: "ev / ebit" },
   { k: "evFcf", label: "EV / FCF", how: "market", formula: "ev / fcf" },
   { k: "pe", label: "P / E", how: "market", formula: "price / epsDil" },
+  // No `flagNote` here, deliberately. This section is not in any tab — the EV bridge renders in the
+  // card above them, which is a compact label/value grid with no room for a five-line note and is
+  // four numbers a banker reads first by design. A note declared here would never render at all.
+  // `ValuationCard` carries a one-line version instead, covering P/B and book value per share
+  // together, since both divide by the same near-cancelled figure.
   { k: "pb", label: "P / B", how: "market", formula: "mktCap / equity" },
   { k: "fcfYield", label: "FCF yield", how: "market", formula: "fcf / mktCap" },
   { k: "divYield", label: "Dividend yield", how: "market", formula: "dps / price" },

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
-import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN } from "./template.js";
+import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED } from "./template.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 
@@ -286,11 +286,41 @@ export default function App() {
 
   const grid = useMemo(() => buildGrid(data, quote), [data, quote]);
 
-  // After the grid paints, jump to the newest year. Runs on the data rather than on mount, because
-  // the table does not exist yet when the fetch is still in flight.
+  // After the grid paints, jump to the newest year — but NOT when the table almost fits, which is the
+  // case that produced a wrong-looking number on the front page of every large filer.
+  //
+  // The two edges of this scroller are not symmetric, and that asymmetry is the whole argument. The
+  // RIGHT edge is the container boundary: a column cut there runs into open space with a scrollbar
+  // under it, and reads as cut. The LEFT edge is the sticky label column, which is opaque and painted
+  // ON TOP — a column cut there looks like a column that simply starts there. So the surviving digits
+  // of $927,252,000 rendered as `2,000`, in a row beside $858,557,000, on CBL's FY2017. Measured at
+  // 1500px: `scrollWidth − clientWidth` is 71px against a ~120px column, and `scrollLeft` was 70.4.
+  //
+  // So: scroll only when the overflow is at least a column wide. Then the oldest columns are fully
+  // off-screen rather than half-hidden — genuinely absent, which no reader misreads — and the jump
+  // still does its job on a narrow window or a phone, where it matters most. Measured against the
+  // rendered column rather than a constant, because the width depends on the figures in it.
+  //
+  // THIS DOES NOT COVER EVERY CASE, and the gap is worth knowing before anyone calls it done. Where
+  // the overflow sits BETWEEN one and two column widths the sheet still scrolls and still leaves a
+  // partial column under the label: Apple is 190px of overflow against a 135px column at every
+  // desktop width (the page has a max width, so the overflow does not shrink), and its FY2019 revenue
+  // renders as `'4,000,000` — the tail of 260,174,000,000.
+  //
+  // Snapping to a column boundary instead was considered and is WORSE, which is why it is not here:
+  // it would put Apple's scroll at 135 and clip 55px off the RIGHT of FY2025, trading a truncated
+  // oldest column for a truncated newest one — the column the valuation card divides into. There is
+  // no scroll position that shows every column whole, so closing the rest of this needs the other
+  // fix: masking the strip beside the sticky label so a clipped cell reads as clipped. That is a
+  // change to how the table looks rather than to when it scrolls, and it is in the README's Next.
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollLeft = el.scrollWidth;
+    if (!el) return;
+    const overflow = el.scrollWidth - el.clientWidth;
+    if (overflow <= 0) return;
+    const firstYear = el.querySelector("thead th:nth-child(2)");
+    const colW = firstYear ? firstYear.getBoundingClientRect().width : 0;
+    if (overflow >= colW) el.scrollLeft = el.scrollWidth;
   }, [data]);
 
   const sectionLink = kind => {
@@ -341,10 +371,23 @@ export default function App() {
           [{ v: data.name, s: XF.TITLE }],
           [{ v: `${(data.tickers || []).join(" · ")}${data.sic ? " · " + data.sic : ""}`, s: XF.MUTED }],
           [{ v: `Reported figures from SEC filings · generated ${new Date().toISOString().slice(0, 10)} · filings.masonjbennett.com/?t=${tic}`, s: XF.MUTED }],
+          // The currency has to travel WITH the file. On the page it is stated once at the top; a
+          // workbook leaves the page behind, gets renamed, and lands in a model beside dollar columns
+          // — which is the same argument that puts the EV bridge's price and year on a row of their
+          // own down there. Only when it is not USD, for the same reason the page keeps quiet then.
+          ...(grid.ccy && grid.ccy !== "USD"
+            ? [[{ v: `All figures in ${grid.ccy}, as filed — not converted to USD`, s: XF.MUTED }]] : []),
           [],
           [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
           [{ v: "Period end", s: XF.MUTED }, ...grid.cols.map(c => ({ v: c.period.end, s: XF.MUTED }))],
         ];
+        // The freeze has to be COUNTED, not written down. It was `y: 6` — correct for the six header
+        // rows that existed when it was written, and wrong the moment the currency row above made the
+        // header seven for a non-USD filer, which would leave "Period end" inside the frozen data area
+        // as text in a column Excel is treating as numeric. That is not hypothetical: it is exactly
+        // what the Excel check caught on the comps workbook when a seventh row put company names below
+        // the split. A conditional header row and a hardcoded freeze cannot both be right.
+        const headerRows = rows.length;
         for (const sec of secs) {
           rows.push([]);
           rows.push([{ v: sec.title, s: XF.BOLD }]);
@@ -361,7 +404,7 @@ export default function App() {
           }
         }
         return { name: TABS.find(t => t.id === tabId).label, rows,
-          widths: [46, ...grid.cols.map(() => 18)], freeze: { x: 1, y: 6 } };
+          widths: [46, ...grid.cols.map(() => 18)], freeze: { x: 1, y: headerRows } };
       };
       // Segments is deliberately not a sheet here. It is not a slice of `grid` like the other three —
       // it comes off a different filing and has its own row set per table, so building it from
@@ -491,6 +534,14 @@ export default function App() {
               than in a footer. A sceptical reader forms the doubt AT a number, not at a bibliography
               168 rows below it, so this sits at the top and the proof itself sits in the cell. */}
           <span style={{ color: C.ink2, marginLeft: 12 }}>· click any reported figure to open the filing it came from</span>
+          {/* A figure with no currency on it is a claim that it is dollars, and for 45 of the 426
+              filers swept that claim is false — ASML's revenue is €32.67bn and rendered in exactly
+              the typography a dollar figure gets. Said once, at the top, rather than on 279 rows:
+              a sheet has one reporting currency by construction now (see `reportingCurrency`), so
+              one statement covers all of it. USD is left unsaid because it is the default a reader
+              already assumes and marking it would train the eye to ignore the marker. */}
+          {grid && grid.ccy && grid.ccy !== "USD" &&
+            <span style={{ color: C.bronze, marginLeft: 12 }}>· every figure below is in <b>{grid.ccy}</b>, as filed — not converted</span>}
           {quote && <span style={{ color: C.teal, marginLeft: 12 }}>${quote.price.toFixed(2)} — valuation on the newest year only, one price to divide with</span>}
           {quoteNote && <span style={{ color: C.bronze, marginLeft: 12 }}>{quoteNote}</span>}
           {copied && <span style={{ color: C.teal, marginLeft: 12 }}>{copied}</span>}
@@ -506,6 +557,46 @@ export default function App() {
           <a href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${Number(data.cik)}&type=10-K`}
             target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>check this CIK's filings on EDGAR ↗</a>
         </p>}
+
+        {/* The empty sheet above says the data is not here. This says something worse and quieter:
+            the data IS here, it foots, it reconciles, and it is about a different decade. National
+            Steel's us-gaap facts stop at 2009 because every 20-F since is IFRS, so the terminal
+            rendered FY2007–FY2009 for a company with a 2025 annual report on file — the exact failure
+            rule 6 exists to prevent, reached by a route rule 6 cannot see.
+
+            It goes ABOVE the valuation card rather than beside the year headers, because a reader who
+            does not notice it will divide today's share price into a sixteen-year-old profit. Loud,
+            once, at the top. The claim is only what is known — an annual report exists for a period
+            these figures do not cover — with the usual cause named as a cause rather than a verdict. */}
+        {/* Three forms can reach this banner and they do not mean the same thing, so it does not say
+            the same thing. It shipped worded for the case that produced it — a foreign issuer that
+            moved to IFRS — and once api/facts.js stopped dropping transition reports it began firing
+            on eleven filers whose newest report is a 10-KT. "An annual report ... for the year to
+            2025-12-31" is a FALSE claim about Ferguson, whose 10-KT covers five months, and naming
+            IFRS as the cause on a domestic form is a non-sequitur. The fact is the same in all three
+            cases and is stated first; only the cause is conditional, and it is named only where the
+            form itself establishes it. */}
+        {grid.behind && (() => {
+          const isT = /T(\/A)?$/.test(grid.behind.form);          // a transition report — the period is a stub
+          const isForeign = /^(20-F|40-F)/.test(grid.behind.form);
+          return <div style={{ border: `1px solid ${C.bronze}55`, background: "#b0741e0d", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+            <span style={{ ...S.label, color: C.bronze }}>These figures stop before the filer does</span>
+            <p style={{ fontSize: 12.5, color: C.ink2, margin: "7px 0 0", lineHeight: 1.65 }}>
+              The newest year below is <b>{grid.cols[grid.cols.length - 1].period.end}</b>, and this company has since
+              filed {isT ? "a transition report" : "an annual report"} on Form <b>{grid.behind.form}</b>{" "}
+              {isT ? "for the period ended" : "for the year to"} <b>{grid.behind.period}</b> that none of these
+              figures include.{" "}
+              {isForeign && <>On a foreign form that is usually IFRS — SEC&rsquo;s company-facts data carries the
+                US GAAP taxonomy only, so a filer that moves to IFRS simply stops appearing in it.{" "}</>}
+              {isT && <>A transition report is what a company files when it changes its fiscal year end, so the
+                period it covers is a stub rather than twelve months — which is why it gets no column of its
+                own below.{" "}</>}
+              What is below is what the company reported for those years, and it is correct for them.{" "}
+              <a href={`https://www.sec.gov/Archives/edgar/data/${Number(data.cik)}/${String(grid.behind.accn || "").replace(/-/g, "")}/${grid.behind.accn}-index.htm`}
+                target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>open the {grid.behind.period} filing ↗</a>
+            </p>
+          </div>;
+        })()}
 
         {/* The valuation summary rides above every tab on purpose. It is four numbers a banker reads
             first — EV, the multiple, the price it came from — and burying it one click deep would
@@ -538,6 +629,20 @@ export default function App() {
               {grid.cols.map(c => <th key={c.period.end} style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 13, fontWeight: 600, letterSpacing: .5, color: C.ink, borderBottom: `1px solid ${C.hair}` }}>
                 FY{c.period.fy}
                 <div style={{ fontSize: 10, fontWeight: 400, letterSpacing: .3, color: C.faint, marginTop: 3 }}>{c.period.end}</div>
+                {/* Months that appear in NO column, between this one and the one to its left. The
+                    figures here are right; every growth rate across the boundary is blank, and this is
+                    the one place that can say why for all of them at once, because the discontinuity
+                    belongs to the boundary rather than to any row.
+
+                    It states the FACT and not the cause, which is rule 10's lesson: the cause is a
+                    fiscal-year change at most of these filers, but Thermo Fisher's is a seven-year hole
+                    with an unmoved December year end and Diebold's is a Chapter 11 year split into two
+                    stubs. A confident "year end moved" would be wrong on both, and a wrong diagnosis
+                    sends the reader somewhere that does not exist. */}
+                {c.period.gapBefore > 0 && <div title={`${c.period.gapBefore} days between the previous column's period end and this one's start appear in no column. Usually a fiscal-year change — the stub period is not twelve months, so it gets no column — or years the filer did not tag. Growth rates across the break are left blank rather than comparing two different windows.`}
+                  style={{ fontSize: 9, fontWeight: 400, letterSpacing: .2, color: C.bronze, marginTop: 3 }}>
+                  {Math.round(c.period.gapBefore / 30.4)} mo not covered
+                </div>}
               </th>)}
             </tr></thead>
             <tbody>
@@ -623,6 +728,12 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
     if (val(c, r.k) != null || !GAP[st]) continue;
     (gaps[st] = gaps[st] || {})[c.ticker] = [...(gaps[st][c.ticker] || []), r.label];
   }
+  // The same obligation one row further on, and the same lesson: a cell can be CORRECT and still read
+  // as the tool breaking. Colgate's ROE sits at 863.6% beside P&G's 29.5% because its equity has very
+  // nearly cancelled, which the single sheet explains at length and this table said nothing about.
+  // Bronze here means what it means everywhere else — there is something to go and look at.
+  const thin = c => { const col = colOf(c); return !!(col && col.v.equityThin); };
+  const thinSet = ready.filter(thin);
 
   // Median over the companies that HAVE the figure, never over the set. A bank contributes no
   // EV/EBITDA and a filer with no operating income contributes no margin; counting those as zero, or
@@ -733,6 +844,13 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                   statement from the eight companies beside it. */}
               {col && basis === "ltm" && !c.grid.ltmStitched &&
                 <div style={{ color: C.bronze }}>= FY{col.period.fy}, nothing filed since</div>}
+              {/* Currency belongs on the COLUMN here, not once at the top as it is on a single sheet:
+                  a set is the one place two currencies legitimately sit side by side, and ASML's
+                  €32.67bn of revenue beside a US filer's dollars is the Costco blank wearing a
+                  populated cell. The ratio and multiple rows are dimensionless and compare fine —
+                  which is also why the median, taken only over those, is unaffected. */}
+              {col && c.grid.ccy && c.grid.ccy !== "USD" &&
+                <div style={{ color: C.bronze }}>figures in {c.grid.ccy}</div>}
             </div>
           </th>; })}
           <th style={{ textAlign: "right", padding: "11px 14px", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", color: C.teal, borderBottom: `1px solid ${C.hair}`, borderLeft: `1px solid ${C.hair}` }}>
@@ -753,8 +871,10 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                 <td style={{ padding: "6px 14px", position: "sticky", left: 0, background: C.card, whiteSpace: "nowrap", color: C.ink2 }}>{r.label}</td>
                 {comps.map(c => {
                   const v = val(c, r.k), gap = v == null && GAP[why(c, r.k)];
-                  return <td key={c.ticker} title={gap ? gap(c.ticker, r.label.toLowerCase()) : ""}
-                    style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? (gap ? C.bronze : C.hair) : C.ink2, whiteSpace: "nowrap" }}>
+                  const soft = v != null && EQUITY_DENOMINATED.has(r.k) && thin(c);
+                  return <td key={c.ticker} title={gap ? gap(c.ticker, r.label.toLowerCase())
+                    : soft ? `${c.ticker}'s equity is a near-cancelled residual, so this ratio is not comparable to the others` : ""}
+                    style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? (gap ? C.bronze : C.hair) : soft ? C.bronze : C.ink2, whiteSpace: "nowrap" }}>
                     {display(r.k, v) || "—"}
                   </td>;
                 })}
@@ -772,6 +892,11 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
       Same engine as the single sheet, so the industry rules carry over: a bank in the set has no
       EV/EBITDA because a bank is levered on capital ratios, not because the figure is missing. A blank
       is a blank for the reason the company's own sheet gives — click the ticker to open it.
+      {thinSet.length > 0 && <span style={{ color: C.bronze }}>
+        {" "}{thinSet.map(c => `${c.ticker} (${(Math.abs(colOf(c).v.equity / colOf(c).v.totalAssets) * 100).toFixed(2)}%)`).join(", ")}
+        {thinSet.length > 1 ? " hold" : " holds"} shareholders' equity worth almost nothing against total assets, so the
+        equity-denominated ratios above are correct and are not comparable with the rest of the set.
+      </span>}
       {basis === "ltm" && <><br />An LTM line is the last full year plus this year to date less last year to the same date,
       all three from the same tag the annual column used, with the balance sheet read at the quarter end rather than summed.
       {carried.length > 0 && ` ${carried.map(c => c.ticker).join(", ")} ${carried.length > 1 ? "have" : "has"} nothing filed since the year end, so the fiscal year is the trailing twelve months.`}
@@ -837,6 +962,16 @@ function SegmentTables({ segs, S }) {
             reason a figure here can differ from the same line in the footnote. */}
         {v.otherViews && v.otherViews.length > 0 && <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>
           also filed on another basis: {v.otherViews.map(o => o.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()).join(", ")}
+        </span>}
+        {/* Rule 9's table is the only one here whose CELLS the filer did not file. Exxon files no
+            single-axis segment row at all — it files segment × geography, and each row above is that
+            segment's cells added across the geographies. Every other figure on this site is a value
+            taken from a filing, and the header says so in those words, so a reconstruction cannot sit
+            among them unmarked. The claim it still makes is the one the gate enforces and the one
+            worth having: the arithmetic is the filer's own and it foots to the filer's own total. */}
+        {v.collapsedAlong && <span style={{ fontSize: 10, color: C.bronze, fontFamily: MONO }}>
+          summed from this filer's {v.collapsedAlong.split(":").pop().replace(/^Statement|Axis$/g, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} cross-tab
+          — it files no single-axis breakdown here, so each row is its cells added across that axis
         </span>}
       </div>
       <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
@@ -909,6 +1044,14 @@ function ValuationCard({ grid, quote, note, S }) {
         <span style={{ fontSize: 13, fontFamily: MONO, color: C.ink2, fontWeight: 600 }}>{display(r.k, r.v)}</span>
       </div>)}
     </div>
+    {/* P/B and book value per share divide by the same near-cancelled residual the ratio rows carry a
+        note about, and this card is the only place either of them appears. One compact line rather
+        than the full note the sheet uses: the card is deliberately four numbers read at a glance, and
+        a five-line explanation inside it would cost the thing it is for. See `thinEquity`. */}
+    {c.v.equityThin && <p style={{ fontSize: 11, color: C.bronze, margin: "11px 0 0", fontFamily: MONO, lineHeight: 1.5 }}>
+      Book value here is a near-cancelled residual — shareholders' equity is {(Math.abs(c.v.equity / c.v.totalAssets) * 100).toFixed(2)}% of
+      total assets — so P/B and book value per share describe the buyback history rather than the valuation.
+    </p>}
   </div>;
 }
 
@@ -941,8 +1084,20 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
       // that exists in no filing is the most expensive kind of wrong label on this page.
       const newest = cells[cells.length - 1];
       const newestBlank = !!newest && newest.v == null && newest.m.status !== "not-applicable";
+      // A valuation row blanked because the filer reports in another currency must NOT read "needs
+      // price": the price arrived and is fine, and sending a reader to look for a missing quote is
+      // rule 5's complaint exactly — the wrong kind of blank. It names the currency instead, which
+      // is also the answer to "why is this the one company with no EV".
+      const ccyBlocked = newest && newest.m.status === "currency-mismatch" ? newest.m.ccy : null;
+      // Rule 5's fifth kind. The filer tagged this line, for this period, in another currency — so it
+      // is not "not tagged" (go and look) and not "n/a" (does not exist); it is findable, in dollars,
+      // on a sheet denominated in something else. Keyed to the newest column like `blankNote`, since
+      // that is the column the question is asked of.
+      const ccyOther = newest && newest.m.status === "other-currency" ? newest.m.ccy : null;
       const status = has ? null
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
+        : ccyBlocked ? `reported in ${ccyBlocked}`
+        : ccyOther ? `filed in ${ccyOther}`
         : line.how === "manual" ? "judgement"
         : line.how === "market" ? "needs price"
         : line.how === "computed" ? null
@@ -970,9 +1125,26 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           {/* And the third kind: a note conditioned on something the ENGINE worked out rather than on
               a tag or a blank. The current portion of long-term debt is a real filed figure that is
               sometimes already inside the long-term figure beneath it, so it is shown and not summed
-              — which a reader adding the column up would otherwise read as an arithmetic error. */}
-          {line.flagNote && Object.entries(line.flagNote).map(([k, text]) =>
-            grid.cols[grid.cols.length - 1].v[k] ? <div key={k} style={NOTE_STYLE}>{text}</div> : null)}
+              — which a reader adding the column up would otherwise read as an arithmetic error.
+
+              ANY column, not the newest one — and that is the opposite of `blankNote` above for a
+              reason. A blank note answers "why is this row empty", which is a question the reader asks
+              about the column the valuation divides into, so keying it to the newest column is what
+              makes it fire on the half-blank case. A flag note discharges an obligation instead: a
+              column whose rows do not add up to its own total has to say why, and that debt is owed by
+              whichever column carries the flag. Keyed to the newest, three filers went silent on it —
+              Old Dominion drops the current portion from six columns and its newest is not one of them,
+              so the row rule 15 exists to explain rendered with no explanation at all, and UPS's
+              duplicate sits in its oldest column. */}
+          {/* The text may be a FUNCTION of the newest flagged column, so a note can print the filer's
+              own figure instead of asserting a category. The near-cancelled-equity mark needs that:
+              its threshold is a judgement rather than a reading, so the threshold decides only when to
+              speak and the number the reader is shown is Colgate's actual 0.33%. */}
+          {line.flagNote && Object.entries(line.flagNote).map(([k, text]) => {
+            let hit = null;
+            for (const c of grid.cols) if (c.v[k]) hit = c;
+            return hit ? <div key={k} style={NOTE_STYLE}>{typeof text === "function" ? text(hit) : text}</div> : null;
+          })}
         </td>
         {cells.map((x, i) => {
           const shown = display(line.k, x.v, x.m.unit);

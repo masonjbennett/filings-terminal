@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, hasInterim, debtScope, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -85,6 +85,20 @@ function fillCol(facts, sections, industry, get, scopeOf) {
   // in `v` where the debt derivation can read it and nowhere else. Per column, because a filer can
   // reach a different tag in different years.
   v.ltdCurInLtDebt = scopeOf ? scopeOf((meta.ltDebt || {}).tag) === "includes" : false;
+  // Rule 16's companion, and unlike the one above it is decided from THIS column alone: the two
+  // current-debt rows filed at the same non-zero value are one line the filer tagged twice, so the
+  // sum takes it once. Per column because a filer's balance sheet changes shape — AMD presents one
+  // line today and presented two in 2011.
+  v.stDebtIsLtdCur = dupCurrentDebt(v);
+  // Equity has nearly cancelled, so every ratio dividing by it is measuring a residual. Set here
+  // rather than in DERIVED because it is a property of the column that the NOTES read, not a value
+  // any row displays — and because nothing about it may change a number. See `thinEquity`.
+  v.equityThin = thinEquity(v);
+  // Which equity tag filled the row, because the `nciBs` derivation is only valid when `equity` is the
+  // PARENT figure. A filer that tags only the all-in concept fills `equity` from it via the second
+  // fallback, and there the difference from `equityAll` is zero by construction — deriving from it
+  // would print a confident 0 for a company that has a real minority interest.
+  v.equityIsParent = (meta.equity || {}).tag === "StockholdersEquity";
   const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
   for (const [k, fn] of Object.entries(derivations)) {
     const out = fn(v);
@@ -101,9 +115,13 @@ function fillCol(facts, sections, industry, get, scopeOf) {
 function crossColumn(cols) {
   cols.forEach((c, i) => {
     const prev = cols[i - 1];
+    // A growth rate across a break in the calendar is not a growth rate — see `gapBefore`. Refused
+    // rather than printed, which is rule 7's "a partial total is worse than no total" applied to a
+    // comparison: the number would look exactly like the ones beside it and mean something else.
+    const broken = !!(c.period && c.period.gapBefore);
     for (const [k, src] of Object.entries(YOY)) {
       const a = c.v[src], b = prev && prev.v[src];
-      c.v[k] = a != null && b != null && b !== 0 ? a / b - 1 : null;
+      c.v[k] = !broken && a != null && b != null && b !== 0 ? a / b - 1 : null;
       // This pass runs AFTER the inapplicable lines are blanked, so writing "computed"
       // unconditionally erased that verdict: a P&C insurer's EBITDA row said "n/a for a P&C insurer"
       // while the EBITDA growth row directly under it said "not tagged" — pointing the reader at a
@@ -117,7 +135,10 @@ function crossColumn(cols) {
     // the same map will one day be pointed at a line that is not.
     for (const [k, [src, n]] of Object.entries(CAGRS)) {
       const a = c.v[src], b = cols[i - n] && cols[i - n].v[src];
-      c.v[k] = a != null && b != null && a > 0 && b > 0 ? Math.pow(a / b, 1 / n) - 1 : null;
+      // A CAGR spans n boundaries, so ANY break inside the span disqualifies it, not just the one
+      // immediately behind this column.
+      const span = cols.slice(Math.max(0, i - n + 1), i + 1).some(x => x.period && x.period.gapBefore);
+      c.v[k] = !span && a != null && b != null && a > 0 && b > 0 ? Math.pow(a / b, 1 / n) - 1 : null;
       if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
       c.meta[k] = { status: "computed" };
     }
@@ -128,9 +149,27 @@ function crossColumn(cols) {
 // today's — so an EV/EBITDA against FY2019 would be today's enterprise value over a six-year-old
 // profit: a number that looks like a multiple and means nothing. Historical multiples need
 // historical prices, which the free quote tier does not carry.
-function applyQuote(c, industry, quote) {
+// The price is in the currency of the LISTING — Finnhub quotes a US-listed line in dollars, and
+// api/quote.js returns a number with no currency on it because there was never a second one. Every
+// row below divides that price into, or adds it to, a figure taken from the filing: market cap is
+// price × the cover-page share count, and enterprise value then adds the filer's own debt and
+// subtracts its own cash. If the filer reports in euros, `mktCap + totalDebt − cash` is three
+// currencies in one sum and `price / epsDil` is a P/E built from two.
+//
+// There is no exchange rate in this data path and there is not going to be one, so the answer is the
+// same one `NOT_APPLICABLE` gives a carrier's enterprise value: the block is suppressed, with a
+// status of its own so the page can say WHICH currency rather than reading "needs price" — which
+// would be false, since the price arrived and is fine.
+const PRICE_CURRENCY = "USD";
+function applyQuote(c, industry, quote, ccy) {
   if (!c || !quote || !quote.price) return;
   const v = c.v;
+  if (ccy && ccy !== PRICE_CURRENCY) {
+    for (const k of ["price", "mktCap", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "pe", "pb", "fcfYield", "divYield"]) {
+      v[k] = null; c.meta[k] = { status: "currency-mismatch", ccy };
+    }
+    return;
+  }
   // Like the YoY pass above, this runs AFTER the inapplicable lines are blanked — and unlike it,
   // this one writes VALUES, not just labels. So a price arriving quietly resurrected every row
   // NOT_APPLICABLE had just deleted: Chubb printed a $155bn enterprise value, 2.62x EV/Revenue and
@@ -178,6 +217,24 @@ export function buildGrid(data, quote, limit = 8) {
   const periods = desc.slice().reverse();
   if (!periods.length) return { industry, sections, periods: [], rows: [], empty: true };
 
+  // The overlap rule in `annualPeriods` made the calendar honest; it did not make it CONTINUOUS. A
+  // filer that changes its fiscal year end leaves a stub between two columns that is not twelve months
+  // and so belongs to neither: Republic Airways runs to Sep-2022 and then to Dec-2023, with October to
+  // December 2022 in no column at all. Each column is right. Anything computed ACROSS that boundary is
+  // not — a growth rate there divides a September year by a December year fifteen months later, and
+  // the sheet printed 169.1% for Republic, 841.9% for CEA Industries and 32,960.1% for Frequency.
+  // 32 of 2,896 adjacent pairs across the four sweep frames are like this, on 27 filers, and one of
+  // them is e.l.f. Beauty — this is not a shell-company problem.
+  //
+  // Recorded on the period so the growth pass can refuse the comparison and the column header can say
+  // why once, rather than every affected row explaining it separately. A day's slack because filers
+  // differ on whether the next period starts on the previous end date or the day after.
+  const dayGap = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+  periods.forEach((p, i) => {
+    const prev = periods[i - 1];
+    p.gapBefore = prev && p.start && dayGap(prev.end, p.start) > 1 ? dayGap(prev.end, p.start) : 0;
+  });
+
   // The verdict is a property of the FILER, not of a column, so it is read once from the whole facts
   // document and memoised per tag — every column asks about at most one or two of them.
   const scopeCache = new Map();
@@ -185,10 +242,15 @@ export function buildGrid(data, quote, limit = 8) {
     if (!scopeCache.has(tag)) scopeCache.set(tag, debtScope(facts, tag));
     return scopeCache.get(tag);
   };
+  // Read once, from the same tags that built the calendar, and threaded into every fetch below — see
+  // `reportingCurrency`. One currency per sheet is what stops a filer's USD convenience translation
+  // being mixed into its own statements line by line.
+  const ccy = reportingCurrency(facts, periodTags);
+
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
-    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p), scopeOf) }));
+    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy }), scopeOf) }));
   crossColumn(cols);
-  applyQuote(cols[cols.length - 1], industry, quote);
+  applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
   // ── The trailing-twelve-month columns ────────────────────────────────────────────────────────
   // Built off the SAME sections, derivations and blanking, so an industry rule cannot hold on the
@@ -203,11 +265,11 @@ export function buildGrid(data, quote, limit = 8) {
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.latest ? latestFact(facts, line.tags)
-      : inst ? pickFact(facts, line.tags, { end: w.end })
-      : pickLtm(facts, line.tags, w), scopeOf),
+      : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy })
+      : pickLtm(facts, line.tags, w, ccy), scopeOf),
   }));
   crossColumn(ltmCols);
-  applyQuote(ltmCols[ltmCols.length - 1], industry, quote);
+  applyQuote(ltmCols[ltmCols.length - 1], industry, quote, ccy);
 
   // A filer whose fiscal year has just closed with nothing filed since has no stitch to make, and
   // its newest annual column already IS the trailing twelve months — Microsoft's year to 30 Jun 2026
@@ -219,10 +281,32 @@ export function buildGrid(data, quote, limit = 8) {
   // produces the same empty list and is not the same claim: relabelling a nine-month-old fiscal year
   // "LTM" would be the exact misdating the rest of this engine exists to prevent. No interim period
   // on file, so nothing to add — versus there is one and it could not be used.
+  // ── Is this sheet about the years the filer has actually reported? ──────────────────────────────
+  // Rule 6 is about tags being retired INSIDE us-gaap. This is the filer leaving us-gaap altogether,
+  // which rule 6 cannot see and which produces the same failure it exists to prevent: a sheet that
+  // foots, reconciles and looks entirely healthy while being about a different decade. National Steel
+  // (SID) has filed a 20-F every year since, and every us-gaap fact it carries stops at 2009-12-31 —
+  // its later filings are IFRS, and companyfacts carries only the us-gaap and dei taxonomies. The
+  // terminal rendered FY2007–FY2009 for a company with a 2025 annual report on file.
+  //
+  // The filer's own submissions list answers it and the payload already carries it. Measured over all
+  // 198 filers in the three sweep frames: 196 are behind by EXACTLY ZERO months and the other two by
+  // 36 and 192, so this is a gap rather than a threshold. Any gap at all is reported.
+  //
+  // It also reads correctly in the benign case it can fire on — the day a filer's new annual report
+  // lands before the facts document is regenerated — because what it claims is only what it knows:
+  // an annual report exists for a period these figures do not cover.
+  // `T` before `/A`, matching `periodic()` in extract.js — written the other way round this rejected
+  // `10-KT/A`, an amended transition report, which is the one form that carries both provisions.
+  const annual = (data.filings || []).filter(f => /^(10-K|20-F|40-F)T?(\/A)?$/.test(f.form) && f.period);
+  const newestReport = annual.reduce((a, f) => (!a || f.period > a.period ? f : a), null);
+  const behind = newestReport && cols.length && newestReport.period > cols[cols.length - 1].period.end
+    ? { period: newestReport.period, form: newestReport.form, accn: newestReport.accn } : null;
+
   const carry = !ltmCols.length && cols.length && !hasInterim(facts, periodTags, desc[0]);
   const last = cols[cols.length - 1];
   const newestLtm = ltmCols.length ? ltmCols[ltmCols.length - 1]
     : carry ? { period: { ...last.period, ltm: true, through: last.period.end, fyEnd: last.period.end }, v: { ...last.v }, meta: { ...last.meta } }
     : null;
-  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0 };
+  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, ccy };
 }

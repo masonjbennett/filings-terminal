@@ -109,10 +109,19 @@ export default async function handler(req, res) {
     }
 
     // The filing list, trimmed to the forms a model is built from and the fields needed to link back.
+    //
+    // The pattern has to cover every form a FACT can come from, because `behind` reads this list to
+    // ask whether an annual report exists for a period the sheet does not cover — and it was written
+    // as a fixed set of eight strings that left out every TRANSITION report. `grid.js` carries a `T?`
+    // in its own regex specifically for those, so the provision was there and could never fire: the
+    // population had been removed one layer earlier. Greif changed its year end from 31 Oct to 30 Sep
+    // and files a 10-KT for the eleven months to Sep-2025; with that report invisible here, its sheet
+    // stopped at Oct-2024 and said nothing, which is National Steel's failure exactly. Also picks up
+    // 20-F/A, 40-F/A and the amended transition forms, none of which were listed either.
     const r = sub.filings && sub.filings.recent ? sub.filings.recent : { form: [] };
     const filings = [];
     for (let i = 0; i < r.form.length; i++) {
-      if (!/^(10-K|10-Q|8-K|20-F|40-F|10-K\/A|10-Q\/A)$/.test(r.form[i])) continue;
+      if (!/^(10-K|10-Q|20-F|40-F)T?(\/A)?$|^8-K$/.test(r.form[i])) continue;
       filings.push({ form: r.form[i], filed: r.filingDate[i], accn: r.accessionNumber[i], doc: r.primaryDocument[i], period: r.reportDate ? r.reportDate[i] : null });
       if (filings.length >= 120) break;
     }

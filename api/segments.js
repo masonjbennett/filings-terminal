@@ -364,6 +364,81 @@ export default async function handler(req, res) {
     // this is, and a fact for a different one belongs to a different table.
     const wantedHere = (g, tag) => !g.concepts.size || g.concepts.has(tag);
 
+    // ── Rule 9: a cross-tab collapses along its second axis ──────────────────────────────────────
+    //
+    // Rule 1 keeps one breakdown axis per fact, and for one filer that is the only thing standing
+    // between the tab and a table it plainly has. Exxon files NO single-axis segment breakdown worth
+    // the name — two members on one impairment concept — and files thirteen concepts three years deep
+    // as segment × geography. Summing each segment's cells across geography recovers the row.
+    //
+    // It is arithmetic, not inference, and it is checkable: Exxon's eight revenue cells sum to
+    // $452.209bn, which is EXACTLY the `OperatingSegments` subtotal it files beside them, and its
+    // intersegment elimination of −$121.005bn plus corporate revenue of $1.034bn take that to
+    // $332.238bn against a consolidated $332.238bn. To the dollar, which is the point — the collapse
+    // is fed back into the SAME pipeline, so rule 6's reconciling rows, rule 7's view selection and the
+    // gate all apply to it unchanged rather than being re-implemented on a second path.
+    //
+    // Three things bound it, and the first is the one that would double a company:
+    //  - **A TOTAL member on the second axis.** {US, Non-U.S., Worldwide} summed is twice the company,
+    //    which is rule 3's failure arriving on an axis rule 3 never looks at. Tested by VALUE, the way
+    //    rule 6 tests a reconciling row, and the whole collapse fails closed if one is found — because
+    //    a filer that files a geographic total files it for every row, so this is not a row to drop.
+    //  - **Exactly ONE other breakdown axis.** Exxon also files segment × geography × product; which
+    //    of two axes to collapse along is not answerable from the data, so it is not guessed.
+    //  - **Only where the single-axis path produced nothing that survives the gate.** An unqualified
+    //    single-axis fact is the figure as the statement presents it; a collapse is a reconstruction,
+    //    and a reconstruction never outranks the filing. This is what keeps the change off the 26
+    //    filers that already have a table.
+    const collapse = v => {
+      const cell = new Map(), seconds = new Set();
+      for (const [id, c] of ctxs) {
+        if (!c.dims[v.axis] || c.instant || !periods.includes(c.end)) continue;
+        if (!c.start || days(c.start, c.end) < ANNUAL_MIN || days(c.start, c.end) > ANNUAL_MAX) continue;
+        const others = Object.keys(c.dims).filter(d => d !== v.axis && d !== QUALIFIER);
+        if (others.length !== 1 || !axisSet.has(others[0])) continue;
+        cell.set(id, c); seconds.add(others[0]);
+      }
+      if (!cell.size || seconds.size !== 1) return null;
+      const second = [...seconds][0];
+      // Rule 4 before anything is added up. Inline XBRL repeats a fact everywhere it appears in the
+      // document, and here a duplicate is not a cosmetic problem — it lands straight in a sum.
+      const seen = new Set(), groups = new Map();
+      for (const f of parseFacts(xml, id => cell.has(id))) {
+        const k = `${f.tag}|${f.ctx}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const c = cell.get(f.ctx);
+        const g = `${f.tag} ${c.end} ${c.dims[v.axis]} ${c.dims[QUALIFIER] || ""}`;
+        if (!groups.has(g)) groups.set(g, { tag: f.tag, end: c.end, seg: c.dims[v.axis],
+          q: c.dims[QUALIFIER] || "", unit: f.unit, parts: new Map() });
+        // One cell per second-axis member. A repeat at the same coordinates is the same cell.
+        if (!groups.get(g).parts.has(c.dims[second])) groups.get(g).parts.set(c.dims[second], f.val);
+      }
+      if (!groups.size) return null;
+      // The total-member test. Exactly the shape rule 6 uses on reconciling rows: a member carrying
+      // the sum of the others is the total restated. Two members cannot be told apart this way, so a
+      // pair is left alone — with {US, Non-U.S.} neither is trivially the other.
+      for (const g of groups.values()) {
+        if (g.parts.size < 3) continue;
+        for (const [m, val] of g.parts) {
+          const others = [...g.parts].filter(([o]) => o !== m).reduce((n, [, x]) => n + x, 0);
+          if (others !== 0 && Math.abs(val - others) <= Math.abs(others) * 1e-6) return null;
+        }
+      }
+      // Synthetic contexts in the shape the single-axis path produces, so nothing downstream can tell
+      // the difference and no rule below has to learn about cross-tabs.
+      const keep = new Map(), facts = [];
+      let n = 0;
+      for (const g of groups.values()) {
+        const id = ` collapsed${n++}`;
+        keep.set(id, { dims: { [v.axis]: g.seg, ...(g.q ? { [QUALIFIER]: g.q } : {}) },
+          n: g.q ? 2 : 1, end: g.end, start: null, instant: false });
+        facts.push({ tag: g.tag, ctx: id, unit: g.unit,
+          val: [...g.parts.values()].reduce((a, x) => a + x, 0) });
+      }
+      return { keep, facts, along: second };
+    };
+
     for (const v of VIEWS) {
       // Contexts on this axis, one breakdown axis only, with the qualifier permitted.
       const keep = new Map();
@@ -373,9 +448,19 @@ export default async function handler(req, res) {
         if (!Object.keys(c.dims).every(d => d === v.axis || d === QUALIFIER)) continue;
         keep.set(id, c);
       }
-      if (!keep.size) continue;
-      const facts = parseFacts(xml, id => keep.has(id));
-      if (!facts.length) continue;
+      const sources = [];
+      if (keep.size) {
+        const f = parseFacts(xml, id => keep.has(id));
+        if (f.length) sources.push({ keep, facts: f, along: null });
+      }
+      // Built alongside rather than instead: which one survives is decided after the gate, because
+      // "the single-axis path produced a table" is not knowable until the gate has ruled on it.
+      const col = collapse(v);
+      if (col) sources.push(col);
+      for (const src of sources) buildViews(v, src);
+    }
+
+    function buildViews(v, { keep, facts, along }) {
       const present = new Set([...keep.values()].map(c => c.dims[v.axis]));
 
       // One group per role that declares this axis. Where the linkbase is missing or declares none,
@@ -528,7 +613,7 @@ export default async function handler(req, res) {
             c: c.dims[QUALIFIER].split(":").pop().replace(/Member$/, "") });
         }
         for (const f of out) wantedTags.add(f.t);
-        views.push({ id: v.id, axis: v.axis, role: g.role,
+        views.push({ id: v.id, axis: v.axis, role: g.role, collapsedAlong: along,
           title: v.title, source: g.role ? (roleNames[g.role] || null) : null,
           members, facts: out, subtotals: subtotals.map(nameOf),
           otherViews: [...otherViews].filter(Boolean).map(q => q.split(":").pop().replace(/Member$/, "")) });
@@ -577,10 +662,18 @@ export default async function handler(req, res) {
       gated.push({ ...view, members, concepts: tags,
         facts: facts.map(f => ({ ...f, m: remap.get(f.m) })) });
     }
+    // Rule 9's other half: a RECONSTRUCTION never outranks the filing. Where an axis produced a table
+    // from single-axis facts, the collapsed cross-tab for that axis is dropped even though it too
+    // survived the gate — the filer presented one of them and the other is arithmetic done on its
+    // behalf. Decided here rather than in the loop above, because "the single-axis path produced a
+    // table" is only knowable once the gate has ruled.
+    const filed = new Set(gated.filter(v => !v.collapsedAlong).map(v => v.axis));
+    const ranked = gated.filter(v => !v.collapsedAlong || !filed.has(v.axis));
+
     // Two tables can survive the gate with the same members and the same concepts — the same
     // breakdown reached through two roles. Keep the first, which is the filing's own order.
     const seenView = new Set(), out = [];
-    for (const v of gated) {
+    for (const v of ranked) {
       const key = `${v.axis}|${v.members.map(m => m.q).join(",")}|${v.concepts.join(",")}`;
       if (seenView.has(key)) continue;
       seenView.add(key);
