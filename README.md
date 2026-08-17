@@ -261,6 +261,12 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     and applied to the years where only *T* resolves. Every reading must agree; a filer that changed
     convention gets no verdict, and no verdict changes nothing.
 
+    Its boundary is the lease component. Where the ambiguous tag also carries finance leases — the
+    `…AndCapitalLeaseObligations…` family does — `T` equals neither Noncurrent nor Noncurrent + Current
+    and no verdict is reached, which is correct behaviour and does cost Tronox a $39m double count. A
+    lease-aware variant of the identity was considered and is not available: Tronox's lease residual
+    is not tagged at all, so there is nothing to add back.
+
     Measured across all 167: **12 filers are exposed** (the long-term row filled from a tag that could
     contain current maturities, with a non-zero current portion beside it). Of those, 5 EXCLUDE and
     are already right, 4 are undecidable from their own filings and are left alone, and 3 INCLUDE.
@@ -947,11 +953,24 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **The four filers rule 15 cannot decide** — Kenvue, Iridium, Tronox and Exxon never tag the
-   ambiguous long-term concept and `LongTermDebtNoncurrent` in the same year, so their convention is
-   unreadable from their own filings and their debt sum is left as it was. A maturity schedule
-   (`LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths`) is a second possible witness and
-   has not been tried.
+1. **The four filers rule 15 cannot decide, checked against their filings — two are right and two are
+   overstated by 1.2% and 0.2%.** Worth knowing which, because "undecidable" is not the same as
+   "probably fine", and the two failures share a cause the rule cannot see past.
+   - **Exxon is correct.** Its tag is `LongTermDebtAndCapitalLeaseObligations`, whose taxonomy
+     definition is *"classified as noncurrent"*, and its balance sheet agrees: long-term debt 34,241
+     against notes and loans payable 9,296, total 43,537 against the 43,500 shown — 0.09% out.
+   - **Kenvue is correct, by accident.** Its balance sheet reads 1,453 + 7,071 = 8,524 and the sheet
+     shows exactly that, but through `DebtLongtermAndShorttermCombinedAmount` rather than the sum: its
+     long-term tag really does include the current maturities (7,821 = 7,071 + 750), so the three-way
+     sum would read 9,271. The same accident that rescues Verizon.
+   - **Tronox is overstated by $39m (1.2%)** and shows why the rule missed it: its tag carries
+     FINANCE LEASES as well, so `T` equals neither Noncurrent nor Noncurrent + Current. In its one
+     evidence year T is 2.94bn against a 2.89bn non-current balance and 16m of current maturities —
+     a 50m gap where the current portion is 16m, so no identity closes and the rule correctly declines
+     to guess. There is no clean second witness for it: the lease residual is untagged.
+   - **Iridium is overstated by $3m (0.2%)**, and by a different mechanism entirely — it tags
+     `ShortTermBorrowings` and `LongTermDebtCurrent` at the SAME $3m, so the sum counts one figure
+     twice regardless of what its long-term tag means. That is worth a look on its own terms.
 2. **Whether a near-zero denominator deserves a mark.** Colgate's 3948% ROE is correct and reads as a
    broken tool; so does Debt/equity swinging −62.29x to 147.89x on the same $54m. Nothing should be
    suppressed, but nothing currently says why either. Related: the small-cap sweep's 18 out-of-range
