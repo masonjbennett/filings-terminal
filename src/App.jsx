@@ -735,6 +735,25 @@ export default function App() {
 // disclosed — and the filed fiscal year stays one click away, because the reported year is what a
 // reader will want when they go to check a figure against the 10-K itself.
 function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
+  // Same mask as the single sheet, and the reason it is here and NOT on the segment tables is a
+  // measurement rather than a preference. Segments never overflow — scope is the newest 10-K, so
+  // three columns, and `scrollWidth - clientWidth` is 0 at 1500, 1180 and 900px on Apple, JPMorgan
+  // and Caterpillar alike. A mask there would be markup that can never fire, which is the same defect
+  // as the shadow that rendered as nothing.
+  //
+  // Comps does overflow: 0 with three companies at any width, 64px with six at 1180px, and 264px with
+  // eight at 1500px. It is a weaker case than the sheet's and worth saying why — this table has no
+  // scroller ref and never auto-scrolls, so it opens at 0 with nothing hidden and a reader only
+  // reaches the bad state by scrolling there deliberately. But the rows it would truncate are Revenue,
+  // EBITDA and Net income, absolute figures where a fragment reads as a smaller company, so the same
+  // misreading is available once they scroll.
+  const scroller = useRef(null);
+  const [edge, setEdge] = useState(0);
+  const syncEdge = () => {
+    const el = scroller.current;
+    const th = el && el.querySelector("thead th");
+    setEdge(el && th && el.scrollLeft > 0 ? th.getBoundingClientRect().width : 0);
+  };
   const [basis, setBasis] = useState("ltm");
   const [saved, setSaved] = useState("");
   // The LTM column is built by the same buildGrid as the year columns, so switching basis picks a
@@ -857,7 +876,11 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
       {saved && <span style={{ color: C.teal, marginLeft: 12 }}>{saved}</span>}
     </p>
 
-    <div style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+    <div style={{ position: "relative" }}>
+    {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 26,
+      pointerEvents: "none", zIndex: 3, borderRadius: "0 3px 3px 0",
+      background: `linear-gradient(to right, ${C.ink}30, ${C.ink}00)` }} />}
+    <div ref={scroller} onScroll={syncEdge} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
         <thead><tr style={{ background: "#f6eee1" }}>
           <th style={{ textAlign: "left", padding: "11px 14px", position: "sticky", left: 0, background: "#f6eee1", minWidth: 210, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.mute, borderBottom: `1px solid ${C.hair}` }}>Metric</th>
@@ -921,6 +944,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
           </Fragment>)}
         </tbody>
       </table>
+    </div>
     </div>
 
     <p style={{ fontSize: 10.5, color: C.faint, fontFamily: MONO, marginTop: 12, lineHeight: 1.6 }}>

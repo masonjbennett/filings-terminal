@@ -1515,13 +1515,12 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **The same mask on comps and segments.** The single sheet is done — see *"A note on how this got
-   built"* — and the two other scrollable tables have the same sticky label and the same overflow, but
-   neither has been measured to actually clip anything, so neither got the treatment yet. Worth doing
-   for consistency (an affordance meaning "clipped" on one tab and nothing on another is its own
-   defect) once it is checked that they clip at all: comps columns are wider and usually fewer.
-   Each needs its own wrapper and its own `edge` state, which is why it was not a one-line extension.
-2. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
+1. **Tronox's $39m double count, the one thing rule 15 and rule 16 between them still cannot reach.**
+   Its long-term tag carries FINANCE LEASES as well, so `T` equals neither Noncurrent nor
+   Noncurrent + Current and no identity closes; its lease residual is untagged, so there is no second
+   witness. A per-filer test needs a witness and this filer supplies none — which may mean the answer
+   is the XBRL instance rather than another tag.
+3. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
    honest and marked the comps columns, which is right as far as it goes — the ratio and multiple rows
    are dimensionless and compare fine, and the median is taken only over those. But **Revenue, EBITDA
    and Net income are absolute**, and ASML's €32.67bn sits in the same row as a US filer's dollars with
@@ -1531,11 +1530,6 @@ development exercises the real code path against real SEC responses.
    altogether and keep the multiples. Measured cost: only 10 of 426 filers report in anything but USD,
    so a mixed set is rare — but it is exactly the set someone builds to compare ASML with Applied
    Materials, which is a real comp.
-3. **Tronox's $39m double count, the one thing rule 15 and rule 16 between them still cannot reach.**
-   Its long-term tag carries FINANCE LEASES as well, so `T` equals neither Noncurrent nor
-   Noncurrent + Current and no identity closes; its lease residual is untagged, so there is no second
-   witness. A per-filer test needs a witness and this filer supplies none — which may mean the answer
-   is the XBRL instance rather than another tag.
 4. **Blackstone's segments, which are a question about what the tab is for.** It reports on measures
    with no consolidated counterpart — fee-related earnings, segment distributable earnings — so the
    gate has nothing to reconcile against and shows nothing. Three of its concepts do foot. Whether a
@@ -1731,3 +1725,13 @@ over whatever slides under it. Measured from the rendered header cell because th
 content-sized, and drawn only while `scrollLeft > 0`, because with nothing hidden there is nothing to
 say. CBL now reads $927,252,000 unmasked; Apple, whose overflow is permanently between one and two
 column widths, still scrolls and now marks the column it cuts.
+
+**Comps got the same mask and the segment tables deliberately did not**, which is a measurement rather
+than a preference. Segments never overflow — scope is the newest 10-K, so three columns, and
+`scrollWidth − clientWidth` is **0 at 1500, 1180 and 900px** on Apple, JPMorgan and Caterpillar alike.
+A mask there is markup that can never fire, which is the same defect as the shadow that rendered as
+nothing. Comps does overflow — 0 with three companies at any width, 64px with six at 1180px, 264px
+with eight at 1500px — and it is a weaker case than the sheet's, worth stating: it has no scroller ref
+and never auto-scrolls, so it opens with nothing hidden and a reader reaches the bad state only by
+scrolling there. But the rows it truncates are Revenue, EBITDA and Net income, where a fragment reads
+as a smaller company.
