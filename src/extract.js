@@ -253,6 +253,51 @@ const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ?
 // (within a year, since fiscal ends drift), and among those take the one with the most years. Recent
 // first, then deep. Every failure here produces a sheet that looks entirely healthy and is simply
 // about the wrong years, which is why it gets two passes instead of a short-circuit.
+// ── A line item is a SERIES, and the tag carrying the series IS the line ────────────────────────
+// Rule 21. Where a filer files two concepts for the same row, which one the sheet shows was decided
+// by the order of the tag list — and no fixed order can be right, because the filers that file both
+// do not agree about which is the total.
+//
+// Caterpillar files `CostOfRevenue` every year from 2018 at $35–45bn, and from 2022 ALSO files
+// `CostOfGoodsAndServicesSold` at $413m, $160m, $33m — a component, roughly 0.1% of revenue. The list
+// put the component first, so the sheet showed 1% of Caterpillar's cost of sales for four straight
+// years, and a gross margin of 99%. Nothing caught it: the identity that would (gross profit =
+// revenue − cost) needs a TAGGED gross profit, and Caterpillar does not tag one.
+//
+// Reordering the list was measured and rejected — of the filers that file both with different values,
+// ten have `CostOfRevenue` larger and six have `CostOfGoodsAndServicesSold` larger, so either order is
+// right for one group and wrong for the other. Tronox Uplift and Fortitude Gold file `CostOfRevenue`
+// as literally zero.
+//
+// The filer settles it, which is rule 15's shape and rule 6's measure: a row is a series, and a tag
+// appearing for the last four years at 1% of the incumbent's magnitude is not the same line. So the
+// candidates are ranked ONCE per sheet by their longest unbroken run across the sheet's own calendar,
+// ties keeping the list's order, and the winner is used for every column — a row cannot change which
+// concept it means halfway across the page. Across all six frames only three filers have two cost
+// concepts that disagree in the newest column, and this changes two: Caterpillar, from 0.1% of revenue
+// to 66.2%, and B.O.S. Better Online by 1.7%.
+export function tagsByRun(facts, tags, ends) {
+  if (!tags || tags.length < 2 || !ends || !ends.length) return tags;
+  const order = new Map(tags.map((t, i) => [t, i]));
+  const runOf = tag => {
+    const all = factsFor(facts, tag);
+    if (!all) return 0;
+    const have = new Set();
+    for (const f of all) {
+      if (!isDuration(f) || !periodic(f.form)) continue;
+      const d = days(f.start, f.end);
+      if (d >= ANNUAL_MIN && d <= ANNUAL_MAX) have.add(f.end);
+    }
+    let best = 0, cur = 0;
+    for (const e of ends) { cur = have.has(e) ? cur + 1 : 0; if (cur > best) best = cur; }
+    return best;
+  };
+  const runs = new Map(tags.map(t => [t, runOf(t)]));
+  // Only reorders where a LONGER run exists further down the list; a tag nothing reaches keeps its
+  // place, so a filer that files one concept resolves exactly as it did before.
+  return [...tags].sort((a, b) => runs.get(b) - runs.get(a) || order.get(a) - order.get(b));
+}
+
 export function annualPeriods(facts, tags, limit = 8) {
   const calendars = [];
   for (const tag of tags) {

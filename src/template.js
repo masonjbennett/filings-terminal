@@ -75,7 +75,7 @@ export const SECTIONS = [
     // read $64m against a real $58m of net revenue, with every margin under it quietly rebased.
     // Caught by diffing all 167 filers, not by any assertion.
     omitFor: { bank: ["InterestAndDividendIncomeOperating"] } },
-  { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"] },
+  { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"], pinByRun: true },
   { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"], fallback: "revenue - cogs" },
   { k: "rnd", label: "Research & development", how: "fetched", tags: ["ResearchAndDevelopmentExpense"] },
   { k: "sam", label: "Selling & marketing", how: "fetched", tags: ["SellingAndMarketingExpense","MarketingExpense"] },

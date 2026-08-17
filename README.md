@@ -498,6 +498,45 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     mechanism, and it needs none, because a column emptied by a currency change is simply a column of
     these cells and each one already says so.
 
+21. **A line item is a SERIES, and the tag carrying the series IS the line.** Every rule above this
+    one picks a fact for a period. This picks the CONCEPT for a row, once, and it exists because the
+    tag list alone cannot: where a filer files two concepts for the same line, which one appears was
+    decided by list order, and no fixed order is right.
+
+    **Caterpillar files `CostOfRevenue` every year from 2018 at $35–45bn and, from 2022, also files
+    `CostOfGoodsAndServicesSold` at $413m, $160m, $33m** — a component, about 0.1% of revenue. The
+    list put the component first, so the sheet showed **1% of Caterpillar's cost of sales for four
+    straight years**, on a mega-cap, live. Snap was wrong the same way and had been since the first
+    version: its 2018 cost of revenue read $120m against a filed $798.9m.
+
+    **Nothing caught either of them**, and the reason is worth more than the fix. The identity that
+    would — gross profit = revenue − cost — needs a TAGGED gross profit, and Caterpillar does not tag
+    one, so the check could never fire on the filer that needed it. What was visible was downstream and
+    absurd: **186,116 days of inventory**, 510 years, in a derived DIO nobody was asserting on. It was
+    found by screenshotting the page for an unrelated reason.
+
+    **Reordering the list was measured and rejected.** Of the filers that file both concepts with
+    different values, **ten have `CostOfRevenue` larger and six have `CostOfGoodsAndServicesSold`
+    larger** — Tronox Uplift and Fortitude Gold file `CostOfRevenue` as literally zero — so either
+    order is right for one group and catastrophic for the other. Rule 11's trap on a new row.
+
+    The filer settles it, which is rule 15's shape measured rule 6's way: a row is a series, and a tag
+    appearing for the last four years at 1% of the incumbent's magnitude is not the same line. The
+    candidates are ranked once per sheet by their **longest unbroken run across that sheet's own
+    calendar**, ties keeping the list's order, and the winner is used for **every column** — a row may
+    not mean one concept in 2021 and another in 2022. That last part is the claim, and the suite
+    asserts it as one: Caterpillar resolves exactly one cost concept across all eight columns.
+
+    Across all six frames only **three filers** have two cost concepts that disagree in the newest
+    column, and this changes two of them. `full-diff.mjs` over the 167: **4 filers moved, 37 values
+    changed, 0 appeared, 0 vanished** — Caterpillar and Snap corrected, Anterix switched to the concept
+    that spans its sheet rather than the one that stops in its oldest column, and the rest is DIO, DPO
+    and cash-conversion moving with them. The foreign-issuer sweep went **54 → 52**.
+
+    Only the cost row opts in today, via `pinByRun`. The rule is general — it applies to any row whose
+    tag list holds two concepts a filer might file together — but each row needs its own measurement
+    before it does, which is the whole lesson of rule 11.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

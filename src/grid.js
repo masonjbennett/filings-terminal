@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -66,7 +66,7 @@ export function hasAnnualPeriods(d) {
 // the same column. `get` is the only thing that differs between a fiscal year and a trailing twelve
 // months — everything after it, the derivations and the industry blanking, has to be identical or
 // the LTM column would be a second engine with its own bugs.
-function fillCol(facts, sections, industry, get, scopeOf) {
+function fillCol(facts, sections, industry, get, scopeOf, pinned) {
   const v = {}, meta = {};
   for (const sec of sections) for (const line of sec.lines) {
     if (line.how !== "fetched" || !line.tags) continue;
@@ -75,8 +75,11 @@ function fillCol(facts, sections, industry, get, scopeOf) {
     // line is right and one candidate on it is not. `InterestAndDividendIncomeOperating` is a
     // mortgage REIT's top line and a bank's GROSS interest income, and for a bank it also suppressed
     // the reconstruction that produces the correct one.
-    const line2 = line.omitFor && line.omitFor[industry]
+    let line2 = line.omitFor && line.omitFor[industry]
       ? { ...line, tags: line.tags.filter(t => !line.omitFor[industry].includes(t)) } : line;
+    // Rule 21: a row whose candidates were ranked once for this filer uses that ranking in every
+    // column, because a line cannot mean one concept in 2021 and another in 2022. See `tagsByRun`.
+    if (pinned && pinned[line.k]) line2 = { ...line2, tags: pinned[line.k] };
     const got = get(line2, isInstant(sec, line));
     v[line.k] = got.value; meta[line.k] = got;
   }
@@ -247,8 +250,17 @@ export function buildGrid(data, quote, limit = 8) {
   // being mixed into its own statements line by line.
   const ccy = reportingCurrency(facts, periodTags);
 
+  // Rule 21, resolved ONCE for the whole sheet against its own calendar — oldest first, which is the
+  // order `tagsByRun` counts runs in. Lines opt in with `pinByRun`, so this is the cost row and
+  // nothing else today; the rule is general and the other candidates are any row whose tag list holds
+  // two concepts a filer might file together, but each needs its own measurement before it opts in.
+  const calEnds = periods.map(p => p.end);
+  const pinned = {};
+  for (const sec of sections) for (const line of sec.lines)
+    if (line.pinByRun && line.tags) pinned[line.k] = tagsByRun(facts, line.tags, calEnds);
+
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
-    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy }), scopeOf) }));
+    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy }), scopeOf, pinned) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
@@ -266,7 +278,7 @@ export function buildGrid(data, quote, limit = 8) {
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.latest ? latestFact(facts, line.tags)
       : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy })
-      : pickLtm(facts, line.tags, w, ccy), scopeOf),
+      : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned),
   }));
   crossColumn(ltmCols);
   applyQuote(ltmCols[ltmCols.length - 1], industry, quote, ccy);
