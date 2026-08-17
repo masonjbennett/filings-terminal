@@ -572,6 +572,25 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     left in the template, because a formula nobody implemented is a lie told to the next reader of the
     file. `full-diff.mjs`: **602 cells appeared, 0 values changed, 0 vanished.**
 
+    **The derived row says so, because the header says otherwise.** Every sheet claims each figure is
+    the value the company filed, and this one is arithmetic on the two rows above it — the same
+    obligation a collapsed segment table took on, discharged the same way the derived non-controlling
+    interest discharges it. The row carries a `flagNote` naming what was computed and why it does not
+    link to a filing, and the flag is set AFTER the industry blanking pass, so a bank — which has no
+    gross profit at all — cannot be left claiming a derivation behind a blank. Asserted in all three
+    directions: Caterpillar flagged, Apple not, JPMorgan not, and no column anywhere flags a
+    derivation with no figure behind it.
+
+    **And the class now has a structural check rather than a third repetition.** `t-declared.mjs`
+    enumerates every property declared in `template.js` and greps the whole shipping engine for it. A
+    key nobody reads is either dead documentation or an unimplemented feature and from inside the file
+    those are identical, so anything unread must be wired, deleted, or listed as dynamically read
+    **with a reason** — the industry names, the tag-keyed note maps. It caught one more on its first
+    run: **`derivedOnly:` was declared on eight sections, read nowhere, and false on three of them**,
+    since `dcf` and `pta` contain fetched lines. Deleted. Three occurrences of one defect is a pattern,
+    and the generalisation is the currency lesson stated the other way round: a value the engine never
+    reads is a value nothing is enforcing.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

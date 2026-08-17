@@ -76,7 +76,13 @@ export const SECTIONS = [
     // Caught by diffing all 167 filers, not by any assertion.
     omitFor: { bank: ["InterestAndDividendIncomeOperating"] } },
   { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"], pinByRun: true },
-  { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"], fallback: "revenue - cogs" },
+    // Fetched for most filers and COMPUTED for the 84 that report revenue and cost of revenue and no
+  // subtotal — Chevron, Walmart, Costco, P&G, Pfizer, Caterpillar among them. See rule 22. The row has
+  // to say which, because the header on every sheet claims each figure is the value the company filed
+  // and this one is arithmetic on the two rows above it. Same obligation a collapsed segment table
+  // takes on, and the same mechanism the derived non-controlling interest uses.
+  { k: "grossProfit", label: "Gross profit", how: "fetched", tags: ["GrossProfit"],
+    flagNote: { grossProfitDerived: "Computed as revenue less cost of revenue. This filer reports both of those lines and no gross-profit subtotal, so the figure is arithmetic on the two rows above rather than one it filed — which is why it does not link to a filing." } },
   { k: "rnd", label: "Research & development", how: "fetched", tags: ["ResearchAndDevelopmentExpense"] },
   { k: "sam", label: "Selling & marketing", how: "fetched", tags: ["SellingAndMarketingExpense","MarketingExpense"] },
   { k: "ga", label: "General & administrative", how: "fetched", tags: ["GeneralAndAdministrativeExpense"] },
@@ -254,7 +260,7 @@ export const SECTIONS = [
   { k: "dps", label: "Dividends per share", how: "fetched", tags: ["CommonStockDividendsPerShareDeclared"] },
 ]},
 // ─────────────────────────────────────────────────────────────── DERIVED
-{ id: "margins", title: "Margins & Growth", feeds: "Historicals · CCA", derivedOnly: true, lines: [
+{ id: "margins", title: "Margins & Growth", feeds: "Historicals · CCA", lines: [
   { k: "grossMargin", label: "Gross margin", how: "computed", formula: "grossProfit / revenue" },
   { k: "ebitdaMargin", label: "EBITDA margin", how: "computed", formula: "ebitda / revenue" },
   { k: "ebitMargin", label: "EBIT margin", how: "computed", formula: "ebit / revenue" },
@@ -267,7 +273,7 @@ export const SECTIONS = [
   { k: "revCagr5", label: "Revenue CAGR, 5yr", how: "computed", formula: "(revenue / revenue[-5])^(1/5) - 1" },
   { k: "taxRate", label: "Effective tax rate", how: "computed", formula: "tax / pretax" },
 ]},
-{ id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", derivedOnly: true, lines: [
+{ id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", lines: [
   { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt" },
   { k: "totalDebtLeases", label: "Total debt incl. leases", how: "computed", formula: "totalDebt + olCur + olNon + flCur + flNon", note: "Lenders increasingly capitalise leases" },
   { k: "netDebt", label: "Net debt", how: "computed", formula: "totalDebt - cash - sti" },
@@ -308,7 +314,7 @@ export const SECTIONS = [
   { k: "gainOnSale", label: "Gains/(losses) on disposal", how: "fetched", tags: ["GainLossOnDispositionOfAssets","GainLossOnSaleOfBusiness"] },
   { k: "adjEbitda", label: "Adjusted EBITDA", how: "manual", note: "Which add-backs are truly non-recurring is judgement — the tool proposes, never decides" },
 ]},
-{ id: "returns", title: "Returns & Working Capital", feeds: "Historicals · Diligence", derivedOnly: true, lines: [
+{ id: "returns", title: "Returns & Working Capital", feeds: "Historicals · Diligence", lines: [
   { k: "nopat", label: "NOPAT", how: "computed", formula: "ebit * (1 - taxRate)" },
   { k: "investedCap", label: "Invested capital", how: "computed", formula: "totalDebt + equity - cash" },
   { k: "roic", label: "ROIC", how: "computed", formula: "nopat / investedCap" },
@@ -326,7 +332,7 @@ export const SECTIONS = [
   { k: "daPctRev", label: "D&A % of revenue", how: "computed", formula: "da / revenue" },
   { k: "sbcPctRev", label: "SBC % of revenue", how: "computed", formula: "sbc / revenue" },
 ]},
-{ id: "ev", title: "EV Bridge & Valuation", feeds: "EV Bridge · CCA · Football Field", derivedOnly: true, lines: [
+{ id: "ev", title: "EV Bridge & Valuation", feeds: "EV Bridge · CCA · Football Field", lines: [
   { k: "price", label: "Share price", how: "market" },
   { k: "mktCap", label: "Market capitalisation", how: "market", formula: "price * sharesOut" },
   { k: "ev", label: "Enterprise value", how: "market", formula: "mktCap + totalDebt + preferred + nciBs - cash - sti" },
@@ -346,7 +352,7 @@ export const SECTIONS = [
   { k: "bvps", label: "Book value per share", how: "computed", formula: "equity / sharesOut" },
   { k: "tbvps", label: "Tangible book per share", how: "computed", formula: "(equity - goodwill - intangibles) / sharesOut" },
 ]},
-{ id: "dcf", title: "DCF Inputs", feeds: "DCF", derivedOnly: true, lines: [
+{ id: "dcf", title: "DCF Inputs", feeds: "DCF", lines: [
   { k: "ufcf", label: "Unlevered FCF", how: "computed", formula: "nopat + da - capex - chgNwc" },
   { k: "chgNwc", label: "Change in NWC", how: "computed", formula: "nwc - nwc[-1]" },
   { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "(tax - deferredTax) / pretax" },
@@ -369,12 +375,12 @@ export const SECTIONS = [
 ]},
 // The EA build carried a Premia Paid tab off the undisturbed price. Both inputs are market data,
 // not filings — but the announcement 8-K that sets the "undisturbed" date IS findable.
-{ id: "premia", title: "Premia Paid", feeds: "Premia Paid · Deal Summary", derivedOnly: true, lines: [
+{ id: "premia", title: "Premia Paid", feeds: "Premia Paid · Deal Summary", lines: [
   { k: "undisturbed", label: "Undisturbed share price", how: "market", note: "Price the day before the leak/announcement" },
   { k: "offerPrice", label: "Offer price per share", how: "manual", note: "From the merger 8-K / DEFM14A" },
   { k: "premium1d", label: "Premium to undisturbed", how: "computed", formula: "offerPrice / undisturbed - 1" },
 ]},
-{ id: "lbo", title: "LBO Inputs", feeds: "LBO Model", derivedOnly: true, lines: [
+{ id: "lbo", title: "LBO Inputs", feeds: "LBO Model", lines: [
   { k: "ltmEbitda", label: "LTM EBITDA", how: "computed", formula: "sum(last 4 quarters)", note: "Built from 10-Qs — the entry-multiple denominator" },
   { k: "ltmRevenue", label: "LTM revenue", how: "computed", formula: "sum(last 4 quarters)" },
   { k: "entryNetDebt", label: "Net debt at entry", how: "computed", formula: "netDebt" },
@@ -383,7 +389,7 @@ export const SECTIONS = [
   { k: "sourcesUses", label: "Sources & uses", how: "manual", note: "Deal terms, not financials" },
   { k: "debtTranches", label: "Debt tranches & pricing", how: "manual" },
 ]},
-{ id: "pta", title: "Precedent Transactions", feeds: "PTA", derivedOnly: true, lines: [
+{ id: "pta", title: "Precedent Transactions", feeds: "PTA", lines: [
   { k: "ptaFilings", label: "Related 8-K / DEFM14A", how: "fetched", note: "The tool can FIND merger 8-Ks (Item 1.01/2.01) and merger proxies" },
   { k: "ptaMultiples", label: "Transaction multiples", how: "manual", note: "Deal values and multiples are not XBRL — PitchBook/CapIQ territory" },
 ]},
@@ -502,7 +508,7 @@ export const OVERLAY_SECTIONS = {
       { k: "intIncTotal", label: "Total interest income", how: "fetched", tags: ["InterestAndDividendIncomeOperating"] },
       { k: "intExpTotal", label: "Total interest expense", how: "fetched", tags: ["InterestExpense"] },
       { k: "intExpDeposits", label: "Interest expense on deposits", how: "fetched", tags: ["InterestExpenseDeposits"] },
-      { k: "nii", label: "Net interest income", how: "fetched", tags: ["InterestIncomeExpenseNet"], fallback: "intIncTotal - intExpTotal" },
+      { k: "nii", label: "Net interest income", how: "fetched", tags: ["InterestIncomeExpenseNet"] },
       { k: "provision", label: "Provision for credit losses", how: "fetched", tags: ["ProvisionForLoanLeaseAndOtherLosses", "ProvisionForCreditLosses"] },
       { k: "niiAfterProv", label: "NII after provision", how: "fetched", tags: ["InterestIncomeExpenseAfterProvisionForLoanLoss"] },
       { k: "noninterestIncome", label: "Noninterest income", how: "fetched", tags: ["NoninterestIncome"] },

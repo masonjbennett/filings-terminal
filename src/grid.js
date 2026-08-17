@@ -110,6 +110,11 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
   // Lines a filer of this type does not have are blanked outright, so a derived value can never be
   // built from an inapplicable input — a bank with a computed "EBITDA" would be a fiction.
   for (const k of NOT_APPLICABLE[industry] || []) { v[k] = null; meta[k] = { status: "not-applicable" }; }
+  // Rule 22: the gross-profit row is fetched for most filers and computed for the ones reporting the
+  // two lines above it and no subtotal. Recorded AFTER the blanking pass, so an industry that has no
+  // gross profit at all cannot claim to have derived one. Read by the row's `flagNote`, which is how
+  // a figure the engine worked out says so on the page.
+  v.grossProfitDerived = v.grossProfit != null && (meta.grossProfit || {}).status === "computed";
   return { v, meta };
 }
 
