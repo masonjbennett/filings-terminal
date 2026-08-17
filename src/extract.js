@@ -333,7 +333,53 @@ const sum = (...xs) => (xs.every(x => x == null) ? null : xs.reduce((n, x) => n 
 // the total is the Progressive "Total debt 0" failure in a quieter register — Equinix printed
 // $1.3bn against $33.8bn of real estate, a 4% debt load for one of the most leveraged names in the
 // sector. Shared by every industry override, because each one falls back to exactly this.
-const corpDebt = v => (v.ltdCur != null && v.ltDebt == null ? null : sum(v.stDebt, v.ltdCur, v.ltDebt));
+const corpDebt = v => (v.ltdCur != null && v.ltDebt == null ? null
+  // `ltdCurInLtDebt` is the per-filer verdict from `debtScope` below: when the long-term tag already
+  // contains the current maturities, adding them again is a double count, so the slice is dropped
+  // from the SUM while the row itself stays on the sheet as the filed figure it is.
+  : sum(v.stDebt, v.ltdCurInLtDebt ? null : v.ltdCur, v.ltDebt));
+
+// ── Rule 11's open question, answered ───────────────────────────────────────────────────────────
+// Does the tag that filled the long-term debt row already contain the current maturities? It decides
+// whether adding `LongTermDebtCurrent` on top is required or is a double count, and it was left
+// unfixed because no tag answers it. THE TAG NAME DOES NOT ANSWER IT EITHER, which is the finding:
+// Chevron and Verizon both use `LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities`,
+// whose name says outright that it does, and at Chevron it does NOT — $33.57bn against a $33.48bn
+// non-current balance, with $6.72bn of current maturities sitting outside it. A repair keyed on the
+// name would have stripped $6.7bn from a filer that was already right.
+//
+// The FILER answers it, on its own filings. Where it tags both the resolving tag T and
+// `LongTermDebtNoncurrent` at the same date, T == Noncurrent means T excludes the current portion and
+// T == Noncurrent + Current means it includes it. That is a fact about the filer's own convention, so
+// it is read from ANY period it ever filed both — usually an older year, because a filer that still
+// tagged the unambiguous tag today would never reach the ambiguous one — and applied to the periods
+// where only T resolves. Every reading must agree; a filer that changed convention gets no verdict.
+//
+// It fails CLOSED in both directions. No evidence, conflicting evidence, or a tag that is already
+// unambiguous all leave the sum exactly as it was, which is what 165 of the 167 filers swept get.
+const nearly = (a, b) => a != null && b != null && Math.abs(a - b) <= Math.max(Math.abs(b), 1) * 0.005;
+export function debtScope(facts, tag) {
+  if (!tag || tag === "LongTermDebtNoncurrent" || tag === "ConvertibleDebtNoncurrent") return null;
+  const at = t => {
+    const d = factsFor(facts, t), m = new Map();
+    for (const f of d || []) {
+      if (isDuration(f) || !periodic(f.form)) continue;
+      const p = m.get(f.end);
+      if (!p || (f.filed || "") > (p.filed || "")) m.set(f.end, f);
+    }
+    return m;
+  };
+  const T = at(tag), nc = at("LongTermDebtNoncurrent"), cu = at("LongTermDebtCurrent");
+  const seen = new Set();
+  for (const [end, t] of T) {
+    const n = nc.get(end);
+    if (!n) continue;
+    const c = cu.get(end);
+    if (nearly(t.val, n.val)) seen.add("excludes");
+    else if (c && nearly(t.val, n.val + c.val)) seen.add("includes");
+  }
+  return seen.size === 1 ? [...seen][0] : null;      // conflicting or absent evidence decides nothing
+}
 
 // An industry's own all-in debt tag is preferred over the three-way corporate sum — but a "total"
 // that is SMALLER than the long-term debt inside it is not a total, and rule 7 says a partial total

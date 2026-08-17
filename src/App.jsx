@@ -967,6 +967,12 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
               off the newest column's resolved tag, so it appears only for the filers it describes. */}
           {newest && newest.m.tag && line.tagNote && line.tagNote[newest.m.tag]
             && <div style={NOTE_STYLE}>{line.tagNote[newest.m.tag]}</div>}
+          {/* And the third kind: a note conditioned on something the ENGINE worked out rather than on
+              a tag or a blank. The current portion of long-term debt is a real filed figure that is
+              sometimes already inside the long-term figure beneath it, so it is shown and not summed
+              — which a reader adding the column up would otherwise read as an arithmetic error. */}
+          {line.flagNote && Object.entries(line.flagNote).map(([k, text]) =>
+            grid.cols[grid.cols.length - 1].v[k] ? <div key={k} style={NOTE_STYLE}>{text}</div> : null)}
         </td>
         {cells.map((x, i) => {
           const shown = display(line.k, x.v, x.m.unit);

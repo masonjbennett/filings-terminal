@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, hasInterim, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, hasInterim, debtScope, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -66,7 +66,7 @@ export function hasAnnualPeriods(d) {
 // the same column. `get` is the only thing that differs between a fiscal year and a trailing twelve
 // months — everything after it, the derivations and the industry blanking, has to be identical or
 // the LTM column would be a second engine with its own bugs.
-function fillCol(facts, sections, industry, get) {
+function fillCol(facts, sections, industry, get, scopeOf) {
   const v = {}, meta = {};
   for (const sec of sections) for (const line of sec.lines) {
     if (line.how !== "fetched" || !line.tags) continue;
@@ -80,6 +80,11 @@ function fillCol(facts, sections, industry, get) {
     const got = get(line2, isInstant(sec, line));
     v[line.k] = got.value; meta[line.k] = got;
   }
+  // Which long-term debt tag this column actually resolved decides whether the current portion is
+  // already inside it — see `debtScope`. Not a displayed line: it is a fact about the tag, so it goes
+  // in `v` where the debt derivation can read it and nowhere else. Per column, because a filer can
+  // reach a different tag in different years.
+  v.ltdCurInLtDebt = scopeOf ? scopeOf((meta.ltDebt || {}).tag) === "includes" : false;
   const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
   for (const [k, fn] of Object.entries(derivations)) {
     const out = fn(v);
@@ -173,8 +178,15 @@ export function buildGrid(data, quote, limit = 8) {
   const periods = desc.slice().reverse();
   if (!periods.length) return { industry, sections, periods: [], rows: [], empty: true };
 
+  // The verdict is a property of the FILER, not of a column, so it is read once from the whole facts
+  // document and memoised per tag — every column asks about at most one or two of them.
+  const scopeCache = new Map();
+  const scopeOf = tag => {
+    if (!scopeCache.has(tag)) scopeCache.set(tag, debtScope(facts, tag));
+    return scopeCache.get(tag);
+  };
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
-    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p)) }));
+    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p), scopeOf) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote);
 
@@ -192,7 +204,7 @@ export function buildGrid(data, quote, limit = 8) {
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.latest ? latestFact(facts, line.tags)
       : inst ? pickFact(facts, line.tags, { end: w.end })
-      : pickLtm(facts, line.tags, w)),
+      : pickLtm(facts, line.tags, w), scopeOf),
   }));
   crossColumn(ltmCols);
   applyQuote(ltmCols[ltmCols.length - 1], industry, quote);

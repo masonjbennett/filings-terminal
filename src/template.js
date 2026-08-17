@@ -122,7 +122,13 @@ export const SECTIONS = [
   // for the non-current balance alone. Adding a current portion on top moved 12 filers by billions
   // with no way to tell which had just been double counted. See README "the current-maturities
   // ambiguity" — it needs a per-filer test, not a tag.
-  { k: "ltdCur", label: "Current portion of long-term debt", how: "fetched", tags: ["LongTermDebtCurrent"] },
+  { k: "ltdCur", label: "Current portion of long-term debt", how: "fetched", tags: ["LongTermDebtCurrent"],
+    // The per-filer verdict is now made, so this row can be right and STILL not belong in the total —
+    // and a reader adding the debt rows up would get a different number from the one printed below
+    // them. Warner Bros Discovery's $139m sits inside its $32,567m long-term figure, so total debt is
+    // $32,567m and not $32,706m. Saying so is the same obligation the segments tab took on: a table
+    // whose rows do not visibly sum to its own total has to explain itself on the page.
+    flagNote: { ltdCurInLtDebt: "Already inside the long-term debt figure below — this filer's long-term tag includes current maturities, checked against a year in which it tagged both. Counted once in total debt." } },
   { k: "olCur", label: "Operating lease liability, current", how: "fetched", tags: ["OperatingLeaseLiabilityCurrent"] },
   { k: "flCur", label: "Finance lease liability, current", how: "fetched", tags: ["FinanceLeaseLiabilityCurrent"] },
   { k: "curLiab", label: "Total current liabilities", how: "fetched", tags: ["LiabilitiesCurrent"] },

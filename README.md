@@ -159,11 +159,11 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     `NOT_APPLICABLE` blanks a whole LINE, which is too blunt when the line is right and one candidate
     on it is not. See rule 14.
 
-    The related trap, deliberately **not** fixed: `LongTermDebt` means "including current maturities"
-    at some filers and "excluding" at others — Duke tags it inclusively (non-current 80.1 + current
-    7.1 = 87.2), Home Depot appears to use it for the non-current balance alone. Adding a
-    current-portion tag on top therefore moved twelve filers by billions with no way to tell which
-    had just been double counted, so it was backed out. Fixing it needs a per-filer test, not a tag.
+    The related trap, once deliberately not fixed and now closed by **rule 15**: `LongTermDebt` means
+    "including current maturities" at some filers and "excluding" at others — Duke tags it inclusively
+    (non-current 80.1 + current 7.1 = 87.2), Home Depot appears to use it for the non-current balance
+    alone. Adding a current-portion tag on top moved twelve filers by billions with no way to tell
+    which had just been double counted. It needed a per-filer test, not a tag; it now has one.
 
 12. **A figure stitched across periods must have all its legs on ONE basis, and rule 2 is usually
     what guarantees that — until it isn't.** A trailing twelve months is the last full year plus
@@ -244,6 +244,38 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     The row that results does not mean what its label says, so it says so: `tagNote` is `blankNote`'s
     opposite — a note keyed to the newest column's RESOLVED TAG rather than to the row being empty, so
     it appears only on the filers it describes. Rule 5's discipline applied to a figure that is there.
+
+15. **Whether the current maturities are already inside the long-term figure is a fact about the
+    FILER, and the tag name is not evidence.** This is rule 11's open trap, and what made it look
+    unfixable was reaching for a tag to settle it. The decisive case: Chevron and Verizon both fill
+    the long-term debt row from `LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities`,
+    whose name says outright that it includes them — and **at Chevron it does not**, $33.57bn against
+    a $33.48bn non-current balance with $6.72bn of current maturities sitting outside it. A repair
+    keyed on the name would have stripped $6.7bn from a filer that was already right.
+
+    The filer settles it on its own filings. Where it tags both the resolving tag *T* and
+    `LongTermDebtNoncurrent` at the same date, *T* = Noncurrent means *T* excludes the current portion
+    and *T* = Noncurrent + Current means it includes it. That is the filer's **convention**, not a
+    property of the period, so it is read from any year it ever tagged both — usually an older one,
+    because a filer still tagging the unambiguous concept today would never reach the ambiguous one —
+    and applied to the years where only *T* resolves. Every reading must agree; a filer that changed
+    convention gets no verdict, and no verdict changes nothing.
+
+    Measured across all 167: **12 filers are exposed** (the long-term row filled from a tag that could
+    contain current maturities, with a non-zero current portion beside it). Of those, 5 EXCLUDE and
+    are already right, 4 are undecidable from their own filings and are left alone, and 3 INCLUDE.
+    Only **two of those three reach the page through the sum** — Verizon's is rescued by a guard
+    written for something else entirely, its own `DebtLongtermAndShorttermCombinedAmount` outranking
+    the three-way sum at $158.15bn, which happens to equal *T* plus short-term borrowings exactly.
+    Relying on that would be relying on an accident. The two corrected are **Warner Bros Discovery**
+    ($32.71bn → $32.57bn newest, and $45.45bn → $43.67bn in FY2023) and **Old Dominion** ($100m →
+    $80m, a quarter of its total debt). `full-diff.mjs`: 2 filers moved, none appeared, none vanished.
+
+    The row itself stays on the sheet, because it is a figure the filer reported — but it is no longer
+    summed, and a reader adding the debt rows up would otherwise get a different number from the total
+    printed below them. So it says so, which is the same obligation the Segments tab took on. That
+    needed a third kind of note: `blankNote` fires on an empty row, `tagNote` on which tag resolved,
+    and `flagNote` on something the engine worked out.
 
 Column labels come from the **period end date**, never from XBRL's `fy` — `fy` is the fiscal year of
 the *report* a fact was filed in, so the year to Sept-2018 carries fy=2019 as a comparative and two
@@ -915,8 +947,11 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **The `LongTermDebt` current-maturities ambiguity** (rule 11). It needs a per-filer test rather
-   than another tag, and it is now the oldest thing on this list.
+1. **The four filers rule 15 cannot decide** — Kenvue, Iridium, Tronox and Exxon never tag the
+   ambiguous long-term concept and `LongTermDebtNoncurrent` in the same year, so their convention is
+   unreadable from their own filings and their debt sum is left as it was. A maturity schedule
+   (`LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths`) is a second possible witness and
+   has not been tried.
 2. **Whether a near-zero denominator deserves a mark.** Colgate's 3948% ROE is correct and reads as a
    broken tool; so does Debt/equity swinging −62.29x to 147.89x on the same $54m. Nothing should be
    suppressed, but nothing currently says why either. Related: the small-cap sweep's 18 out-of-range
