@@ -787,7 +787,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
 //
 // The one claim the tab makes is that EVERY TABLE HERE ADDS UP: api/segments.js drops any breakdown
 // whose rows do not sum to the consolidated figure for the same period in the same filing, to within
-// 0.1%. That costs real tables — 24 of 30 filers swept keep a reportable-segment table — and the ones
+// 0.1%. That costs real tables — 26 of 30 filers swept keep a reportable-segment table — and the ones
 // it drops are dropped for a reason worth stating rather than hidden, because a segment table reading
 // 142% of the company is the failure this whole project exists to avoid.
 function SegmentTables({ segs, S }) {

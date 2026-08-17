@@ -425,19 +425,39 @@ export default async function handler(req, res) {
         // legitimately carry different views: AT&T's two segments are `OperatingSegments` and its
         // corporate row is `CorporateAndReconcilingItems`, so a table-wide choice dropped the
         // corporate row and left D&A $76m short. The choice is per member, by rank.
-        const best = new Map(), otherViews = new Set();
+        // Per (concept, period): every view of every member, before anything is chosen.
+        const cells = new Map();
         for (const f of facts) {
           const c = keep.get(f.ctx), m = mi.get(c.dims[v.axis]);
           if (m == null || !wantedHere(g, f.tag)) continue;
-          const q = c.dims[QUALIFIER] || "", key = `${f.tag}|${m}|${c.end}`;
-          const prev = best.get(key);
-          if (prev) otherViews.add(QUAL_RANK(q) < QUAL_RANK(prev.q) ? prev.q : q);
-          if (prev && QUAL_RANK(q) >= QUAL_RANK(prev.q)) continue;
-          best.set(key, { t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit, q });
+          const k = `${f.tag}|${periods.indexOf(c.end)}`, q = c.dims[QUALIFIER] || "";
+          if (!cells.has(k)) cells.set(k, new Map());
+          const per = cells.get(k);
+          if (!per.has(m)) per.set(m, new Map());
+          if (!per.get(m).has(q)) per.get(m).set(q, { t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit });
         }
-        if (!best.size) continue;
-        const out = [...best.values()].map(({ q, ...f }) => ({ ...f,
-          c: q ? q.split(":").pop().replace(/Member$/, "") : null }));
+        if (!cells.size) continue;
+        const out = [], otherViews = new Set();
+        for (const per of cells.values()) {
+          // ONE view for the column where possible, then per member where it is not. Choosing
+          // per member alone mixes bases and the total is neither figure: Caterpillar tags Power &
+          // Energy unqualified at its EXTERNAL sales and its other four segments only at the total
+          // including intersegment, so a per-member choice summed 68.94bn against a 67.59bn company —
+          // the four segments gross of intersegment and the fifth net of it. Choosing per TABLE alone
+          // is worse, because different members legitimately carry different views: AT&T's two
+          // segments are `OperatingSegments` and its corporate row is `CorporateAndReconcilingItems`,
+          // which a table-wide choice drops entirely. So: the view covering the most members leads,
+          // and a member it does not reach keeps its own best by rank.
+          const cover = new Map();
+          for (const qs of per.values()) for (const q of qs.keys()) cover.set(q, (cover.get(q) || 0) + 1);
+          const lead = [...cover].sort((a, b) => b[1] - a[1]
+            || QUAL_RANK(a[0]) - QUAL_RANK(b[0]) || (a[0] < b[0] ? -1 : 1))[0][0];
+          for (const qs of per.values()) {
+            const q = qs.has(lead) ? lead : [...qs.keys()].sort((a, b) => QUAL_RANK(a) - QUAL_RANK(b))[0];
+            out.push({ ...qs.get(q), c: q ? q.split(":").pop().replace(/Member$/, "") : null });
+            for (const other of qs.keys()) if (other !== q) otherViews.add(other);
+          }
+        }
 
         // A reconciling row is an ADDENDUM to the segments, so one carrying their SUM is not a row at
         // all — it is the subtotal restated, and adding it doubles the table. Coca-Cola tags exactly
@@ -450,11 +470,32 @@ export default async function handler(req, res) {
         for (const f of out) if (f.m < segMembers.length)
           segSum[`${f.t}|${f.p}`] = (segSum[`${f.t}|${f.p}`] || 0) + f.v;
         const restated = new Set();
+        const reconRows = new Map();
         for (const f of reconFacts) {
           const c = reconCtx.get(f.ctx), m = mi.get(c.dims[QUALIFIER]);
           if (m == null || !wantedHere(g, f.tag)) continue;
           const s = segSum[`${f.tag}|${periods.indexOf(c.end)}`];
           if (s != null && s !== 0 && Math.abs(f.val - s) <= Math.abs(s) * 1e-6) restated.add(c.dims[QUALIFIER]);
+          const k = `${f.tag}|${periods.indexOf(c.end)}`;
+          if (!reconRows.has(k)) reconRows.set(k, new Map());
+          reconRows.get(k).set(c.dims[QUALIFIER], f.val);
+        }
+        // The same subtotal, one level down: a reconciling row can be the SUM OF THE OTHER
+        // RECONCILING ROWS. Caterpillar files corporate at −$805m, intersegment eliminations at
+        // −$5,888m and `EliminationsAndReconcilingItems` at −$6,693m, which is exactly the other two —
+        // so all three go in and the table comes out $6.7bn light. Drop it and Caterpillar foots to
+        // the DOLLAR: $74,282m of segments less those two is $67,589m against a $67,589m company.
+        //
+        // Only where EXACTLY ONE row matches, and only with two or more others to sum: with two rows
+        // of equal value each is trivially "the sum of the others" and there is no way to tell which
+        // is the total, so nothing is dropped. Ambiguity fails closed, the same as everywhere here.
+        for (const [, rowsFor] of reconRows) {
+          if (rowsFor.size < 3) continue;
+          const hits = [...rowsFor].filter(([q, val]) => {
+            const others = [...rowsFor].filter(([o]) => o !== q).reduce((n, [, x]) => n + x, 0);
+            return others !== 0 && Math.abs(val - others) <= Math.abs(others) * 1e-6;
+          });
+          if (hits.length === 1) restated.add(hits[0][0]);
         }
         // A reconciling row belongs to a breakdown that does NOT already close on its own. Where the
         // rows already sum to the consolidated figure, the reconciling item is inside them, and adding

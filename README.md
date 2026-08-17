@@ -556,6 +556,15 @@ Eight rules, each learned the same way as the others here:
      uses for a genuine reconciling item. So the test is the VALUE — a reconciling row carrying the
      sum of the segments beside it is the subtotal restated — and it is decided against the segment
      rows in that table, not against the consolidated figure, which is what the gate is for.
+   - **A reconciling row can be the sum of the OTHER reconciling rows** — the same subtotal one level
+     down, and what was keeping Caterpillar off the tab. It files corporate at −$805m, intersegment
+     eliminations at −$5,888m and `EliminationsAndReconcilingItems` at −$6,693m, which is exactly the
+     other two; all three went in and the table came out $6.7bn light. Drop it and Caterpillar foots
+     **to the dollar**: $74,282m of segments less those two is $67,589m against a $67,589m company.
+     Only where exactly one row matches, and only with two or more others to sum — with two rows of
+     equal value each is trivially "the sum of the others" and there is no way to tell which is the
+     total, so nothing is dropped. This and the lead-view rule below took coverage 24 → **26 of 30**,
+     GE arriving with Caterpillar.
    - **A breakdown that already closes does not get one.** If the rows already sum to consolidated,
      the reconciling item is inside them and adding it beside them is the same double count from the
      other end. AT&T's revenue categories foot to $122.43bn exactly and its linkbase also declares
@@ -583,10 +592,18 @@ Eight rules, each learned the same way as the others here:
    An unqualified fact is the figure as the statement presents it; a qualified one is a view of it.
    Measured both ways over the 30 filers, at the 1% gate that was still in force when the two orders
    were compared: unqualified-first foots **320 of 342 cells to the dollar against 302**, and keeps one
-   more filer and two more concepts. Choosing one view for the whole
-   TABLE was also tried and is wrong — different members legitimately carry different views, and it
-   dropped AT&T's corporate row and left D&A $76m short. The choice is per member. Which views were
-   not shown is printed beside the table, because it is why a figure here can differ from the footnote.
+   more filer and two more concepts.
+
+   **Rank alone is not enough, and nor is a table-wide choice.** Per member alone MIXES BASES, and the
+   total is then neither figure: Caterpillar tags Power & Energy unqualified at its external sales and
+   its other four segments only at the total including intersegment, so a per-member choice summed
+   **$68.94bn against a $67.59bn company** — four segments gross of intersegment and the fifth net of
+   it. Choosing one view for the whole table is worse, because different members legitimately carry
+   different views: AT&T's two segments are `OperatingSegments` and its corporate row is
+   `CorporateAndReconcilingItems`, which a table-wide choice drops entirely, leaving D&A $76m short.
+   So the view covering the MOST members leads, and a member it does not reach keeps its own best by
+   rank. Which views were not shown is printed beside the table, because it is why a figure here can
+   differ from the footnote.
 
    Both rules here match the prefix as `[\w-]+`, not `\w+`, and that is not a detail: the member they
    are about is `us-gaap:OperatingSegmentsMember` and the standard prefix contains a **hyphen**.
@@ -608,10 +625,10 @@ Eight rules, each learned the same way as the others here:
    kept. Same job the concept `LABEL` map does, and the reason `t-seg.mjs` now asserts on label length.
 
 Where nothing reconciles the tab says so and links the filing, rather than showing a table it cannot
-stand behind. The six left are Realty Income (a single-segment REIT), Exxon (segment × geography
-cross-tabs only), Caterpillar, GE, NextEra and Blackstone.
+stand behind. The four left are Realty Income (a single-segment REIT), Exxon (segment × geography
+cross-tabs only, with no single-axis segment table at all), NextEra and Blackstone.
 
-Payloads come out at **0–17KB from instances of up to 17MB**. `t-seg.mjs` runs 10,932 assertions over
+Payloads come out at **0–17KB from instances of up to 17MB**. `t-seg.mjs` runs 11,109 assertions over
 the 30 filers, the load-bearing one being the reconciliation itself — **at the shipping tolerance, not
 a looser one**. A suite that asserts 1% while the code gates at 0.1% is testing nothing; at 1% this one
 passed on Exxon's $1.7bn gap. One check had to be weakened after it fired: a segment legitimately
@@ -979,13 +996,11 @@ development exercises the real code path against real SEC responses.
    is why Instacart's balance sheet is $195m out. Reaching it means reading the XBRL instance for
    balance-sheet facts, which `api/segments.js` already does for breakdowns — a real option, and a
    much larger one than it looks.
-4. **The last six segment filers**, which are now genuinely six different problems rather than one:
-   Realty Income tags a single `ReportableSegment` member and is a one-segment company; Exxon files
-   segment × geography and segment × product cross-tabs with no single-axis segment table at all;
-   Caterpillar reports intersegment eliminations PER SEGMENT rather than as one reconciling row, so
-   rule 7 takes the total-including-intersegment view and there is nothing left to subtract it with;
-   GE, NextEra and Blackstone each need their own look. A per-segment elimination could be summed
-   into one row, which is the obvious next move and should be measured before it is believed.
+4. **The last four segment filers**, and none of them is the same problem. Realty Income tags a single
+   `ReportableSegment` member and genuinely is a one-segment company, so there is nothing to show.
+   **Exxon** files segment × geography and segment × product cross-tabs and no single-axis segment
+   table at all — the only one of the four where the data plainly exists and rule 1 is what excludes
+   it, so it is the one worth looking at next. NextEra and Blackstone each need their own look.
 5. **Segment coverage beyond the newest 10-K.** Scope is three years by construction; a reader
    comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
    and a structure that has usually been reorganised, which is why it was not done — but the tab now
