@@ -1719,11 +1719,19 @@ assumed, and it was reverted rather than shipped subtle-and-invisible — dead m
 worse than none, the same reason `pb` carries no `flagNote`.
 
 What works is refusing to auto-scroll at all when the overflow is narrower than one rendered column,
-which removes the case entirely for a table that nearly fits, plus a mask that lives OUTSIDE the table:
-an absolutely-positioned gradient in a non-scrolling wrapper, at the x where the label ends, painting
-over whatever slides under it. Measured from the rendered header cell because the label is
-content-sized, and drawn only while `scrollLeft > 0`, because with nothing hidden there is nothing to
-say. CBL now reads $927,252,000 unmasked; Apple, whose overflow is permanently between one and two
+which removes the case entirely for a table that nearly fits — plus a **hairline** at the boundary,
+drawn in a non-scrolling wrapper outside the table, measured from the rendered header cell because the
+label is content-sized, and only while `scrollLeft > 0`.
+
+**It shipped as a gradient and that was wrong twice over.** Aesthetically: every rule on this site is a
+1px hairline on paper and there is no other soft-edged element anywhere, so a 26px grey fade read as a
+smudge rather than as an edge — the one thing on the page that looked like a rendering artifact.
+And functionally a fade cannot win: to stop a clipped figure being legible it would have to cover the
+whole fragment, which is up to a column wide and changes size as you scroll, and an opaque block that
+size would break the row rules running under the label. So the honest scope is to MARK the boundary
+rather than to erase what is behind it. That is enough here because the case that actually mattered is
+already gone — the sheet no longer auto-scrolls when the table nearly fits, so a partial column now
+appears only while a reader is actively scrolling and can see the columns moving under the label. CBL now reads $927,252,000 unmasked; Apple, whose overflow is permanently between one and two
 column widths, still scrolls and now marks the column it cuts.
 
 **Comps got the same mask and the segment tables deliberately did not**, which is a measurement rather

@@ -641,16 +641,19 @@ export default function App() {
         {tab === "segments" && <SegmentTables segs={segs || { loading: true }} S={S} />}
 
         {tab !== "segments" && grid.cols && <div style={{ position: "relative" }}>
-          {/* A column sliding under the label is marked, so its surviving digits read as a fragment
-              rather than as a small number — CBL's $927,252,000 showed as `2,000` beside $858,557,000.
-              Declining to auto-scroll when the table nearly fits removed that case; this covers the
-              rest, and there is always a rest: Apple's overflow sits permanently between one and two
-              column widths, so no scroll position exists that shows every column whole. A darkening
-              gradient rather than a background-coloured fade, because it has to work over both the
-              header's tint and the body's card colour. */}
-          {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 26,
-            pointerEvents: "none", zIndex: 3, borderRadius: "0 3px 3px 0",
-            background: `linear-gradient(to right, ${C.ink}30, ${C.ink}00)` }} />}
+          {/* The boundary of the sticky column, drawn as a HAIRLINE and nothing more.
+              It shipped as a darkening gradient and that was wrong for this page: every rule on this
+              site is a 1px hairline on paper and there is no other soft-edged element anywhere, so a
+              26px grey fade read as a smudge — a rendering artifact rather than an edge.
+              A fade cannot win here anyway. To stop a clipped figure being legible it would have to
+              cover the whole fragment, which is up to a column wide and changes size as you scroll;
+              an opaque block that size would also break the row rules running under the label. The
+              honest scope is therefore to MARK the boundary, not to erase what is behind it — and the
+              case that actually mattered is already gone, because the sheet no longer auto-scrolls
+              when the table nearly fits, so a partial column now only appears while a reader is
+              actively scrolling and can see the columns moving. */}
+          {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 1,
+            pointerEvents: "none", zIndex: 3, background: C.hair }} />}
         <div ref={scroller} onScroll={syncEdge} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
             {/* This row orients the whole sheet, so it is the last place to be economical with size.
@@ -877,9 +880,8 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
     </p>
 
     <div style={{ position: "relative" }}>
-    {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 26,
-      pointerEvents: "none", zIndex: 3, borderRadius: "0 3px 3px 0",
-      background: `linear-gradient(to right, ${C.ink}30, ${C.ink}00)` }} />}
+    {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 1,
+      pointerEvents: "none", zIndex: 3, background: C.hair }} />}
     <div ref={scroller} onScroll={syncEdge} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
         <thead><tr style={{ background: "#f6eee1" }}>
