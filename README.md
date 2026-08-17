@@ -1515,35 +1515,12 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
-1. **Mask the strip beside the sticky label — the half of the clipped-column fix that is left.**
-   The auto-scroll no longer fires when the table almost fits, which is what made CBL's FY2017 revenue
-   render as `2,000` instead of $927,252,000. That closes the near-fitting case and not the band above
-   it: where the overflow is between one and two column widths the sheet still scrolls and still leaves
-   a partial column under the label. **Apple is permanently in that band** — 190px of overflow against
-   a 135px column at every desktop width, because the page has a max width so the overflow does not
-   shrink — and its FY2019 revenue reads `'4,000,000`, the tail of 260,174,000,000. On the ticker the
-   search box suggests.
-
-   **Two approaches are already ruled out, and both were tried rather than argued about.**
-
-   *Snapping the scroll to a column boundary* would put Apple's scroll at 135 and clip 55px off the
-   RIGHT of FY2025, trading a truncated oldest column for a truncated newest one — the column the
-   valuation card divides into. There is no scroll position that shows every column whole, because the
-   label width and the column width share no factor.
-
-   *A shadow on the sticky label cell* — the obvious version of the mask, and the standard affordance
-   for "content continues under here" — **is inert here**. These tables are `border-collapse: collapse`,
-   where a sticky cell paints at `z-index: auto` and the cells after it in the row paint on top. Adding
-   `z-index: 1` does not fix it either: an 18px SOLID RED shadow rendered as nothing at all, which is
-   how it was established rather than assumed. Anything in this direction needs
-   `border-collapse: separate` with `border-spacing: 0`, which re-renders every hairline on every table
-   on the site — and the last change to this column's geometry pushed three year-columns off an
-   eight-year sheet. So it is a real change with a real blast radius, not a CSS one-liner.
-
-   What is left: an overlay element inside the scroll container rather than a style on the cell — a
-   sticky `div` at `left: 0` with a gradient, sitting above the table in z-order and outside its
-   border-collapse rules. That is the version to try next, and it should be measured on AAPL (which is
-   permanently in the band) and CBL (which is no longer) before and after.
+1. **The same mask on comps and segments.** The single sheet is done — see *"A note on how this got
+   built"* — and the two other scrollable tables have the same sticky label and the same overflow, but
+   neither has been measured to actually clip anything, so neither got the treatment yet. Worth doing
+   for consistency (an affordance meaning "clipped" on one tab and nothing on another is its own
+   defect) once it is checked that they clip at all: comps columns are wider and usually fewer.
+   Each needs its own wrapper and its own `edge` state, which is why it was not a one-line extension.
 2. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
    honest and marked the comps columns, which is right as far as it goes — the ratio and multiple rows
    are dimensionless and compare fine, and the median is taken only over those. But **Revenue, EBITDA
@@ -1729,11 +1706,28 @@ decided by JSON key order. **Worth generalising: a value carried through the who
 asserted on is a value nothing is checking.**
 
 The third thing it found is not a rule at all, and it came from looking at the page: **a number that
-is not wrong, only cut in half.** The sheet opens scrolled to the right-hand edge so the newest year is
+is not wrong, only cut in half** — and it took three attempts, two of which are worth more than the fix.
+ The sheet opens scrolled to the right-hand edge so the newest year is
 visible, and where the table only just overflows — 71px on an eight-column sheet at 1500px — that
 scroll hides most of the OLDEST column behind the 260px sticky label. What survives past the label's
 edge is not a blank; it is a truncated number that still reads as a number, and CBL's FY2017 revenue of
 $927,252,000 renders as **`2,000`** beside $858,557,000. Measured rather than guessed (`scrollLeft` is
 70.4 of a 71px maximum) and inherent to the overflow rather than a regression, since some column is
-clipped at every scroll position. Left open on purpose: the fix is a design decision about the table
-rather than a guard, and choosing it unilaterally is how a page acquires a second problem.
+clipped at every scroll position.
+
+Three attempts, and the two that failed are worth more than the one that worked. **Snapping the scroll
+to a column boundary** clips the NEWEST column instead — the one the valuation card divides into — so
+it trades the defect rather than fixing it. **A shadow on the sticky label cell**, the standard
+"content continues under here" affordance, is *inert*: these tables are `border-collapse: collapse`,
+where a sticky cell paints at `z-index: auto` and the cells after it in the row paint on top. An 18px
+**solid red** shadow rendered as nothing at all, which is how that was established rather than
+assumed, and it was reverted rather than shipped subtle-and-invisible — dead markup that looks live is
+worse than none, the same reason `pb` carries no `flagNote`.
+
+What works is refusing to auto-scroll at all when the overflow is narrower than one rendered column,
+which removes the case entirely for a table that nearly fits, plus a mask that lives OUTSIDE the table:
+an absolutely-positioned gradient in a non-scrolling wrapper, at the x where the label ends, painting
+over whatever slides under it. Measured from the rendered header cell because the label is
+content-sized, and drawn only while `scrollLeft > 0`, because with nothing hidden there is nothing to
+say. CBL now reads $927,252,000 unmasked; Apple, whose overflow is permanently between one and two
+column widths, still scrolls and now marks the column it cuts.

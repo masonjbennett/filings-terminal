@@ -110,6 +110,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sections, setSections] = useState(null); // rendered-statement links for the newest 10-K
   const [copied, setCopied] = useState("");
+  // How far in the sticky label column ends, but ONLY while the sheet is scrolled — the x at which a
+  // clipped cell needs to be marked. 0 means "nothing is hidden, draw nothing". See `syncEdge`.
+  const [edge, setEdge] = useState(0);
   const [tab, setTab] = useState("statements");
   const [quote, setQuote] = useState(null);
   const [quoteNote, setQuoteNote] = useState("");
@@ -321,7 +324,27 @@ export default function App() {
     const firstYear = el.querySelector("thead th:nth-child(2)");
     const colW = firstYear ? firstYear.getBoundingClientRect().width : 0;
     if (overflow >= colW) el.scrollLeft = el.scrollWidth;
-  }, [data]);
+    syncEdge();
+  }, [data, tab]);
+
+  // The mask has to live OUTSIDE the table. The obvious version — a box-shadow on the sticky label
+  // cell — is inert here, and that was established rather than assumed: these tables are
+  // `border-collapse: collapse`, where a sticky cell paints at `z-index: auto` and every cell after it
+  // in the row paints on top, so an 18px SOLID RED shadow rendered as nothing at all. `z-index: 1` did
+  // not change it. Fixing that at the source means `border-collapse: separate`, which re-renders every
+  // hairline on every table on the site, and the last change to this column's geometry pushed three
+  // year-columns off an eight-year sheet.
+  //
+  // So the strip is a sibling of the scroller rather than anything inside the table: absolutely
+  // positioned in a wrapper that does not scroll, at the x where the label ends, painting over
+  // whatever slides under it. Measured from the rendered header cell because the label column is
+  // content-sized, and only while `scrollLeft > 0`, because with nothing hidden there is nothing to
+  // say and a permanent gradient would just be decoration.
+  const syncEdge = () => {
+    const el = scroller.current;
+    const th = el && el.querySelector("thead th");
+    setEdge(el && th && el.scrollLeft > 0 ? th.getBoundingClientRect().width : 0);
+  };
 
   const sectionLink = kind => {
     if (!sections || !sections.reports) return null;
@@ -617,7 +640,18 @@ export default function App() {
             year the one you have to go looking for. */}
         {tab === "segments" && <SegmentTables segs={segs || { loading: true }} S={S} />}
 
-        {tab !== "segments" && grid.cols && <div ref={scroller} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
+        {tab !== "segments" && grid.cols && <div style={{ position: "relative" }}>
+          {/* A column sliding under the label is marked, so its surviving digits read as a fragment
+              rather than as a small number — CBL's $927,252,000 showed as `2,000` beside $858,557,000.
+              Declining to auto-scroll when the table nearly fits removed that case; this covers the
+              rest, and there is always a rest: Apple's overflow sits permanently between one and two
+              column widths, so no scroll position exists that shows every column whole. A darkening
+              gradient rather than a background-coloured fade, because it has to work over both the
+              header's tint and the body's card colour. */}
+          {edge > 0 && <div aria-hidden="true" style={{ position: "absolute", left: edge, top: 1, bottom: 1, width: 26,
+            pointerEvents: "none", zIndex: 3, borderRadius: "0 3px 3px 0",
+            background: `linear-gradient(to right, ${C.ink}30, ${C.ink}00)` }} />}
+        <div ref={scroller} onScroll={syncEdge} style={{ overflowX: "auto", border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
             {/* This row orients the whole sheet, so it is the last place to be economical with size.
                 It was 9px uppercase at 2px letter-spacing over an 8px date at 60% opacity — spaced-out
@@ -654,6 +688,7 @@ export default function App() {
                   naLabel={INDUSTRY_LABEL[industry] ? `n/a for a ${INDUSTRY_LABEL[industry]}` : "n/a"} />)}
             </tbody>
           </table>
+        </div>
         </div>}
 
         {/* Stated plainly rather than hidden. These are the lines no filing contains — a sponsor's
