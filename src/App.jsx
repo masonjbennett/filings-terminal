@@ -1052,6 +1052,17 @@ function ValuationCard({ grid, quote, note, S }) {
       Book value here is a near-cancelled residual — shareholders' equity is {(Math.abs(c.v.equity / c.v.totalAssets) * 100).toFixed(2)}% of
       total assets — so P/B and book value per share describe the buyback history rather than the valuation.
     </p>}
+    {/* Rule 20 suppresses the priced rows for a filer reporting in another currency, and this card
+        drops any row that came out null — so on ASML it rendered "$1890.00 today" beside a book value
+        of 50.89 with nothing between them saying one is dollars and the other euros. The row-level
+        "reported in EUR" status cannot help here: the EV bridge is deliberately NOT in the year grid,
+        so those keys have no row to carry a status on. Found by looking at PRODUCTION, which is the
+        only place a real quote exists — the same route the $155bn Chubb enterprise value was caught. */}
+    {c.meta.ev && c.meta.ev.status === "currency-mismatch" && <p style={{ fontSize: 11, color: C.bronze, margin: "11px 0 0", fontFamily: MONO, lineHeight: 1.5 }}>
+      The price is in dollars and these figures are in {c.meta.ev.ccy}, as filed — so market cap,
+      enterprise value and every multiple built on them are left out rather than mixed. Nothing here
+      is converted. The book values above are in {c.meta.ev.ccy} too.
+    </p>}
   </div>;
 }
 

@@ -458,6 +458,13 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     not "needs price", which would be false — the price arrived and is fine. Rule 5 again: the wrong
     kind of blank sends a reader looking for a missing quote.
 
+    **The card needed its own line, and that was found in production.** It drops any row that came out
+    null, so ASML rendered *"$1890.00 today"* beside a book value of 50.89 with nothing between them
+    saying one is dollars and the other euros. The row-level *"reported in EUR"* status cannot reach
+    it: the EV bridge is deliberately not in the year grid, so those keys have no row to carry a status
+    on. Same compact bronze line the near-cancelled-equity note uses, and the same route the $155bn
+    Chubb enterprise value was caught by — a real quote exists only in production.
+
     And the page says it, once, at the top: *every figure below is in EUR, as filed — not converted*.
     Once rather than on 279 rows, because one currency per sheet is now true by construction. USD is
     left unsaid, because it is the default a reader already assumes and marking it would train the eye
