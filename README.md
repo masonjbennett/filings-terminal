@@ -591,6 +591,35 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     and the generalisation is the currency lesson stated the other way round: a value the engine never
     reads is a value nothing is enforcing.
 
+23. **Where the filer tags a subtotal the row participates in, its own arithmetic outranks rule 21's
+    proxy.** Rule 21 ranks candidates by their longest unbroken run, which is a *proxy* for "which
+    concept is this row" — and a proxy loses to evidence wherever the filer supplies evidence.
+
+    **Air Industries breaks the proxy.** It tags `CostOfGoodsAndServicesSold` at **$0.1m for 2019 and
+    2020** and at $45m from 2021, so the placeholder's unbroken run (5) beats `CostOfRevenue`'s (4),
+    and the sheet showed **$0.1m of cost against $50m of revenue** for two columns. Its own filed gross
+    profit settles it: revenue $50.1m less gross profit $6.5m is **$43.6m**, which is `CostOfRevenue`
+    exactly.
+
+    **Ranking by COVERAGE instead was the tempting fix and is rejected**, because it trades one filer
+    for another — rule 11's trap. It corrects Air Industries (7 columns against 5) and breaks **AIOS
+    Tech**, whose tagged gross profit says `CostOfRevenue` is right there to the dollar: 386.7 − 346.7
+    = 40.0. Across all six frames those are the **only two filers** where run length and coverage
+    disagree, and they disagree in opposite directions, so no ranking of the two can be right for both.
+    The identity is right for both.
+
+    So a row may declare `pinIdentity` — for the cost row, `revenue − cost = grossProfit` — and the
+    candidates are scored by how many of the sheet's own columns they close it in. Scored **across the
+    sheet** rather than per column, because rule 21's claim is that a row means one concept for the
+    whole page. A filer tagging no subtotal scores every candidate zero and falls through to rule 21
+    unchanged, which is every filer but three.
+
+    The third is **Anterix, and it is a regression rule 21 introduced the same day**: its reported
+    gross profit is **minus $0.75m** and revenue less `CostOfGoodsAndServicesSold` is minus $0.75m
+    exactly, so rule 21's run-length answer had picked the wrong concept there. `full-diff.mjs` over the
+    167: **34 values changed rather than 37** — the three that moved back are Anterix's, corrected by
+    the filer's own figures rather than by a preference.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

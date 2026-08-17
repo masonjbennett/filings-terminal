@@ -276,6 +276,42 @@ const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ?
 // concept it means halfway across the page. Across all six frames only three filers have two cost
 // concepts that disagree in the newest column, and this changes two: Caterpillar, from 0.1% of revenue
 // to 66.2%, and B.O.S. Better Online by 1.7%.
+// Rule 23. Rule 21's run length is a proxy for "which concept is this row", and a proxy loses to the
+// filer's own arithmetic wherever the filer supplies it. Where a company tags a SUBTOTAL that the row
+// participates in — gross profit, for the cost row — the candidate that makes the identity close is
+// the line, and nothing else needs deciding.
+//
+// It exists because run length picks the wrong one at Air Industries: it tags
+// `CostOfGoodsAndServicesSold` at $0.1m for 2019 and 2020 and at $45m from 2021, so the PLACEHOLDER's
+// unbroken run (5) beats `CostOfRevenue`'s (4) and the sheet showed $0.1m of cost against $50m of
+// revenue. Ranking by coverage instead was measured and REJECTED — it fixes Air Industries and breaks
+// AIOS Tech, whose tagged gross profit says `CostOfRevenue` is right there (386.7 − 346.7 = 40.0, to
+// the dollar). One filer traded for another is rule 11's trap, and the identity settles both.
+//
+// Scored across the sheet rather than per column, because rule 21's claim is that a row means one
+// concept for the whole page. A filer tagging no subtotal scores every candidate zero and falls
+// through to the run-length ranking unchanged, which is every filer but two.
+export function tagsByIdentity(facts, tags, periods, minusTags, equalsTags) {
+  if (!tags || tags.length < 2) return null;
+  const score = new Map(tags.map(t => [t, 0]));
+  let evidence = 0;
+  for (const p of periods) {
+    const whole = pickFact(facts, minusTags, p, {});
+    const part = pickFact(facts, equalsTags, p, {});
+    if (whole.value == null || part.value == null) continue;
+    const want = whole.value - part.value;
+    const tol = Math.max(Math.abs(whole.value) * 1e-4, 1000);
+    for (const t of tags) {
+      const got = pickFact(facts, [t], p, {});
+      if (got.value == null) continue;
+      evidence++;
+      if (Math.abs(got.value - want) <= tol) score.set(t, score.get(t) + 1);
+    }
+  }
+  if (!evidence || ![...score.values()].some(n => n > 0)) return null;
+  return [...tags].sort((a, b) => score.get(b) - score.get(a));
+}
+
 export function tagsByRun(facts, tags, ends) {
   if (!tags || tags.length < 2 || !ends || !ends.length) return tags;
   const order = new Map(tags.map((t, i) => [t, i]));

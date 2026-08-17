@@ -75,7 +75,10 @@ export const SECTIONS = [
     // read $64m against a real $58m of net revenue, with every margin under it quietly rebased.
     // Caught by diffing all 167 filers, not by any assertion.
     omitFor: { bank: ["InterestAndDividendIncomeOperating"] } },
-  { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"], pinByRun: true },
+  { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"], pinByRun: true,
+    // Rule 23: where the filer tags gross profit, revenue - cost = gross profit settles which
+    // candidate is the cost line, and the filer's own arithmetic outranks rule 21's run-length proxy.
+    pinIdentity: { minus: "revenue", equals: "grossProfit" } },
     // Fetched for most filers and COMPUTED for the 84 that report revenue and cost of revenue and no
   // subtotal — Chevron, Walmart, Costco, P&G, Pfizer, Caterpillar among them. See rule 22. The row has
   // to say which, because the header on every sheet claims each figure is the value the company filed

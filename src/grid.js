@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -261,8 +261,20 @@ export function buildGrid(data, quote, limit = 8) {
   // two concepts a filer might file together, but each needs its own measurement before it opts in.
   const calEnds = periods.map(p => p.end);
   const pinned = {};
-  for (const sec of sections) for (const line of sec.lines)
-    if (line.pinByRun && line.tags) pinned[line.k] = tagsByRun(facts, line.tags, calEnds);
+  const lineByKey = {};
+  for (const sec of sections) for (const line of sec.lines) lineByKey[line.k] = line;
+  for (const sec of sections) for (const line of sec.lines) {
+    if (!line.pinByRun || !line.tags) continue;
+    // Rule 23 first, because it is the filer's own arithmetic rather than a proxy for it — and it
+    // returns null for the filers that tag no subtotal, which is nearly all of them.
+    let order = null;
+    if (line.pinIdentity) {
+      const minus = (lineByKey[line.pinIdentity.minus] || {}).tags;
+      const equals = (lineByKey[line.pinIdentity.equals] || {}).tags;
+      if (minus && equals) order = tagsByIdentity(facts, line.tags, periods, minus, equals);
+    }
+    pinned[line.k] = order || tagsByRun(facts, line.tags, calEnds);
+  }
 
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
     line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy }), scopeOf, pinned) }));
