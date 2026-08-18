@@ -644,7 +644,22 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     Where every candidate reports zero, zero is what the filer says and zero is what is shown — the
     guard falls back to the first hit rather than blanking, because "the company had no impairment" and
     "the company reported nothing" are different answers and rule 5 is about not confusing them.
-    `full-diff.mjs`: **65 values changed across the 167** (34 of them rules 21 and 23), 0 vanished.
+
+    **Three more rows opted in on the same evidence, and three deliberately did not.** Disney tags
+    `OtherNonoperatingIncomeExpense` as 0 and reports **$1.038bn** of non-operating income under the
+    broader concept; McDonald's tags `ShortTermBorrowings` as 0 and reports **$790m of commercial
+    paper**, which is short-term borrowing by any reading and carried total debt from $38.42bn to
+    $39.21bn; Warner Bros Discovery showed no debt issued against **$2.0bn** of notes-payable proceeds.
+    The test each row had to pass is whether the displaced tag is the **total the row is named for**
+    rather than a component of it. `dividends` fails it — dividends *declared* is a different concept
+    from dividends *paid*, and Dow's $3.711bn is the former — and so does `accrued`, where
+    `EmployeeRelatedLiabilitiesCurrent` is one line inside accrued liabilities rather than a synonym.
+    Both are left alone, and the suite asserts Dow's row still reads zero so a later pass cannot widen
+    the guard quietly.
+
+    The per-cell EDGAR link follows the tag that was actually shown: two cells move from a 10-Q to the
+    10-K reporting the figure, which is the link doing its job rather than a regression.
+    `full-diff.mjs`: **106 values changed across the 167** (34 of them rules 21 and 23), 0 vanished.
 
 ### A number that is correct and reads as broken
 

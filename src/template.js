@@ -109,7 +109,10 @@ export const SECTIONS = [
   { k: "ebitdaSbc", label: "EBITDA ex-SBC", how: "computed", formula: "ebitda - sbc", note: "The number a credit committee argues about" },
   { k: "intExp", label: "Interest expense", how: "fetched", tags: ["InterestExpense","InterestExpenseDebt","InterestExpenseNonoperating"] },
   { k: "intInc", label: "Interest income", how: "fetched", tags: ["InvestmentIncomeInterest","InterestIncomeOther"] },
-  { k: "otherInc", label: "Other income/(expense), net", how: "fetched", tags: ["OtherNonoperatingIncomeExpense","NonoperatingIncomeExpense"] },
+  // Rule 24 again: Disney tags `OtherNonoperatingIncomeExpense` as 0 and reports $1.038bn of
+  // non-operating income under the broader concept, so the row showed nothing. The second tag is the
+  // TOTAL this row is named for rather than a component of it, which is what makes the swap safe.
+  { k: "otherInc", label: "Other income/(expense), net", how: "fetched", tags: ["OtherNonoperatingIncomeExpense","NonoperatingIncomeExpense"], preferNonZero: true },
   { k: "pretax", label: "Pre-tax income", how: "fetched", tags: ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest","IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"] },
   { k: "tax", label: "Income tax expense", how: "fetched", tags: ["IncomeTaxExpenseBenefit"] },
   { k: "netIncome", label: "Net income", how: "fetched", tags: ["NetIncomeLoss","ProfitLoss"] },
@@ -142,7 +145,12 @@ export const SECTIONS = [
   // UPS's "Current maturities of long-term debt and commercial paper". Counted once in total debt,
   // and the row stays because it is a figure the filer reported. Same obligation rule 15 took on: a
   // column whose rows do not visibly sum to the total printed below them has to say why.
+  // Rule 24: McDonald's tags `ShortTermBorrowings` as 0 and reports $790m of commercial paper, Pfizer
+  // the same shape against `OtherShortTermBorrowings` — and commercial paper IS short-term borrowing,
+  // so the zero was understating total debt rather than reporting an absence. Unlike the long-term
+  // row, none of these three is the concept a Chapter 11 filer empties on purpose.
   { k: "stDebt", label: "Short-term borrowings", how: "fetched", tags: ["ShortTermBorrowings","CommercialPaper","OtherShortTermBorrowings"],
+    preferNonZero: true,
     flagNote: { stDebtIsLtdCur: "The same figure as the current portion of long-term debt below — one line on the balance sheet carrying both tags. Counted once in total debt." } },
   // Left at the one unambiguous tag ON PURPOSE. `LongTermDebtAndCapitalLeaseObligationsCurrent` and
   // `DebtCurrent` were both added during the corporate sweep and both backed out, because adding a
@@ -241,7 +249,7 @@ export const SECTIONS = [
   { k: "acquisitions", label: "Acquisitions, net of cash", how: "fetched", tags: ["PaymentsToAcquireBusinessesNetOfCashAcquired"] },
   { k: "divestitures", label: "Divestitures", how: "fetched", tags: ["ProceedsFromDivestitureOfBusinesses"] },
   { k: "cfi", label: "Cash from investing", how: "fetched", tags: ["NetCashProvidedByUsedInInvestingActivities"] },
-  { k: "debtIssued", label: "Debt issued", how: "fetched", tags: ["ProceedsFromIssuanceOfLongTermDebt","ProceedsFromIssuanceOfDebt","ProceedsFromNotesPayable"] },
+  { k: "debtIssued", label: "Debt issued", how: "fetched", tags: ["ProceedsFromIssuanceOfLongTermDebt","ProceedsFromIssuanceOfDebt","ProceedsFromNotesPayable"], preferNonZero: true },
   { k: "debtRepaid", label: "Debt repaid", how: "fetched", tags: ["RepaymentsOfLongTermDebt","RepaymentsOfDebt"] },
   { k: "buybacks", label: "Share repurchases", how: "fetched", tags: ["PaymentsForRepurchaseOfCommonStock"] },
   // AvalonBay and Essex file neither of the first two — `PaymentsOfOrdinaryDividends` is what they
