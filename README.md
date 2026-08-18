@@ -1554,6 +1554,35 @@ that counts "things nobody has accounted for" should rise when the engine stops 
 of the population is the usual: micro-caps with more loss than revenue, shells with no top line, and
 `out-of-range` ratios that are correct for the company.
 
+### The spin-off frame: years a company did not exist
+
+The seventh frame, drawn from a hypothesis like the transition and restatement ones. A **Form 10-12B**
+is the registration statement a company files when it is spun out of a parent, so every member of the
+population has something no other frame does: **years it reports for a company that was not a separate
+registrant.** Those are carve-out financials — allocated parent overhead, no separate capital
+structure, a share count that is a distribution pro-forma. Free from the cached `form.idx`, and small
+enough to take **entire**: 42 CIKs, of which **19 are listed and have filed an annual report** — GE
+Vernova, Solventum, Sandisk, Amentum, Amrize, Qnity, Ralliant, Solstice, Versant, FedEx Freight,
+Sunbelt Rentals, GRAIL, Curbline and Everus among them. `SAMPLE_MODULE=./spinoff-sample.mjs node
+t-corp.mjs`.
+
+**The carve-out shape is real and the engine already handles it.** Every one of the five largest shows
+**no debt at all in its pre-separation year** — correct, because the parent carried it — and then a
+normal capital structure afterwards. Equity resolves under the standard concepts rather than as "net
+parent investment", and the pro-forma share count is filed, so the per-share rows populate. Six
+findings, four of them the biotech category on GRAIL and Inhibrx, and none an engine defect.
+
+**Its real yield was a false positive in the sweep's own check**, which is worth more than it sounds
+because that check had been trusted since the small/mid-cap sweep. **Sandisk** shows total debt of zero
+against $73m of interest expense — the Progressive signature — and is right: it tags all three debt
+concepts as 0 at its 2026 year end having carried $603m two quarters earlier, so it repaid during the
+year. Interest expense is a **duration** over the year and total debt is an **instant** at the end of
+it, so a filer that repays has both and contradicts nothing. That is rule 1's own lesson arriving in a
+check rather than in the engine. The test now also requires the **prior column** to be zero, which is
+what the Progressive shape actually looks like — debt that was never on the row and always in the
+filing. It removed three findings across the frames, all verified: Sandisk, and Hycroft twice, which
+the comment above the check had already named as a filer that repaid $126m and reports zero honestly.
+
 ### The balance sheet's three legs come from different filings, and it does not matter
 
 Worth writing down because it looks like a bug, has a plausible mechanism, and is not one — so the
