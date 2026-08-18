@@ -1554,6 +1554,31 @@ that counts "things nobody has accounted for" should rise when the engine stops 
 of the population is the usual: micro-caps with more loss than revenue, shells with no top line, and
 `out-of-range` ratios that are correct for the company.
 
+### The balance sheet's three legs come from different filings, and it does not matter
+
+Worth writing down because it looks like a bug, has a plausible mechanism, and is not one — so the
+next person to notice it does not spend the afternoon I spent.
+
+`pickFact` resolves every row independently under rule 2, so nothing in the engine makes assets,
+liabilities and equity come from the same document. **They frequently do not: 1,273 of the 2,147
+columns carrying all three legs draw them from more than one accession.** The mechanism looks obvious
+and alarming — rule 12's problem applied to a balance sheet, where a restatement landing between two
+filings would leave the legs describing different companies.
+
+**Measured, and the correlation is zero.** Columns with split legs close to within 0.5% **93.7%** of
+the time; columns whose legs all come from one filing close **93.5%** of the time. Of the 137 columns
+that do not close, 58% have split legs — against **59% of the whole population**. A split is simply how
+filings are laid out: a balance sheet presents two years while the statement of stockholders' equity
+presents three, so equity for the oldest column legitimately comes from a newer filing than assets for
+the same date, and nothing follows from it.
+
+So **forcing the three legs onto one accession is not worth doing**, and it would cost coverage — the
+newest filing carrying assets often does not carry all three. The columns that fail to close fail for
+the filer's own reasons, which is the Instacart category: something real that the filer tagged only
+inside a dimension, or did not tag at all. The four the Chapter 11 frame flags — Cepton, Nuride,
+Orchestra BioMed and iQSTEL — were each checked and all three legs come from a single accession in
+every case, so there is no basis-mixing to blame.
+
 ### Bottom-up EBIT: tested against 422 filer-years, and rejected
 
 The obvious repair is to build EBIT as **pre-tax + interest expense − interest income**, which is what
