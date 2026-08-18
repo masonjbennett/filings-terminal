@@ -1554,6 +1554,32 @@ that counts "things nobody has accounted for" should rise when the engine stops 
 of the population is the usual: micro-caps with more loss than revenue, shells with no top line, and
 `out-of-range` ratios that are correct for the company.
 
+### The sweep's own precision: 74 unexplained ratios down to 2
+
+The `out-of-range` bucket had been reporting "this ratio is extreme" without saying whether anyone had
+accounted for it, so the count meant nothing and nobody read it — which is how Caterpillar's 186,116-day
+inventory sat in plain sight. It now tells itself apart, and only the residual means *nobody has
+accounted for this*.
+
+**One idea, applied uniformly.** Every one of these is a fraction, and **a fraction whose denominator is
+smaller than its numerator is arithmetic rather than breakage** — a biotech with $3m of revenue and
+$150m of losses genuinely has a −5,041% EBITDA margin. That single test covers margins, ROE and the
+effective tax rate, and it is deliberately *one* test: adding a classifier per case until the residual
+emptied would make the residual mean nothing, which is the opposite of the point. Thin equity is checked
+first, because `equityThin` is the engine's own verdict — the same one the sheet prints its note from —
+so the sweep and the page cannot disagree about which filers those are.
+
+**The first version keyed on revenue against total assets and was rejected by measurement**: it does not
+separate at all, because these companies have tiny assets too. Wenyuan is 0.33, Trxade 0.35 and Nutra
+Pharma 0.44 on that axis, while every one of them is under 0.35 against its own numerator and most are
+under 0.10. A denominator is small *relative to the thing being measured*, not in the abstract — which
+is the near-cancelled-equity mark's reasoning arriving on a different row.
+
+**74 unexplained findings become 2**, across all seven frames: Wenyuan and Radiogel, both with a
+**reported** — not derived — gross profit that is negative because each sold below cost, by $14k and
+$60k on revenue of $25k and $68k. Correct, checkable at a glance, and the whole residual. The frame
+totals do not move, because nothing is suppressed and nothing is added; the bucket is only sorted.
+
 ### The spin-off frame: years a company did not exist
 
 The seventh frame, drawn from a hypothesis like the transition and restatement ones. A **Form 10-12B**
