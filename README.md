@@ -1554,6 +1554,26 @@ that counts "things nobody has accounted for" should rise when the engine stops 
 of the population is the usual: micro-caps with more loss than revenue, shells with no top line, and
 `out-of-range` ratios that are correct for the company.
 
+### A comps set is the one place two currencies sit side by side
+
+Rule 20 gives a single sheet one currency by construction, so the problem it cannot solve is the SET:
+ASML's €32.67bn of revenue lands in the same row as a US filer's dollars, and the column header naming
+the currency is not where the comparison is made. The cell is.
+
+So the **amount** rows carry the mark — revenue, EBITDA, net income and net debt, named once in
+`CURRENCY_DENOMINATED` beside `EQUITY_DENOMINATED` so the two surfaces cannot drift. The ratio rows need
+nothing: they are dimensionless and compare fine, which is also why the median, taken only over those,
+is unaffected. Market cap and enterprise value are absent from the list because rule 20 already
+suppresses them outright for a filer whose statements are not in the price's currency.
+
+**Marking the whole row was the first version and it overstates.** In a set of two dollar filers and one
+euro filer the two dollar figures *are* comparable with each other, and colouring all three reads as
+"everything here is broken" rather than "this one is different". Only the odd one out is marked — ties
+going to USD, the currency the price is in and the one a reader assumes — which is the same shape the
+near-cancelled-equity mark uses: colour the filer it is about, leave the rest alone. The note under the
+table names which company reports in what, because the cell mark answers *"why is this one bronze"*
+and the note answers *"what am I looking at"*.
+
 ### The sweep's own precision: 74 unexplained ratios down to 2
 
 The `out-of-range` bucket had been reporting "this ratio is extreme" without saying whether anyone had

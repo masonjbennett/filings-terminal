@@ -26,6 +26,14 @@
 // on purpose — it divides by debt + equity and stays near 1.0x rather than exploding.
 export const EQUITY_DENOMINATED = new Set(["roe", "debtEquity", "pb"]);
 
+// The comps rows carrying an AMOUNT rather than a ratio, named once for the same reason. A single
+// sheet has one currency by construction (rule 20), so this matters only in a SET — the one place two
+// currencies legitimately sit side by side, where ASML's euros land in the same row as a US filer's
+// dollars. The ratio rows are dimensionless and compare fine, which is also why the median, taken
+// only over those, needs no marking. `mktCap` and `ev` are absent because rule 20 already suppresses
+// them outright for a filer whose statements are not in the price's currency.
+export const CURRENCY_DENOMINATED = new Set(["revenue", "ebitda", "netIncome", "netDebt"]);
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `

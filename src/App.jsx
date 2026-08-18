@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
-import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED } from "./template.js";
+import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 
@@ -791,6 +791,22 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
   // Bronze here means what it means everywhere else — there is something to go and look at.
   const thin = c => { const col = colOf(c); return !!(col && col.v.equityThin); };
   const thinSet = ready.filter(thin);
+  // A set is the one place two currencies legitimately sit side by side. One currency throughout needs
+  // no marking anywhere — the amounts are comparable and saying so would be noise — so this is the
+  // gate for both the cell marks and the note under the table. See `CURRENCY_DENOMINATED`.
+  const ccySet = [...new Set(ready.map(c => (c.grid || {}).ccy).filter(Boolean))];
+  const mixedCcy = ccySet.length > 1;
+  // Mark the ODD ONE OUT rather than the whole row. Marking every cell was the first version and it
+  // overstates: in a set of two dollar filers and one euro filer, the two dollar figures ARE
+  // comparable with each other, and colouring all three reads as "everything here is broken" instead
+  // of "this one is different". Same shape as the near-cancelled-equity mark, which colours the filer
+  // it is about and leaves the rest alone. Ties go to USD, which is the currency the price is in and
+  // the one a reader assumes.
+  const domCcy = (() => {
+    const n = {};
+    for (const c of ready) { const k = (c.grid || {}).ccy; if (k) n[k] = (n[k] || 0) + 1; }
+    return Object.keys(n).sort((a, b) => n[b] - n[a] || (a === "USD" ? -1 : b === "USD" ? 1 : 0))[0];
+  })();
 
   // Median over the companies that HAVE the figure, never over the set. A bank contributes no
   // EV/EBITDA and a filer with no operating income contributes no margin; counting those as zero, or
@@ -932,9 +948,17 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                 {comps.map(c => {
                   const v = val(c, r.k), gap = v == null && GAP[why(c, r.k)];
                   const soft = v != null && EQUITY_DENOMINATED.has(r.k) && thin(c);
+                  // An AMOUNT in a set that holds more than one currency is not comparable to the
+                  // amounts beside it, and unmarked it reads as a bigger or smaller company. The
+                  // header already names each column's currency; this is the same statement arriving
+                  // on the cell, which is where the comparison is actually made. Only when the set is
+                  // mixed — one currency throughout needs no marking at all.
+                  const cc = (c.grid || {}).ccy;
+                  const ccyOdd = v != null && mixedCcy && CURRENCY_DENOMINATED.has(r.k) && cc && cc !== domCcy ? cc : null;
                   return <td key={c.ticker} title={gap ? gap(c.ticker, r.label.toLowerCase())
-                    : soft ? `${c.ticker}'s equity is a near-cancelled residual, so this ratio is not comparable to the others` : ""}
-                    style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? (gap ? C.bronze : C.hair) : soft ? C.bronze : C.ink2, whiteSpace: "nowrap" }}>
+                    : soft ? `${c.ticker}'s equity is a near-cancelled residual, so this ratio is not comparable to the others`
+                    : ccyOdd ? `${c.ticker} reports in ${ccyOdd}, as filed — this amount is not in the same currency as the others in this row` : ""}
+                    style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: v == null ? (gap ? C.bronze : C.hair) : (soft || ccyOdd) ? C.bronze : C.ink2, whiteSpace: "nowrap" }}>
                     {display(r.k, v) || "—"}
                   </td>;
                 })}
@@ -957,6 +981,14 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         {" "}{thinSet.map(c => `${c.ticker} (${(Math.abs(colOf(c).v.equity / colOf(c).v.totalAssets) * 100).toFixed(2)}%)`).join(", ")}
         {thinSet.length > 1 ? " hold" : " holds"} shareholders' equity worth almost nothing against total assets, so the
         equity-denominated ratios above are correct and are not comparable with the rest of the set.
+      </span>}
+      {/* Named under the table as well as on each cell, because the cell mark answers "why is this one
+          bronze" and this answers "what am I looking at" — the same split the near-cancelled-equity
+          note above makes. Nothing is converted anywhere on this site. */}
+      {mixedCcy && <span style={{ color: C.bronze }}>
+        {" "}This set spans {ccySet.join(", ")}: {ready.filter(c => (c.grid || {}).ccy && (c.grid || {}).ccy !== "USD")
+          .map(c => `${c.ticker} reports in ${c.grid.ccy}`).join(", ")}. The marked amounts are as filed and are not
+        converted, so they are not comparable across the row — the ratios and multiples are dimensionless and are.
       </span>}
       {basis === "ltm" && <><br />An LTM line is the last full year plus this year to date less last year to the same date,
       all three from the same tag the annual column used, with the balance sheet read at the quarter end rather than summed.
