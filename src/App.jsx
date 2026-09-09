@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
+import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
+import { NOT_APPLICABLE } from "./template.js";
 
 // Paper & ink, same as masonjbennett.com — this is his tool and it should read as his.
 const C = { paper:"#faf3ea", ink:"#262421", ink2:"#33302c", body:"#4a443c", mute:"#6f675c", faint:"#8a8072",
@@ -271,6 +273,10 @@ export default function App() {
       return;
     }
     const want = params.get("t");
+    // `&tab=valuation` lands a shared link on the tab it was sent about — the main site's Work Index
+    // links straight to the reverse DCF this way. Unknown values are ignored rather than erroring.
+    const tb = params.get("tab");
+    if (tb && TABS.some(x => x.id === tb)) setTab(tb);
     if (!want) return;
     deepLoaded.current = true;
     const s = want.trim().toUpperCase();
@@ -638,6 +644,11 @@ export default function App() {
         {/* Opens pinned to the right-hand edge — the current year, which is what you came to see —
             and scrolling left walks back through history. Model order without making the newest
             year the one you have to go looking for. */}
+        {/* The reverse DCF rides above the Valuation tab's year grid: the two judgement rows that grid
+            prints as "never auto-filled" — WACC and terminal growth — are exactly the inputs this plate
+            asks the reader for, so it sits where those rows are and nowhere else. */}
+        {tab === "valuation" && grid.cols && <PricedIn grid={grid} industry={industry} note={quoteNote} S={S} />}
+
         {tab === "segments" && <SegmentTables segs={segs || { loading: true }} S={S} />}
 
         {tab !== "segments" && grid.cols && <div style={{ position: "relative" }}>
@@ -1156,6 +1167,115 @@ function ValuationCard({ grid, quote, note, S }) {
       enterprise value and every multiple built on them are left out rather than mixed. Nothing here
       is converted. The book values above are in {c.meta.ev.ccy} too.
     </p>}
+  </div>;
+}
+
+// What's priced in — the reverse DCF, on the Valuation tab. Takes the enterprise value the card above
+// already built (one price, newest column, the Goldman EA-proxy bridge) and the newest year's free
+// cash flow, and solves for the growth in that cash flow the price implies. The solve is in
+// src/reverse.js and tested there; this only formats it.
+//
+// Two decisions carry the whole thing. (1) The cost of capital and terminal growth are the READER'S:
+// the template rules that the `wacc` row is judgement and never auto-filled, and a reverse DCF that
+// quietly picked one would be printing an opinion in the typography of a filed figure. Damodaran's
+// industry table sits beside the box as a reference a reader can copy in with a click — a reference
+// is not a default. (2) The output is a computed figure, so it carries the ƒ marker and links to
+// nothing, and every case with no honest answer — negative cash flow, WACC below terminal growth, a
+// price outside the bracket — prints a sentence rather than a number.
+function PricedIn({ grid, industry, note, S }) {
+  const c = grid.cols[grid.cols.length - 1];
+  const ev = c.v.ev, evMeta = c.meta.ev || {};
+  const basis = pickBasis(c);
+  // The template's own verdict on whether the DCF apparatus applies to this filer — see dcfApplicable.
+  const applicable = dcfApplicable(NOT_APPLICABLE[industry]);
+  const [wacc, setWacc] = useState("");
+  const [tg, setTg] = useState("");
+  const [years, setYears] = useState(10);
+  const [ref, setRef] = useState(null);
+  const [pick, setPick] = useState("");
+  // Loaded once the plate mounts — the Valuation tab only — so a reader on Statements never fetches it.
+  useEffect(() => {
+    let on = true;
+    fetch("/damodaran-wacc-2026.json").then(r => (r.ok ? r.json() : null)).then(j => { if (on && j && Array.isArray(j.industries)) setRef(j); }).catch(() => {});
+    return () => { on = false; };
+  }, []);
+  const num = s => (String(s).trim() === "" ? NaN : parseFloat(s) / 100);
+  const w = num(wacc), t = num(tg);
+  const ready = applicable && ev != null && !!basis;
+  const res = ready && Number.isFinite(w) && Number.isFinite(t) ? impliedGrowth({ ev, fcf: basis.v, wacc: w, tg: t, years }) : null;
+  const sens = res && res.ok ? sensitivity({ ev, fcf: basis.v, wacc: w, tg: t, years }) : null;
+  const picked = ref && pick ? (pick === "__market" ? ref.totalMarket : ref.industries.find(i => i.name === pick)) : null;
+  const pct = v => (v == null ? "—" : (v * 100).toFixed(1) + "%");
+  const inputStyle = { width: 74, background: "#f6eee1", border: `1px solid ${C.hair}`, borderRadius: 6, padding: "5px 8px", font: `600 13px ${MONO}`, color: C.ink2, outline: "none", textAlign: "right" };
+  const Label = ({ children }) => <span style={{ ...S.label, color: C.faint, marginRight: 8 }}>{children}</span>;
+  return <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card, padding: "14px 18px", marginBottom: 16 }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+      <span style={{ ...S.label, color: C.teal }}>What's priced in</span>
+      <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>reverse DCF · newest column only, FY{c.period.fy} ({c.period.end})</span>
+    </div>
+    {!ready && <p style={{ fontSize: 12, color: C.bronze, margin: "4px 0 0", fontFamily: MONO, lineHeight: 1.6 }}>
+      {!applicable ? `A reverse DCF is n/a for a ${INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow." : "its liabilities are the business, so enterprise value and unlevered cash flow are category errors, not gaps."}`
+        : ev == null && evMeta.status === "not-applicable" ? "Enterprise value is n/a for this filer's industry — it is a category error for a bank or a carrier, so there is nothing to solve against."
+        : ev == null && evMeta.status === "currency-mismatch" ? `The price is in dollars and these figures are in ${evMeta.ccy}, as filed — no enterprise value is built across the two, so there is nothing to solve against.`
+        : ev == null ? (note || "No price available, so no enterprise value to solve against.")
+        : "No free cash flow on the newest column — nothing to grow."}
+    </p>}
+    {ready && <>
+      <p style={{ fontSize: 12.5, color: C.body, margin: "4px 0 12px", lineHeight: 1.65 }}>
+        Enterprise value of <b style={{ fontFamily: MONO }}>{display("ev", ev)}</b> against {basis.label} of{" "}
+        <b style={{ fontFamily: MONO }}>{display("fcf", basis.v)}</b>
+        <span style={{ fontSize: 8, fontFamily: MONO, color: C.navy, marginLeft: 5 }} title={basis.note}>ƒ</span>.
+        Give it a cost of capital and a terminal growth rate, and it solves for the constant growth in that cash flow the price implies over the horizon.
+        {basis.k === "fcf" && <span style={{ color: C.bronze }}> Unlevered free cash flow is blank for this filer, so this grows cash from operations less capex, which is after interest.</span>}
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px 22px", flexWrap: "wrap", marginBottom: 10 }}>
+        <span><Label>WACC</Label><input type="number" step="0.1" min="0" max="99" value={wacc} onChange={e => setWacc(e.target.value)} placeholder="—" style={inputStyle} aria-label="Cost of capital, percent" /><span style={{ fontFamily: MONO, fontSize: 12, color: C.faint, marginLeft: 4 }}>%</span></span>
+        <span><Label>Terminal growth</Label><input type="number" step="0.1" min="-5" max="10" value={tg} onChange={e => setTg(e.target.value)} placeholder="—" style={inputStyle} aria-label="Terminal growth, percent" /><span style={{ fontFamily: MONO, fontSize: 12, color: C.faint, marginLeft: 4 }}>%</span></span>
+        <span><Label>Horizon</Label>{HORIZONS.map(h => <button key={h} onClick={() => setYears(h)} style={{ background: years === h ? "#0d6d5610" : "transparent", border: `1px solid ${years === h ? C.teal + "45" : C.hair}`, borderRadius: 6, padding: "4px 10px", marginRight: 4, cursor: "pointer", font: `600 11px ${MONO}`, color: years === h ? C.teal : C.faint }}>{h} yrs</button>)}</span>
+      </div>
+      {/* The reference, beside the box and never in it. A `select` rather than a lookup off the SIC: the
+          filer's SIC would have to be mapped onto Damodaran's 94 names by hand, and a wrong mapping
+          reads as a default the terminal chose. The reader picks the row and copies the figure in. */}
+      {ref && <div style={{ display: "flex", alignItems: "center", gap: "6px 12px", flexWrap: "wrap", marginBottom: 12, fontSize: 11, color: C.mute }}>
+        <Label>Reference</Label>
+        <select value={pick} onChange={e => setPick(e.target.value)} style={{ background: "#f6eee1", border: `1px solid ${C.hair}`, borderRadius: 6, padding: "4px 8px", font: `11px ${MONO}`, color: C.ink2, maxWidth: 260 }} aria-label="Damodaran industry">
+          <option value="">Damodaran industry cost of capital…</option>
+          <option value="__market">Total market</option>
+          {ref.industries.map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
+        </select>
+        {picked && <span style={{ fontFamily: MONO, fontSize: 11 }}>
+          cost of capital <b style={{ color: C.ink2 }}>{pct(picked.costOfCapital)}</b> · cost of equity {pct(picked.costOfEquity)} · D/(D+E) {pct(picked.debtWeight)} · β {picked.beta}
+          <button onClick={() => setWacc((picked.costOfCapital * 100).toFixed(2))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginLeft: 10, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", color: C.teal, textDecoration: "underline dotted", textUnderlineOffset: 3 }}>use {pct(picked.costOfCapital)} as WACC</button>
+        </span>}
+      </div>}
+      {!res && <p style={{ fontSize: 10, color: C.faint, fontFamily: MONO, margin: 0, letterSpacing: .5 }}>Both inputs are judgement — the plate solves once both are in.</p>}
+      {res && !res.ok && <p style={{ fontSize: 12, color: C.bronze, margin: 0, fontFamily: MONO, lineHeight: 1.6 }}>{REASONS[res.reason]}</p>}
+      {res && res.ok && <div>
+        <p style={{ font: `400 19px/1.4 ${SERIF}`, color: C.ink, margin: "2px 0 4px" }}>
+          The price implies <b style={{ fontFamily: MONO, fontSize: 17, color: res.g < 0 ? C.bronze : C.teal }}>{pct(res.g)}</b> a year growth in {basis.label} for {res.years} years
+          <span style={{ fontSize: 9, fontFamily: MONO, color: C.navy, marginLeft: 6 }} title="Computed from the enterprise value and your inputs — it exists in no filing and links to nothing">ƒ</span>
+        </p>
+        <p style={{ fontSize: 10.5, color: C.faint, fontFamily: MONO, margin: "0 0 10px", lineHeight: 1.6 }}>
+          terminal value is {pct(res.tvShare)} of enterprise value · year-{res.years} cash flow {display("fcf", res.fcfN)} · at {pct(w)} WACC and {pct(t)} terminal growth
+        </p>
+        {sens && <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
+            <thead><tr>
+              <th style={{ textAlign: "left", padding: "4px 10px 4px 0", fontSize: 9, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", color: C.faint }}>WACC \ terminal</th>
+              {sens.tgs.map(g => <th key={g} style={{ textAlign: "right", padding: "4px 12px", fontSize: 11, fontWeight: 600, color: C.mute, borderBottom: `1px solid ${C.hair}` }}>{pct(g)}</th>)}
+            </tr></thead>
+            <tbody>{sens.rows.map((row, i) => <tr key={i}>
+              <td style={{ padding: "5px 10px 5px 0", color: C.mute, fontSize: 11, borderBottom: `1px solid ${C.hair2}` }}>{pct(sens.waccs[i])}</td>
+              {row.map((g, j) => { const centre = i === 1 && j === 1; return <td key={j} style={{ textAlign: "right", padding: "5px 12px", color: g == null ? C.hair : centre ? C.ink : C.ink2, fontWeight: centre ? 700 : 400, borderBottom: `1px solid ${C.hair2}`, background: centre ? "#0d6d5610" : "transparent" }}>{g == null ? "—" : pct(g)}</td>; })}
+            </tr>)}</tbody>
+          </table>
+        </div>}
+      </div>}
+      <p style={{ fontSize: 10, color: C.faint, margin: "12px 0 0", lineHeight: 1.6 }}>
+        A plain DCF run backwards: {years} years of cash flow at one growth rate, then a Gordon terminal value. The inputs are yours, the answer is only as good as they are, and nothing here is a price target or advice.
+        {ref && <> Reference rates: <a href={ref.url} target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>Damodaran, NYU Stern</a>, {ref.asOf}.</>}
+      </p>
+    </>}
   </div>;
 }
 

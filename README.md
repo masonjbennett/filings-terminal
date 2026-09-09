@@ -25,6 +25,8 @@ lookup did.
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections).
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
+- `src/reverse.js` — the reverse DCF's solve, pure and node-testable; `test/` holds the committed
+  suites (`npm test`), discovered by filename so a suite nobody runs cannot look like one that passes.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
 searching normally rewrites the address bar to match, so any lookup can be pasted into an email —
@@ -784,6 +786,35 @@ silently repairing it, with two deliberately broken files put through the same c
 check can fail. Chubb's five EV rows are blank in the exported file and Apple's populate: the export
 reads `grid`, so every suppression rule in this file already applies to it, and any rule that does
 not hold in the workbook is a bug in both places at once.
+
+## What's priced in
+
+The Valuation tab carries a reverse DCF: given the enterprise value the card above already built and
+the newest year's free cash flow, it solves for the constant growth in that cash flow the price
+implies over five or ten years, and prints a 3×3 sensitivity around the reader's inputs. The solve is
+`src/reverse.js` — twenty lines of bisection over a plain DCF (N years at one growth rate, then a
+Gordon terminal value) — and `test/t-reverse.mjs` proves it by round trip: solve for g, put g back in,
+get the enterprise value out. `npm test` runs it.
+
+Three decisions hold it up, and each is a place a version of this tool would quietly lie:
+
+- **The cost of capital and terminal growth are the reader's.** The template already rules that the
+  `wacc` row is judgement and never auto-filled, and a reverse DCF that picked one would be printing an
+  opinion in the typography of a filed figure. Damodaran's January cost-of-capital table
+  (`public/damodaran-wacc-2026.json`, 94 US industries plus the market, refreshed with the January
+  chore) sits beside the box as a reference the reader copies in with a click — a reference is not a
+  default. It is a `select`, not a lookup off the SIC: mapping the filer's SIC onto Damodaran's names
+  by hand is a wrong default waiting to happen.
+- **It grows unlevered free cash flow when the sheet has it** — NOPAT + D&A − capex − ΔNWC, the cash
+  flow an enterprise-value DCF discounts — and falls back to cash from operations less capex, which is
+  after interest, **saying so on the plate**. A blank would read as the tool failing on that filer.
+- **No honest answer, no number.** Negative or zero cash flow, a WACC at or below terminal growth, and
+  a price outside the bracket (below a 50%-a-year decline, above doubling every year) each print a
+  sentence instead. The headline figure carries the ƒ marker and links to nothing, like every other
+  computed line, and the footer says what it is: a plain DCF run backwards on the reader's inputs,
+  not a target and not advice. A bank or a carrier gets the same "n/a" the EV bridge gives them.
+
+`?t=AAPL&tab=valuation` opens straight onto it, which is how the main site links here.
 
 ## Comps
 
@@ -1767,7 +1798,9 @@ development exercises the real code path against real SEC responses.
 
 - **Annually**, alongside the January refresh on the main site: re-download `public/tickers.json`
   from `https://www.sec.gov/files/company_tickers.json` (needs a declared User-Agent) so newly
-  listed companies are searchable. Re-check `src/tickerFixes.js` at the same time — a repair there
+  listed companies are searchable. In the same pass, rebuild `public/damodaran-wacc-2026.json` from
+  Damodaran's cost-of-capital page (the URL and the `asOf` are inside the file; keep the attribution
+  and rename the file for the year) — the reverse DCF's reference rates go stale otherwise. Re-check `src/tickerFixes.js` at the same time — a repair there
   goes stale the day SEC fixes its own file, and a stale override is a ticker pointing at a CIK on
   purpose for no reason. Worth folding in then: `company_tickers_exchange.json` is **not** a
   drop-in replacement (it carries 35 tickers this file lacks but is missing 26 that it has), so the
