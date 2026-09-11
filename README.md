@@ -857,6 +857,42 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     family. Every move is a removal — nothing became a different number. `test/t-valuation.mjs`,
     69 assertions, **15 of 15 mutations caught**.
 
+28. **A tag the template asks for can be a name that does not exist, and then the row is not missing
+    — it is unasked.** The mezzanine row listed
+    `TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterest` — **singular**
+    — as its second candidate, and held a KEEP slot for it. It is not a us-gaap element: SEC's frames
+    API 404s it in every period while the **plural** returns hundreds of filers in the same call. So
+    the row's own safety net for the case it was missing could never win a column, and nothing could
+    fail, because a tag that never matches looks exactly like a filer that never tagged.
+
+    **Seven filers' newest balance sheet failed to close by more than 0.2% of assets, and six were
+    explained TO THE DOLLAR** by a mezzanine line tagged under a name the template never asked for:
+    Blackstone $1,381m, Prudential $2,794m, UnitedHealth $1,608m, Ventas $375m, Welltower $263m,
+    Simon Property $233m. That is the Rhythm Pharmaceuticals failure this row was created for, still
+    open on six mega-caps. The seventh is Instacart's $195m, tagged only inside a class-of-stock
+    dimension and invisible to companyfacts — open item 9, unaffected by this and still the argument
+    against building an instance-reading path for one filer.
+
+    Fixed by asking for the plural **and** `RedeemableNoncontrollingInterestEquityCarryingAmount`,
+    the other spelling filers use, both placed **last** — rule 11's discipline, since first hit wins
+    and the 16 filers resolving the parent-only concept must not move. Measured: **207 cells
+    appeared, 0 changed, 0 vanished**, and non-closing filers go **7 → 1**. Prudential tags both new
+    names at the same $2,794m, so there is no near-miss regime between them.
+
+29. **A derivation must never return the figure it was handed.** `fillCol` writes
+    `meta[k] = { status: "computed" }` for ANY derivation returning non-null, so a derivation that
+    hands back the FETCHED value destroys the meta entry carrying the tag, the form and the
+    **accession**. `DERIVED_BANK.nii` did exactly that — on net interest income, the top line of a
+    bank's income statement. **0 of 64 bank columns carried a link to the filing**, against 64 of 64
+    on the Deposits row beside it, on a page whose entire argument is that every reported figure
+    opens the document it came from.
+
+    The rule already existed: rule 22's gross profit "returns null when the row was fetched", and the
+    `revenue` reconstruction two lines below `nii` does it correctly. `nii` was the only instance of
+    the class in the file, and `t-balance.mjs` now asserts that structurally — no derivation anywhere
+    may return `v.<sameKey>` — rather than only fixing the one line. After: **64 of 64 linked**, same
+    figures.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

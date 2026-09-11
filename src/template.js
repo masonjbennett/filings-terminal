@@ -220,8 +220,28 @@ export const SECTIONS = [
   // $210m of liabilities and $139m of equity, and the missing $131m is this line to the dollar.
   // Not added into any total here — it is neither debt nor common equity, and which one a reader
   // treats it as depends on the redemption terms, which are in the footnote and not in XBRL.
+  // The second tag here used to be `...AttributableToNoncontrollingInterest`, SINGULAR, which is not
+  // a us-gaap element: SEC's frames API 404s it in every period while the PLURAL returns hundreds of
+  // filers. It could never win a column and it occupied a KEEP slot pretending to be the safety net
+  // for exactly the case it was missing. `RedeemableNoncontrollingInterestEquityCarryingAmount` is
+  // the other spelling filers actually use and was never asked for at all.
+  //
+  // The cost was visible on the page. Seven filers' newest balance sheet fails to close by more than
+  // 0.2% of assets, and SIX are explained TO THE DOLLAR by one of these two names:
+  // Blackstone $1,381m, Prudential $2,794m, UnitedHealth $1,608m, Ventas $375m, Welltower $263m,
+  // Simon Property $233m. (The seventh is Instacart's $195m, which is tagged only inside a
+  // class-of-stock dimension and is invisible to companyfacts — README open item 9, unaffected.)
+  // This is the Rhythm Pharmaceuticals failure the row was created for, still open on six mega-caps.
+  //
+  // Both go LAST, which is rule 11's discipline: first hit wins, so the 16 filers resolving
+  // `...AttributableToParent` today are untouched and the new names only fire where the row is blank.
+  // The counter-population is real and was checked — the plural concept is BROADER than the
+  // parent-only one, so a filer tagging both could show the larger figure. None of the 16 can reach
+  // it, and Prudential tags both names at the same $2,794m, so there is no near-miss regime.
   { k: "tempEquity", label: "Mezzanine (redeemable) equity", how: "fetched",
-    tags: ["TemporaryEquityCarryingAmountAttributableToParent", "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterest", "TemporaryEquityCarryingAmount"],
+    tags: ["TemporaryEquityCarryingAmountAttributableToParent", "TemporaryEquityCarryingAmount",
+      "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
+      "RedeemableNoncontrollingInterestEquityCarryingAmount"],
     note: "Between liabilities and equity — counted in neither total above" },
   { k: "preferred", label: "Preferred stock", how: "fetched", tags: ["PreferredStockValue"] },
   { k: "retained", label: "Retained earnings", how: "fetched", tags: ["RetainedEarningsAccumulatedDeficit"] },

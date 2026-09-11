@@ -1089,7 +1089,16 @@ export const DERIVED = {
 // Bank-only derivations. Kept separate so they only run for a depository — computing an efficiency
 // ratio for Apple would produce a number, and a number that means nothing is worse than a blank.
 export const DERIVED_BANK = {
-  nii: v => (v.nii != null ? v.nii : v.intIncTotal == null ? null : v.intIncTotal - (v.intExpTotal || 0)),
+  // Returns NULL where the filer tagged it, not the fetched figure. `fillCol` writes
+  // `meta[k] = { status: "computed" }` for ANY derivation returning non-null, so handing back the
+  // value it was given destroys the meta entry carrying the tag, the form and the ACCESSION — and
+  // this row is net interest income, the top line of a bank's income statement. Measured across the
+  // eight bank fixtures: **0 of 64 columns carried a link to the filing**, against 64 of 64 on the
+  // Deposits row beside it, on a page whose entire argument is that every reported figure opens the
+  // document it came from. The rule was already written for rule 22's gross profit ("it returns null
+  // when the row was fetched") and the `revenue` reconstruction directly below does it correctly;
+  // this line was the one that did not, and it reconstructs only where the filer tagged nothing.
+  nii: v => (v.nii != null ? null : v.intIncTotal == null ? null : v.intIncTotal - (v.intExpTotal || 0)),
   // A bank's total revenue IS net interest income plus fees — the identity holds exactly at
   // JPMorgan, whose `Revenues` tag ($182.4bn) equals NII $95.4bn + noninterest income $87.0bn. So
   // where a bank tags no revenue total at all this reconstructs it rather than leaving the top line
