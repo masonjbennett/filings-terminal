@@ -1992,9 +1992,18 @@ development exercises the real code path against real SEC responses.
 
 - **Annually**, alongside the January refresh on the main site: re-download `public/tickers.json`
   from `https://www.sec.gov/files/company_tickers.json` (needs a declared User-Agent) so newly
-  listed companies are searchable. In the same pass, rebuild `public/damodaran-wacc-2026.json` from
-  Damodaran's cost-of-capital page (the URL and the `asOf` are inside the file; keep the attribution
-  and rename the file for the year) — the reverse DCF's reference rates go stale otherwise. Re-check `src/tickerFixes.js` at the same time — a repair there
+  listed companies are searchable. In the same pass, rebuild `public/damodaran-wacc.json` from
+  Damodaran's cost-of-capital page — the reverse DCF's reference rates go stale otherwise.
+  **OVERWRITE it. Do not rename it for the year, and do not put the year back in the filename.**
+  This instruction used to say the opposite, and the file used to be `damodaran-wacc-2026.json` while
+  `App.jsx` fetched that exact name: doing the chore *correctly* would have broken the reverse DCF's
+  reference table, and broken it silently — a missing static path is a clean 404, `r.ok` is false,
+  the `.then` chain resolves to null, and the industry picker and the Damodaran attribution line just
+  do not render. No console error. The chore's own "keep the attribution" undone by the chore's other
+  instruction, on a schedule. The year lives inside the file as `asOf`, which is what the page
+  prints, so a stable filename loses nothing; `test/t-assets.mjs` now asserts that every literal
+  `fetch("/…")` path in `App.jsx` exists in `public/`, and fails if a year-stamped copy reappears.
+  Re-check `src/tickerFixes.js` at the same time — a repair there
   goes stale the day SEC fixes its own file, and a stale override is a ticker pointing at a CIK on
   purpose for no reason. Worth folding in then: `company_tickers_exchange.json` is **not** a
   drop-in replacement (it carries 35 tickers this file lacks but is missing 26 that it has), so the

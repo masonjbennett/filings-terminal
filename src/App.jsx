@@ -1196,7 +1196,7 @@ function PricedIn({ grid, industry, note, S }) {
   // Loaded once the plate mounts — the Valuation tab only — so a reader on Statements never fetches it.
   useEffect(() => {
     let on = true;
-    fetch("/damodaran-wacc-2026.json").then(r => (r.ok ? r.json() : null)).then(j => { if (on && j && Array.isArray(j.industries)) setRef(j); }).catch(() => {});
+    fetch("/damodaran-wacc.json").then(r => (r.ok ? r.json() : null)).then(j => { if (on && j && Array.isArray(j.industries)) setRef(j); }).catch(() => {});
     return () => { on = false; };
   }, []);
   const num = s => (String(s).trim() === "" ? NaN : parseFloat(s) / 100);
