@@ -93,6 +93,32 @@ for (const ind of ["bank", "advisory", "pc", "life"])
   eq(dcfApplicable(NOT_APPLICABLE[ind]), false, `a ${ind} filer gets no reverse DCF`);
 eq(dcfApplicable(NOT_APPLICABLE.corporate), true, "a corporate does");
 
+// ── ...and the free-cash-flow family goes with the enterprise value, for banks and dealers ──────
+// `fcf` is cfo − capex, and a bank's cash from operations is dominated by the change in its loan
+// book, deposits and trading assets — so it reports whether the BALANCE SHEET grew, not whether the
+// business generated cash. JPMorgan printed −$147.8bn and an FCF yield of −55.6%, Citi −$74.2bn and
+// −42.4%, Goldman −162.2%.
+//
+// The negative ones are not what makes this a defect. Bank of America reads +$12.6bn, US Bancorp
+// +$8.0bn, PNC +$4.4bn, Schwab +$8.8bn — 5.1%, 11.0%, 4.7%, 5.1% yields that look entirely ordinary
+// and mean nothing, because the same bank prints the opposite sign next year for reasons unrelated
+// to free cash flow. A number that sometimes looks plausible is worse than one that always looks
+// broken. Blank the derived concept and keep the filed inputs, exactly as the EBITDA family does.
+// MUTATION: removing any of the four from either list fails here.
+for (const ind of ["bank", "advisory"])
+  for (const k of ["fcf", "fcfMargin", "fcfConv", "fcfYield", "evFcf"])
+    ok(NOT_APPLICABLE[ind].includes(k), `a ${ind} filer's ${k} is blanked — cfo swings with funding, so it is not free cash flow`);
+for (const ind of ["bank", "advisory"])
+  for (const k of ["cfo", "capex"])
+    ok(!NOT_APPLICABLE[ind].includes(k), `...but ${k} stays on a ${ind} sheet — it is a figure the filer actually reported`);
+// NOT extended to the carriers, the REITs or the health plans, and that is measured rather than
+// preferred: an insurer's operating cash flow is premiums less claims less expenses, which IS an
+// operating flow — none of the nine carriers swept reports a negative one — and blanking it would
+// delete a sheet that is correct as it stands. Asserted so a later pass cannot widen this quietly.
+for (const ind of ["pc", "life", "health", "reit"])
+  for (const k of ["fcf", "fcfYield"])
+    ok(!NOT_APPLICABLE[ind].includes(k), `a ${ind} filer KEEPS ${k} — its operating cash flow is an operating flow`);
+
 // ── The status chip has to stay short, because it sets a sticky column's width ──────────────────
 // Blanking the EV rows for `advisory` made the reverse-DCF sentence fire for the first time, and the
 // obvious follow-on — spelling the label out as "broker-dealer or asset manager" so Blackstone is not

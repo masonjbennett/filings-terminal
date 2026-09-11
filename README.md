@@ -830,9 +830,32 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     a status chip instead of a note. The chip stays short and **the plate says it in full**, because
     the plate is prose and has the room. Three surfaces, three amounts of room.
 
+    **The free-cash-flow family goes with it, and the measurement is what decided how far.** `fcf` is
+    cfo − capex, and a bank's cash from operations is dominated by the change in its loan book,
+    deposits and trading assets — so the row reports whether the BALANCE SHEET grew, not whether the
+    business generated cash. JPMorgan printed **−$147.8bn and an FCF yield of −55.6%**, Citi −$74.2bn
+    and −42.4%, Goldman −162.2%.
+
+    **The negative ones are not what makes it a defect.** Bank of America reads **+$12.6bn**, US
+    Bancorp +$8.0bn, PNC +$4.4bn, Schwab +$8.8bn — yields of 1.8%, 5.1%, 11.0% and 5.1% that look
+    entirely ordinary and mean nothing, because the same bank prints the opposite sign next year for
+    reasons unrelated to free cash flow. A number that sometimes looks plausible is worse than one
+    that always looks broken; JPMorgan's −55.6% at least announces itself. So `fcf`, `fcfMargin`,
+    `fcfConv` and `fcfYield` are blanked for `bank` and `advisory` — the derived concept goes and the
+    filed inputs stay, exactly as the EBITDA family already does, with `cfo` and `capex` still on the
+    sheet and asserted to be.
+
+    **Not extended to the carriers, REITs or health plans, and that is measured rather than
+    preferred**: an insurer's operating cash flow is premiums less claims less expenses, which IS an
+    operating flow — **none of the nine carriers swept reports a negative one** (Progressive $17.5bn,
+    Travelers $10.6bn, Chubb $12.8bn, MetLife $17.1bn) — and blanking it would delete a sheet that is
+    correct as it stands. That is the `health` list's reasoning, and the suite asserts those four
+    industries KEEP the rows so a later pass cannot widen this quietly.
+
     `full-diff.mjs` across the 160 at a live price: **22 filers moved, 0 values changed, 0 appeared,
-    234 vanished.** Every move is a removal — nothing became a different number. `test/t-valuation.mjs`,
-    47 assertions, **10 of 10 mutations caught**.
+    234 vanished** for the share count and the EV bridge, and **16 filers / 392 cells** for the FCF
+    family. Every move is a removal — nothing became a different number. `test/t-valuation.mjs`,
+    69 assertions, **15 of 15 mutations caught**.
 
 ### A number that is correct and reads as broken
 

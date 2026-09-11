@@ -522,7 +522,20 @@ export const NOT_APPLICABLE = {
     // sliver of debt less cash and calls it an enterprise value. JPMorgan printed one. The rows above
     // already say a bank is levered on capital ratios rather than on EBITDA; these are the same
     // sentence, and they were simply missed when that list was written.
-    "ev", "evRev", "evFcf"],
+    "ev", "evRev", "evFcf",
+    // And the whole free-cash-flow family with them, for the reason the sign makes obvious once it is
+    // measured. `fcf` is cfo − capex, and a bank's cash from operations is dominated by the change in
+    // its loan book, deposits and trading assets — so it reports whether the BALANCE SHEET grew, not
+    // whether the business generated cash. JPMorgan printed −$147.8bn and an FCF yield of −55.6%,
+    // Citi −$74.2bn and −42.4%.
+    //
+    // **The negative ones are not the problem; the positive ones are.** Bank of America shows
+    // +$12.6bn, US Bancorp +$8.0bn, PNC +$4.4bn, Truist +$5.7bn — 5.1%, 11.0%, 4.7% yields that read
+    // as ordinary and mean nothing, because next year the same bank prints the opposite sign for
+    // reasons that have nothing to do with free cash flow. A number that sometimes looks plausible is
+    // worse than one that always looks broken. Same shape as the EBITDA family above: blank the
+    // derived concept, keep the filed inputs — `cfo` and `capex` stay on the sheet.
+    "fcf", "fcfMargin", "fcfConv", "fcfYield"],
   // A carrier's liabilities ARE the business, so the whole EBITDA/enterprise-value apparatus is a
   // category error, not a gap: nobody quotes EV/EBITDA on Chubb. Insurance comps are P/B, P/TBV,
   // P/E and ROE, which the corporate template already computes. Working capital is meaningless for
@@ -567,7 +580,16 @@ export const NOT_APPLICABLE = {
   // `ev` answers Schwab printing a 5.3% implied growth rate off cash from operations that swings
   // with client balances — the bank sentence in `reverse.js`, arriving for the filers it also
   // describes. Goldman and Morgan Stanley were held back only by the sign their CFO happened to take.
-  advisory: ["inventory", "dio", "dpo", "ccc", "ev", "evRev", "evEbitda", "evEbit", "evFcf"],
+  //
+  // The free-cash-flow family goes with them, and the evidence is the same one: Goldman shows
+  // −$47.2bn and an FCF yield of −162.2%, Morgan Stanley −$17.9bn — while Schwab reads +$8.8bn and
+  // 5.1% and Blackstone +$4.5bn and 6.1%, which look like ordinary yields and are the same artifact
+  // wearing a friendlier sign. Not extended to the carriers or the REITs below: an insurer's
+  // operating cash flow is premiums less claims less expenses, which IS an operating flow — none of
+  // the nine swept is negative — and blanking it would delete a sheet that is correct as it stands,
+  // the reasoning the `health` list already uses.
+  advisory: ["inventory", "dio", "dpo", "ccc", "ev", "evRev", "evEbitda", "evEbit", "evFcf",
+    "fcf", "fcfMargin", "fcfConv", "fcfYield"],
   reit: ["inventory", "dio", "dpo", "ccc"],
 };
 
