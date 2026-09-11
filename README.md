@@ -2226,6 +2226,19 @@ $927,252,000 renders as **`2,000`** beside $858,557,000. Measured rather than gu
 70.4 of a 71px maximum) and inherent to the overflow rather than a regression, since some column is
 clipped at every scroll position.
 
+**Every pixel figure in this section was measured with the brand fonts MISSING, and they are corrected
+here.** Until Sep 11 2026 nothing loaded Instrument Serif, Space Grotesk or JetBrains Mono — the page
+rendered in Consolas and Segoe UI on Windows, and in Times New Roman wherever nothing set a family.
+Self-hosting the three faces widened every figure on the sheet. **Apple's year columns went 135px →
+145px and its overflow 190px → 271px. CBL — the filer this guard was written for — moved from a 71px
+overflow that did not scroll to 163px against a 129px column, which does.** Its FY2017 column is now
+scrolled ENTIRELY behind the sticky label rather than partly under it, and that is the safe side of the
+distinction this whole section is about: a column fully hidden is one the reader scrolls to, while a
+column half hidden is a truncated number that still reads as a number. CBL has joined Apple's
+population, the hairline marks the boundary for both, and no filer moved INTO the half-hidden state.
+Re-measured at 1500px. The guard's rule — do not auto-scroll when the overflow is narrower than one
+rendered column — is unchanged and still correct; it is the population that moved, not the rule.
+
 Three attempts, and the two that failed are worth more than the one that worked. **Snapping the scroll
 to a column boundary** clips the NEWEST column instead — the one the valuation card divides into — so
 it trades the defect rather than fixing it. **A shadow on the sticky label cell**, the standard

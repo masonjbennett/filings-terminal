@@ -166,7 +166,32 @@ export default function App() {
         if (r2.ok && hasAnnualPeriods(d2)) { d = d2; ok = true; usedCik = p.cik; }
       } catch {}
     }
-    return { ok, d, usedCik };
+    // WHICH SYMBOL TO PRICE THIS FILER WITH — decided here for the same reason the fallback above
+    // is: both callers need it, and the comment three lines up is the record of what happens when a
+    // rule like this lives in one of them.
+    //
+    // The filer's OWN ticker list, and no fallback to the string the reader typed. That fallback is
+    // how **Paramount Global came to be priced at $1.00**. SEC released PARA when Paramount became
+    // PSKY and reassigned it to Banzai International, a sub-dollar microcap; `public/tickers.json` is
+    // a snapshot and still points PARA at Paramount's CIK 813828 — whose own submissions file now
+    // lists NO ticker — while Finnhub quotes the company holding the symbol today. The page printed
+    // Paramount's $29.2bn of revenue beside a **P/E of −0.11x built from Banzai's price and
+    // Paramount's −$9.34 EPS**: two companies in one ratio, under a header promising every figure is
+    // the value the company filed. README rule 10's own worst case — "points a ticker at another
+    // company's financials" — reached through snapshot staleness rather than a bad tickerFixes entry,
+    // which is why nothing in that rule caught it.
+    //
+    // A filer that lists no ticker of its own is quotable ONLY through PREDECESSOR, where the
+    // redirect is deliberate and evidence-backed and the typed ticker really does belong to the same
+    // company: Exxon's history sits under CIK 34088, which carries no ticker, and quoting XOM against
+    // it is right. `usedCik !== cik` is how that path announces itself.
+    //
+    // Measured over the 160-filer sweep: **158 list the ticker that was typed, 2 list none (XOM and
+    // PARA — one of each case), and 0 list tickers without the typed one among them.** Against SEC's
+    // current map, exactly 3 of 10,387 local tickers now point at a different CIK: PARA (a different
+    // company), REAX (a reorganisation) and SMHD (an ETN that changed issuer).
+    const sym = (d.tickers && d.tickers[0]) || (String(usedCik) !== String(cik) ? ticker : null);
+    return { ok, d, usedCik, sym };
   };
 
   // Fetched on demand, once per company, because answering it costs SEC an XBRL instance of up to
@@ -188,14 +213,18 @@ export default function App() {
     // button still leaves the terminal instead of walking back through a search history.
     if (ticker) try { history.replaceState(null, "", `?t=${encodeURIComponent(ticker)}`); } catch {}
     try {
-      const { ok, d, usedCik } = await fetchFacts(cik, ticker);
+      const { ok, d, usedCik, sym } = await fetchFacts(cik, ticker);
       if (!ok) { setErr(d.error || "that lookup failed"); setBusy(false); return; }
       setData(d);
       const k10 = (d.filings || []).find(f => f.form === "10-K");
       if (k10) fetch(`/api/sections?cik=${usedCik}&accn=${k10.accn}`).then(r => r.json()).then(setSections).catch(() => {});
+      // No symbol means the filing record carries no ticker for this company, which has to be SAID —
+      // left silent the valuation rows read "needs price", and rule 5's whole complaint is that the
+      // wrong kind of blank sends a reader looking for the wrong thing. Here they would go hunting a
+      // quote for a company whose ticker now belongs to somebody else.
+      if (!sym) setQuoteNote("SEC's filing record for this company lists no ticker, so there is no symbol to price it with — the one you typed may now belong to a different company.");
       // The price is a nice-to-have on top of the filings, so it never blocks the sheet and never
       // fails it: no key, no coverage, no answer — the valuation rows just stay "needs price".
-      const sym = (d.tickers && d.tickers[0]) || ticker;
       if (sym) fetch(`/api/quote?symbol=${encodeURIComponent(sym)}`).then(async r => {
         const q = await r.json();
         if (r.ok) setQuote(q);
@@ -221,14 +250,18 @@ export default function App() {
     setComps(cs => [...cs, { ticker: t, title: row[2], loading: true }]);
     let entry;
     try {
-      const { ok, d } = await fetchFacts(row[0], t);
+      const { ok, d, sym } = await fetchFacts(row[0], t);
       if (!ok) entry = { ticker: t, title: row[2], err: d.error || "lookup failed" };
       else {
         // Unlike the single sheet, comps AWAITS the price: the multiples are most of the point, and a
         // table that reflows as six quotes land one by one is worse than one that arrives whole.
+        // The symbol comes from `fetchFacts` rather than being rebuilt here — a set is the one place
+        // a mispriced column sits beside correct ones under a shared median, so the Paramount/Banzai
+        // mismatch would be harder to see, not easier.
         let quote = null;
         try {
-          const qr = await fetch(`/api/quote?symbol=${encodeURIComponent((d.tickers && d.tickers[0]) || t)}`);
+          if (!sym) throw new Error("no ticker on file");
+          const qr = await fetch(`/api/quote?symbol=${encodeURIComponent(sym)}`);
           const qj = await qr.json();
           if (qr.ok) quote = qj;
         } catch {}

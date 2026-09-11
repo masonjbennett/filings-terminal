@@ -55,4 +55,35 @@ ok(!readdirSync(join(root, "public")).some(f => /^damodaran-wacc-\d{4}\.json$/.t
   ok(j.industries.every(i => Number.isFinite(i.costOfCapital)), "no industry is missing the one number the picker copies into the box");
 }
 
+// ── The brand typefaces have to actually be loaded ──────────────────────────────────────────────
+// `App.jsx` has declared Instrument Serif, Space Grotesk and JetBrains Mono since the first version
+// and NOTHING ever loaded them: no @fontsource dependency, no <link>, no @font-face, no stylesheet
+// in `dist/` at all. Production served zero stylesheets and the computed body font was Times New
+// Roman. It looked deliberate on every machine — Palatino/Segoe UI/Consolas on Windows, Palatino/
+// system/SF Mono on macOS — which is why nothing caught it for the life of the project, and it is
+// hard constraint 5 (keep the paper/ink editorial brand) failing silently.
+//
+// A declared font nobody loads is the same defect class as a declared formula nobody implements:
+// there is no failure to observe, only a page that quietly is not what it says it is.
+{
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const main = readFileSync(join(root, "src", "main.jsx"), "utf8");
+  const app = readFileSync(join(root, "src", "App.jsx"), "utf8");
+  for (const [family, dep] of [["Instrument Serif", "instrument-serif"], ["Space Grotesk", "space-grotesk"], ["JetBrains Mono", "jetbrains-mono"]]) {
+    ok(!!pkg.dependencies[`@fontsource/${dep}`], `${family} is a dependency — self-hosted, the same package the main site uses`);
+    ok(app.includes(`'${family}'`), `...and App.jsx still asks for it`);
+    ok(new RegExp(`@fontsource/${dep}/`).test(main), `...and src/main.jsx actually LOADS it, which is the half that was missing`);
+  }
+  // Only the weights the page uses. 400 and 600 are the only values in App.jsx; importing more ships
+  // font files for faces nothing asks for, and importing fewer makes the browser synthesise one.
+  const wanted = app.match(/(?:font: *`|fontWeight: *)["'`]?(\d{3})/g) || [];
+  const weights = [...new Set(wanted.map(s => s.match(/(\d{3})/)[1]))].sort();
+  eq(weights.join(","), "400,600", `App.jsx uses exactly these weights (${weights.join(", ")})`);
+  for (const w of weights) {
+    ok(main.includes(`space-grotesk/${w}.css`), `Space Grotesk ${w} is imported — the body face at a weight the page renders`);
+    ok(main.includes(`jetbrains-mono/${w}.css`), `JetBrains Mono ${w} is imported — every figure on the sheet is set in it`);
+  }
+  ok(main.includes("instrument-serif/400.css"), "Instrument Serif 400 is imported — the headline face, used at 400 only");
+}
+
 done("t-assets");
