@@ -17,6 +17,50 @@ ok(["bank", "pc", "life"].every(k => Array.isArray(NOT_APPLICABLE[k])), "the thr
 // ---- the model, by hand ----
 // One year, no growth, at 10%: 100/1.1 plus a terminal value of 100·1.02/0.08 discounted one year.
 near(pvAtGrowth({ fcf: 100, g: 0, wacc: 0.10, tg: 0.02, years: 1 }), 100 / 1.1 + (100 * 1.02 / 0.08) / 1.1, 1e-9, "one-year PV matches the arithmetic done by hand");
+
+// ...and the same thing with GROWTH IN IT, which is the assertion this file was missing.
+//
+// Mutation testing found six survivors and three were the same hole: every check on `pvAtGrowth`
+// either used `g: 0`, where the growth convention cannot show, or was a ROUND TRIP — and a round
+// trip cannot see the model's shape at all, because `impliedGrowth` solves against `pvAtGrowth`, so
+// a mutation moves both sides together and the answer still comes back out. Three real breaks passed
+// all 53 assertions: year-1 cash flow not grown, growth compounding twice a year, and the terminal
+// value built off the STARTING cash flow instead of year N. Each is a silently different valuation.
+//
+// The fix is arithmetic written out term by term, not a second implementation — a mirror of the model
+// would drift and pass while production broke, which is the reason this project imports shipping code
+// everywhere else. Below, every cash flow is spelled out.
+//
+// Two years at 50% growth, 10% discount, zero terminal growth:
+//   CF1 = 100 × 1.5 = 150        CF2 = 150 × 1.5 = 225
+//   explicit PV = 150/1.1 + 225/1.1²
+//   terminal    = CF2 × (1+0) / (0.10 − 0) = 2250, discounted the full two years
+near(pvAtGrowth({ fcf: 100, g: 0.5, wacc: 0.10, tg: 0, years: 2 }),
+  150 / 1.1 + 225 / 1.21 + 2250 / 1.21, 1e-9,
+  "year 1 is the GROWN cash flow, growth compounds once a year, and the terminal value is built off year N — the three conventions a round trip cannot see");
+// The one-year case pins the same thing without any compounding to hide behind: 150 and a terminal
+// value of 1500, both discounted once, is exactly 1500.
+near(pvAtGrowth({ fcf: 100, g: 0.5, wacc: 0.10, tg: 0, years: 1 }), 150 / 1.1 + 1500 / 1.1, 1e-9,
+  "one year at 50% growth: the first cash flow is 150, not 100, and the terminal value grows off it");
+// And once more with a terminal growth rate in play, so (1+tg) is pinned alongside the growth.
+//   CF1 120 · CF2 144 · CF3 172.8, then 172.8 × 1.02 / 0.08 discounted three years
+near(pvAtGrowth({ fcf: 100, g: 0.2, wacc: 0.10, tg: 0.02, years: 3 }),
+  120 / 1.1 + 144 / 1.21 + 172.8 / 1.331 + (172.8 * 1.02 / 0.08) / 1.331, 1e-9,
+  "three years at 20%, with terminal growth — the full model, every term written out");
+
+// The strongest check in this file, and it needs no arithmetic typed from memory at all.
+// When the explicit growth rate EQUALS the terminal growth rate there is no longer a two-stage
+// model: it is one growing perpetuity, worth CF1/(wacc − g) and — this is the part that bites —
+// completely INDEPENDENT OF THE HORIZON. Five years and thirty years must give the same number.
+// A model that grows year 1 wrongly, compounds twice, or builds its terminal value off the starting
+// cash flow all break this, and they break it without anyone having to know what the right answer
+// is. It is a property of the mathematics rather than a value someone computed once.
+{
+  const perp = 100 * 1.03 / (0.09 - 0.03);
+  for (const N of [1, 2, 5, 10, 30])
+    near(pvAtGrowth({ fcf: 100, g: 0.03, wacc: 0.09, tg: 0.03, years: N }), perp, 1e-6,
+      `g equal to terminal growth is a growing perpetuity — worth CF1/(wacc−g) at a ${N}-year horizon, same as at every other`);
+}
 ok(pvAtGrowth({ fcf: 100, g: 0.05, wacc: 0.10, tg: 0.02, years: 10 }) > pvAtGrowth({ fcf: 100, g: 0.04, wacc: 0.10, tg: 0.02, years: 10 }), "more growth is worth more — the monotonicity bisection relies on");
 ok(pvAtGrowth({ fcf: 100, g: 0.05, wacc: 0.09, tg: 0.02, years: 10 }) > pvAtGrowth({ fcf: 100, g: 0.05, wacc: 0.10, tg: 0.02, years: 10 }), "a lower discount rate is worth more");
 
@@ -52,6 +96,14 @@ eq(impliedGrowth({ ev: 1000, ...base, fcf: 0 }).reason, "fcf-nonpositive", "zero
 eq(impliedGrowth({ ev: 1000, ...base, wacc: NaN }).reason, "bad-inputs", "a blank WACC refuses");
 eq(impliedGrowth({ ev: 1000, ...base, tg: undefined }).reason, "bad-inputs", "a blank terminal growth refuses");
 eq(impliedGrowth({ ev: 1000, ...base, wacc: 1.2 }).reason, "bad-inputs", "a WACC over 100% refuses");
+// The BOUNDARIES, not just the middle of each range. Both of these survived mutation: loosening
+// `wacc >= 1` to `wacc > 1` and `wacc <= 0` to `wacc < -1` left every other assertion green. A cost
+// of capital of exactly 100%, or a negative one, is a typo in the box rather than a valuation — and
+// a negative WACC discounts the future UPWARDS, so the plate would print a confident growth rate off
+// a model where later cash flows are worth more than nearer ones.
+eq(impliedGrowth({ ev: 1000, ...base, wacc: 1 }).reason, "bad-inputs", "a WACC of exactly 100% refuses — the boundary, not just past it");
+eq(impliedGrowth({ ev: 1000, ...base, wacc: 0 }).reason, "bad-inputs", "a WACC of exactly zero refuses");
+eq(impliedGrowth({ ev: 1000, ...base, wacc: -0.05 }).reason, "bad-inputs", "a negative WACC refuses rather than discounting the future upwards");
 eq(impliedGrowth({ ev: 1000, ...base, wacc: 0.02, tg: 0.02 }).reason, "wacc-below-terminal", "WACC equal to terminal growth refuses (infinite terminal value)");
 eq(impliedGrowth({ ev: 1000, ...base, wacc: 0.02, tg: 0.03 }).reason, "wacc-below-terminal", "WACC below terminal growth refuses");
 eq(impliedGrowth({ ev: pvAtGrowth({ ...base, g: G_MIN }) * 0.5, ...base }).reason, "below-bracket", "a price below a 50%-a-year decline refuses rather than printing a rate");
@@ -70,6 +122,16 @@ ok(s.rows[0][1] < s.rows[1][1] && s.rows[1][1] < s.rows[2][1], "implied growth r
 ok(s.rows[1][0] > s.rows[1][1] && s.rows[1][1] > s.rows[1][2], "and falls with terminal growth across the row");
 const sBad = sensitivity({ ev: evAt5, ...base, wacc: 0.025, tg: 0.02 });
 eq(sBad.rows[0][2], null, "a cell whose WACC drops below its terminal growth is null, not a number");
+// The horizon has to reach the table too. The plate lets a reader toggle 5/10 years, and a grid that
+// silently stayed on ten would disagree with the sentence above it — the one thing the centre-cell
+// assertion exists to prevent, arriving through the argument instead of the arithmetic.
+{
+  const ev5 = pvAtGrowth({ fcf: 100, wacc: 0.10, tg: 0.02, years: 5, g: 0.07 });
+  const s5 = sensitivity({ ev: ev5, fcf: 100, wacc: 0.10, tg: 0.02, years: 5 });
+  near(s5.rows[1][1], 0.07, 1e-6, "a five-year table's centre cell is the five-year answer");
+  near(s5.rows[1][1], impliedGrowth({ ev: ev5, fcf: 100, wacc: 0.10, tg: 0.02, years: 5 }).g, 1e-12,
+    "and it agrees with the headline solved at the same horizon");
+}
 
 // ---- which cash flow ----
 eq(pickBasis({ v: { ufcf: 80, fcf: 95 } }).k, "ufcf", "unlevered FCF is preferred when it exists");
@@ -77,5 +139,13 @@ eq(pickBasis({ v: { fcf: 95 } }).k, "fcf", "levered FCF is the fallback");
 ok(/after interest/.test(pickBasis({ v: { fcf: 95 } }).note), "and the fallback says it is after interest");
 eq(pickBasis({ v: { ufcf: null, fcf: null } }), null, "no cash flow, no basis");
 eq(pickBasis(null), null, "no column, no basis");
+// `finite` is doing real work here and nothing was checking it. Loosening it to `!= null` survived
+// every other assertion — and a NaN reaching the plate is not a blank, it is a headline that reads
+// "NaN" beside an enterprise value. NaN is exactly what a derived cash flow produces when one of its
+// inputs is missing, which is the ordinary case on this sheet rather than the exotic one.
+eq(pickBasis({ v: { ufcf: NaN, fcf: 95 } }).k, "fcf", "a NaN unlevered FCF is not a cash flow — it falls through to the levered basis");
+eq(pickBasis({ v: { ufcf: Infinity, fcf: 95 } }).k, "fcf", "nor is an infinite one");
+eq(pickBasis({ v: { ufcf: NaN, fcf: NaN } }), null, "and two of them is no basis at all, not a NaN headline");
+eq(pickBasis({ v: { ufcf: "80", fcf: 95 } }).k, "fcf", "a numeric STRING is not a number either — it would concatenate downstream, not add");
 
 done("t-reverse");

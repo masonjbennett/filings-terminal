@@ -995,8 +995,8 @@ Three decisions hold it up, and each is a place a version of this tool would qui
 - **The cost of capital and terminal growth are the reader's.** The template already rules that the
   `wacc` row is judgement and never auto-filled, and a reverse DCF that picked one would be printing an
   opinion in the typography of a filed figure. Damodaran's January cost-of-capital table
-  (`public/damodaran-wacc-2026.json`, 94 US industries plus the market, refreshed with the January
-  chore) sits beside the box as a reference the reader copies in with a click — a reference is not a
+  (`public/damodaran-wacc.json`, 94 US industries plus the market, refreshed with the January
+  chore — the filename deliberately carries no year, see Chores) sits beside the box as a reference the reader copies in with a click — a reference is not a
   default. It is a `select`, not a lookup off the SIC: mapping the filer's SIC onto Damodaran's names
   by hand is a wrong default waiting to happen.
 - **It grows unlevered free cash flow when the sheet has it** — NOPAT + D&A − capex − ΔNWC, the cash
@@ -1009,6 +1009,24 @@ Three decisions hold it up, and each is a place a version of this tool would qui
   not a target and not advice. A bank or a carrier gets the same "n/a" the EV bridge gives them.
 
 `?t=AAPL&tab=valuation` opens straight onto it, which is how the main site links here.
+
+**A round trip cannot see the shape of the model, and for a while nothing else was looking.** The
+suite proved the solve by putting the answer back in and getting the enterprise value out — which is
+the right check for the *solve* and no check at all on the *model*, because `impliedGrowth` solves
+against `pvAtGrowth`: mutate the model and both sides move together, so the answer still comes back.
+The only assertion pinning the model used `g: 0`, where the growth convention cannot show. Mutation
+testing over 26 plausible breaks found **six survivors**, three of them real valuation errors that
+passed all 53 assertions: **year-1 cash flow not grown**, **growth compounding twice a year**, and
+the **terminal value built off the starting cash flow instead of year N**. The other three were input
+guards nothing probed at the boundary — a WACC of exactly 100%, a negative WACC (which discounts the
+future *upwards*), and a NaN unlevered free cash flow reaching the plate as a headline.
+
+What closed the model half is one property rather than any figure typed from memory: **when the
+explicit growth rate equals the terminal growth rate the whole thing is a growing perpetuity, worth
+CF₁/(wacc − g) and independent of the horizon.** Five years and thirty years must agree. All three
+model breaks violate that without anyone needing to know the right answer, and it is asserted at five
+horizons. Hand-written arithmetic with a non-zero `g` corroborates it term by term. **70 assertions,
+26 of 26 mutations caught.**
 
 ## Comps
 
