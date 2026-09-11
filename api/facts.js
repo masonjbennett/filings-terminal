@@ -74,7 +74,43 @@ const KEEP = new Set(["RevenueFromContractWithCustomerExcludingAssessedTax","Rev
 "ImpairmentOfRealEstate","StraightLineRent",
 "RealEstateGrossAtCarryingValue","RealEstateInvestmentPropertyAtCost",
 "RealEstateAccumulatedDepreciation","RealEstateInvestmentPropertyAccumulatedDepreciation",
-"NotesPayable","NumberOfRealEstateProperties","PaymentsOfOrdinaryDividends","DividendsCommonStockCash"]);
+"NotesPayable","NumberOfRealEstateProperties","PaymentsOfOrdinaryDividends","DividendsCommonStockCash",
+// ── Working capital, off the cash flow statement ─────────────────────────────────────────
+// Rule 25. The movement a filer reports in operating assets and liabilities, which unlevered free
+// cash flow subtracts. There is no universal subtotal — IncreaseDecreaseInOperatingCapital appears
+// at 8 of 160 filers swept — so the movement is summed from components, and a component this list
+// drops is a leg of working capital silently missing from every sheet. Classified from a census of
+// all 159 IncreaseDecreaseIn* tags those filers use; see src/extract.js for what is deliberately
+// EXCLUDED (a bank's deposits and trading book, an insurer's reserves, restricted cash).
+"IncreaseDecreaseInOperatingCapital","IncreaseDecreaseInReceivables","IncreaseDecreaseInAccountsAndNotesReceivable",
+"IncreaseDecreaseInAccountsAndOtherReceivables","IncreaseDecreaseInOtherReceivables","IncreaseDecreaseInIncomeTaxesReceivable",
+"IncreaseDecreaseInNotesReceivables","IncreaseDecreaseInUnbilledReceivables","IncreaseDecreaseInAccountsReceivableRelatedParties",
+"IncreaseDecreaseInLongTermReceivablesCurrent","IncreaseDecreaseInDeferredRentReceivables","IncreaseDecreaseInInsuranceSettlementsReceivable",
+"IncreaseDecreaseInAccountsReceivableAndOtherOperatingAssets","IncreaseDecreaseInRetailRelatedInventories","IncreaseDecreaseInMaterialsAndSupplies",
+"IncreaseDecreaseInRawMaterialsPackagingMaterialsAndSuppliesInventories","IncreaseDecreaseInFinishedGoodsAndWorkInProcessInventories","IncreaseDecreaseInFossilFuelInventories",
+"IncreaseDecreaseInPrepaidSupplies","IncreaseDecreaseInPrepaidDeferredExpenseAndOtherAssets","IncreaseDecreaseInPrepaidExpense",
+"IncreaseDecreaseInPrepaidExpensesOther","IncreaseDecreaseInPrepaidTaxes","IncreaseDecreaseInOtherOperatingAssets",
+"IncreaseDecreaseInOtherCurrentAssets","IncreaseDecreaseInOtherNoncurrentAssets","IncreaseDecreaseInContractWithCustomerAsset",
+"IncreaseDecreaseInDeferredCharges","IncreaseDecreaseInAssetsHeldForSale","IncreaseDecreaseInIntangibleAssetsCurrent",
+"IncreaseDecreaseInOperatingAssets","IncreaseDecreaseInDueFromRelatedParties","IncreaseDecreaseInDueFromRelatedPartiesCurrent",
+"IncreaseDecreaseInDueFromAffiliatesCurrent","IncreaseDecreaseInAccountsPayableTrade","IncreaseDecreaseInAccountsPayableRelatedParties",
+"IncreaseDecreaseInOtherAccountsPayable","IncreaseDecreaseInAccountsPayableAndOtherOperatingLiabilities","IncreaseDecreaseInAccruedLiabilities",
+"IncreaseDecreaseInOtherAccruedLiabilities","IncreaseDecreaseInAccruedIncomeTaxesPayable","IncreaseDecreaseInAccruedTaxesPayable",
+"IncreaseDecreaseInIncomeTaxes","IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable","IncreaseDecreaseInEmployeeRelatedLiabilities",
+"IncreaseDecreaseInOtherEmployeeRelatedLiabilities","IncreaseDecreaseInAccruedSalaries","IncreaseDecreaseInInterestPayableNet",
+"IncreaseDecreaseInRestructuringReserve","IncreaseDecreaseInSelfInsuranceReserve","IncreaseDecreaseInContractWithCustomerLiability",
+"IncreaseDecreaseInDeferredRevenue","IncreaseDecreaseInDeferredRevenueAndCustomerAdvancesAndDeposits","IncreaseDecreaseInCustomerAdvances",
+"IncreaseDecreaseInCustomerDeposits","IncreaseDecreaseInBillingInExcessOfCostOfEarnings","IncreaseDecreaseInOtherOperatingLiabilities",
+"IncreaseDecreaseInOtherCurrentLiabilities","IncreaseDecreaseInOtherNoncurrentLiabilities","IncreaseDecreaseInDueToRelatedParties",
+"IncreaseDecreaseInDueToRelatedPartiesCurrent","IncreaseDecreaseInDueToAffiliates","IncreaseDecreaseInDeferredLiabilities",
+"IncreaseDecreaseInOtherDeferredLiability","IncreaseDecreaseInDeferredCompensation","IncreaseDecreaseInPensionAndPostretirementObligations",
+"IncreaseDecreaseInPensionPlanObligations","IncreaseDecreaseInPostretirementObligations","IncreaseDecreaseInAssetRetirementObligations",
+"IncreaseDecreaseInOperatingLeaseLiability","IncreaseDecreaseInOperatingLiabilities","IncreaseDecreaseInRegulatoryLiabilities",
+"IncreaseDecreaseInManagementAndIncentiveFeesPayable","IncreaseDecreaseInOtherOperatingCapitalNet","IncreaseDecreaseInOtherNoncurrentAssetsAndLiabilitiesNet",
+"IncreaseDecreaseInOtherCurrentAssetsAndLiabilitiesNet","IncreaseDecreaseInDerivativeAssetsAndLiabilities","IncreaseDecreaseInCommodityContractAssetsAndLiabilities",
+"IncreaseDecreaseInRiskManagementAssetsAndLiabilities","IncreaseDecreaseInAccountsPayableAndAccruedLiabilities","IncreaseDecreaseInAccruedLiabilitiesAndOtherOperatingLiabilities",
+"IncreaseDecreaseInOtherAccountsPayableAndAccruedLiabilities",
+]);
 
 const pad = c => String(c).padStart(10, "0");
 

@@ -1318,10 +1318,18 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
       // on a sheet denominated in something else. Keyed to the newest column like `blankNote`, since
       // that is the column the question is asked of.
       const ccyOther = newest && newest.m.status === "other-currency" ? newest.m.ccy : null;
+      // Rule 5's SIXTH kind, and it arrived the same way the fifth did — by a new refusal falling
+      // through to "not tagged", which means *disclosed but untagged, go and look*. For a working
+      // capital movement the engine declined to total, that is exactly wrong twice over: the filer
+      // DID tag it, for this period, and what is missing is a leg no amount of looking will find in
+      // the filing, because the filer folded it into another line. The row is not empty for want of
+      // a number; it is empty because the numbers on file do not add up to the one it is named for.
+      const wcPartial = newest && newest.m.status === "wc-partial";
       const status = has ? null
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : ccyBlocked ? `reported in ${ccyBlocked}`
         : ccyOther ? `filed in ${ccyOther}`
+        : wcPartial ? "partly tagged"
         : line.how === "manual" ? "judgement"
         : line.how === "market" ? "needs price"
         : line.how === "computed" ? null

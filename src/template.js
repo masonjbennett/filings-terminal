@@ -376,8 +376,18 @@ export const SECTIONS = [
   { k: "tbvps", label: "Tangible book per share", how: "computed", formula: "(equity - goodwill - intangibles) / sharesOut" },
 ]},
 { id: "dcf", title: "DCF Inputs", feeds: "DCF", lines: [
-  { k: "ufcf", label: "Unlevered FCF", how: "computed", formula: "nopat + da - capex - chgNwc" },
-  { k: "chgNwc", label: "Change in NWC", how: "computed", formula: "nwc - nwc[-1]" },
+  // Rule 25. Both rows below were declared and neither was implemented: `chgNwc` rendered blank on
+  // every sheet ever served, and `ufcf` quietly computed `nopat + da - capex` while the template and
+  // the reverse-DCF plate both said it subtracted the change in working capital.
+  { k: "ufcf", label: "Unlevered FCF", how: "computed", formula: "nopat + da - capex - chgNwc",
+    flagNote: { ufcfFromCashFlow: "The change in working capital is the movement this filer reported on its own cash flow statement, not the difference between two balance sheets — a balance-sheet delta carries acquisitions, disposals and FX that are not operating." },
+    blankNote: "Unlevered free cash flow needs the change in working capital, and this filer's cash flow statement does not tag enough of it to total. Free cash flow above is cash from operations less capex, which is after interest." },
+  // Fetched, not computed: it is a line the filer reports, and the engine sums the components it
+  // tagged rather than subtracting two balance sheets. `wcAggregate` is read by the fetch closures
+  // in grid.js — see `changeInWorkingCapital`, which carries the reasoning and the measurements.
+  { k: "chgNwc", label: "Change in NWC", how: "fetched", wcAggregate: true, tags: ["IncreaseDecreaseInOperatingCapital"],
+    tagNote: { IncreaseDecreaseInOperatingCapital: "This filer tags its own working-capital subtotal, so the figure is that line rather than a sum of components." },
+    blankNote: "This filer's cash flow statement tags some of its working-capital movement but not all of it — the receivables, payables or inventory leg is missing, and a partial movement subtracted from free cash flow would look exactly like a whole one." },
   { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "(tax - deferredTax) / pretax" },
   { k: "netDebtBridge", label: "Net debt (equity bridge)", how: "computed", formula: "netDebt" },
   // The EA build discounted a separate NOL/tax-asset stream, mirroring the Goldman fairness
@@ -494,7 +504,7 @@ export const PERIOD_TAGS_FALLBACK = ["NetIncomeLoss", "ProfitLoss"];
 export const NOT_APPLICABLE = {
   bank: ["cogs", "grossProfit", "inventory", "dio", "dpo", "ccc", "currentRatio", "quickRatio",
     "curAssets", "curLiab", "totalOpex", "ebit", "ebitda", "ebitdaSbc", "ebitMargin", "ebitdaMargin",
-    "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "nwcPctRev", "assetTurn",
+    "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "chgNwc", "nwcPctRev", "assetTurn",
     "capexPctRev", "prepaid", "ap", "evEbitda", "evEbit", "ufcf", "nopat", "roic", "investedCap"],
   // A carrier's liabilities ARE the business, so the whole EBITDA/enterprise-value apparatus is a
   // category error, not a gap: nobody quotes EV/EBITDA on Chubb. Insurance comps are P/B, P/TBV,
@@ -504,12 +514,12 @@ export const NOT_APPLICABLE = {
   // hunting for it.
   pc: ["cogs", "grossProfit", "grossMargin", "inventory", "dso", "dio", "dpo", "ccc", "currentRatio",
     "quickRatio", "curAssets", "curLiab", "prepaid", "ap", "totalOpex", "ebit", "ebitda", "ebitdaSbc",
-    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc",
+    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "chgNwc",
     "nwcPctRev", "assetTurn", "capexPctRev", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "ufcf",
     "nopat", "roic", "investedCap"],
   life: ["cogs", "grossProfit", "grossMargin", "inventory", "dso", "dio", "dpo", "ccc", "currentRatio",
     "quickRatio", "curAssets", "curLiab", "prepaid", "ap", "totalOpex", "ebit", "ebitda", "ebitdaSbc",
-    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc",
+    "ebitMargin", "ebitdaMargin", "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "chgNwc",
     "nwcPctRev", "assetTurn", "capexPctRev", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "ufcf",
     "nopat", "roic", "investedCap"],
   // Deliberately short. A health plan is an operating company — UnitedHealth files

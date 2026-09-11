@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -103,6 +103,10 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
   // fallback, and there the difference from `equityAll` is zero by construction — deriving from it
   // would print a confident 0 for a company that has a real minority interest.
   v.equityIsParent = (meta.equity || {}).tag === "StockholdersEquity";
+  // Rule 25. A working-capital sum refused for a missing leg gets one reconsideration, now that the
+  // leg's BALANCE and the cash flow it would adjust are both on the column. Runs before the
+  // derivations, because `ufcf` reads the result.
+  promoteWorkingCapital(v, meta);
   const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
   for (const [k, fn] of Object.entries(derivations)) {
     const out = fn(v);
@@ -116,6 +120,11 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
   // gross profit at all cannot claim to have derived one. Read by the row's `flagNote`, which is how
   // a figure the engine worked out says so on the page.
   v.grossProfitDerived = v.grossProfit != null && (meta.grossProfit || {}).status === "computed";
+  // Rule 25, same obligation: unlevered FCF now subtracts a working-capital movement taken off the
+  // filer's own cash flow statement, and a reader who knows the formula will want to know WHICH ΔNWC
+  // it is — the balance-sheet delta and the cash flow statement's line are different numbers. Set
+  // after the blanking pass so an industry whose sheet has no unlevered FCF cannot claim one.
+  v.ufcfFromCashFlow = v.ufcf != null && v.chgNwc != null;
   return { v, meta };
 }
 
@@ -278,7 +287,8 @@ export function buildGrid(data, quote, limit = 8) {
   }
 
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
-    line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
+    line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickFact(facts, [t], p, { ccy }), p.end)
+    : line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
@@ -294,7 +304,8 @@ export function buildGrid(data, quote, limit = 8) {
     period: { end: w.end, fy: Number(w.end.slice(0, 4)), ltm: true, through: w.end, fyEnd: w.fy.end,
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
-      line.latest ? latestFact(facts, line.tags)
+      line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickLtm(facts, [t], w, ccy), w.end)
+      : line.latest ? latestFact(facts, line.tags)
       : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy, preferNonZero: line.preferNonZero })
       : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned),
   }));

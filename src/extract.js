@@ -760,6 +760,184 @@ export function debtScope(facts, tag) {
 // tax-inclusive or gross-of-eliminations tag wins an argument it should lose.
 const allIn = (total, v) => (total != null && (v.ltDebt == null || total >= v.ltDebt) ? total : null);
 
+// ── The change in working capital, as the FILER reported it ─────────────────────────────────────
+//
+// Rule 25. `chgNwc` was declared `how: "computed"` with the formula `nwc - nwc[-1]` and implemented
+// NOWHERE, so it rendered blank on every sheet ever served — and `ufcf`, which the template declares
+// as `nopat + da - capex - chgNwc`, was silently computing `nopat + da - capex`. The reverse DCF
+// divides into that figure and its plate told the reader it was "NOPAT + D&A − capex − change in
+// NWC": a formula the code did not implement, on the newest feature on the site. Rule 22's defect
+// class exactly — a blank cannot be mis-computed, so nothing could fail.
+//
+// **The balance-sheet delta was the obvious fix and is not the right one.** `nwc - nwc[-1]` is two
+// balance sheets subtracted, so it carries acquisitions, disposals, FX translation and
+// reclassifications the filer never called working capital. The figure a cash flow statement
+// reports is the OPERATING movement alone, and it is a number the filer tagged — which is what this
+// tool promises on every other row.
+//
+// **There is no universal subtotal.** Across the 160 filers swept, the movement is filed as a long
+// tail of 159 distinct `IncreaseDecreaseIn*` tags; `IncreaseDecreaseInOperatingCapital`, the
+// filer's own total, appears at just 8 of them. So the movement has to be summed from components,
+// and rule 7 applies with full force: `sum()` treats a missing input as zero, and a filer that tags
+// payables but not receivables reports a FRACTION of its own movement that looks exactly like the
+// whole of it. Measured, ungated: Target FY2023 would contribute a partial ΔWC of $2.44bn against a
+// UFCF of $0.30bn, Alphabet FY2018 −$6.68bn against −$0.91bn. Worse than the omission it fixes.
+//
+// Hence three rules, in order:
+//  1. **The filer's own subtotal wins** where it files one — rule 23's principle, one level up.
+//     Coca-Cola files BOTH the subtotal and its components; summing them read exactly 2x.
+//  2. **Otherwise the classified components**, but only where the set is structurally capable of
+//     being complete: receivables AND payables/accruals AND (inventory, or a filer carrying none).
+//     Not a proof of completeness — a refusal of the sets measurably missing a leg.
+//  3. **Otherwise blank**, and `ufcf` blanks with it rather than quietly reverting to a figure that
+//     means something else. Rule 21: a row may not mean one concept on one sheet and another on the
+//     next. The reverse DCF already falls back to cash from operations less capex, saying on the
+//     plate that it is levered, which is the honest answer and was already built.
+//
+// **The CFO reconciliation was measured as a gate and REJECTED.** `netIncome + D&A + SBC + deferred
+// tax − ΔWC ≈ CFO` looks like the decisive test and does not separate: the residual is continuous
+// (p50 5.4%, p75 15.3%, p90 32.8% of the reconciliation's own magnitude) because it is dominated by
+// non-cash items this engine does not fetch — impairments, gains on sale, equity-method income,
+// provisions. Any threshold refuses honest reconstructions without proving the rest complete.
+// Waiving the gate for a filer tagging only an aggregate net line was also measured: 18 filer-years,
+// all of them Goldman and AIG, both already excluded from the DCF. It buys nothing.
+//
+// Sign: a POSITIVE value means the balance GREW. An asset growing uses cash, a liability growing
+// sources it, so ΔWC = assets − liabilities + net. Verified to the dollar against the two filers
+// that tag their own subtotal AND its components — Chevron FY2018 ($718m) and Coca-Cola FY2018
+// through FY2023 — which is the only place the convention can be checked rather than asserted.
+export const WC_SUBTOTAL = "IncreaseDecreaseInOperatingCapital";
+export const WC_ASSET = [
+  "IncreaseDecreaseInAccountsReceivable", "IncreaseDecreaseInReceivables", "IncreaseDecreaseInAccountsAndNotesReceivable",
+  "IncreaseDecreaseInAccountsAndOtherReceivables", "IncreaseDecreaseInOtherReceivables", "IncreaseDecreaseInIncomeTaxesReceivable",
+  "IncreaseDecreaseInNotesReceivables", "IncreaseDecreaseInUnbilledReceivables", "IncreaseDecreaseInAccountsReceivableRelatedParties",
+  "IncreaseDecreaseInLongTermReceivablesCurrent", "IncreaseDecreaseInDeferredRentReceivables", "IncreaseDecreaseInInsuranceSettlementsReceivable",
+  "IncreaseDecreaseInAccountsReceivableAndOtherOperatingAssets",
+  "IncreaseDecreaseInInventories", "IncreaseDecreaseInRetailRelatedInventories", "IncreaseDecreaseInMaterialsAndSupplies",
+  "IncreaseDecreaseInRawMaterialsPackagingMaterialsAndSuppliesInventories", "IncreaseDecreaseInFinishedGoodsAndWorkInProcessInventories",
+  "IncreaseDecreaseInFossilFuelInventories", "IncreaseDecreaseInPrepaidSupplies",
+  "IncreaseDecreaseInPrepaidDeferredExpenseAndOtherAssets", "IncreaseDecreaseInPrepaidExpense", "IncreaseDecreaseInPrepaidExpensesOther",
+  "IncreaseDecreaseInPrepaidTaxes", "IncreaseDecreaseInOtherOperatingAssets", "IncreaseDecreaseInOtherCurrentAssets",
+  "IncreaseDecreaseInOtherNoncurrentAssets", "IncreaseDecreaseInContractWithCustomerAsset", "IncreaseDecreaseInDeferredCharges",
+  "IncreaseDecreaseInAssetsHeldForSale", "IncreaseDecreaseInIntangibleAssetsCurrent", "IncreaseDecreaseInOperatingAssets",
+  "IncreaseDecreaseInDueFromRelatedParties", "IncreaseDecreaseInDueFromRelatedPartiesCurrent", "IncreaseDecreaseInDueFromAffiliatesCurrent",
+];
+export const WC_LIAB = [
+  "IncreaseDecreaseInAccountsPayable", "IncreaseDecreaseInAccountsPayableTrade", "IncreaseDecreaseInAccountsPayableRelatedParties",
+  "IncreaseDecreaseInOtherAccountsPayable", "IncreaseDecreaseInAccountsPayableAndOtherOperatingLiabilities",
+  "IncreaseDecreaseInAccruedLiabilities", "IncreaseDecreaseInOtherAccruedLiabilities", "IncreaseDecreaseInAccruedIncomeTaxesPayable",
+  "IncreaseDecreaseInAccruedTaxesPayable", "IncreaseDecreaseInIncomeTaxes", "IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable",
+  "IncreaseDecreaseInEmployeeRelatedLiabilities", "IncreaseDecreaseInOtherEmployeeRelatedLiabilities", "IncreaseDecreaseInAccruedSalaries",
+  "IncreaseDecreaseInInterestPayableNet", "IncreaseDecreaseInRestructuringReserve", "IncreaseDecreaseInSelfInsuranceReserve",
+  "IncreaseDecreaseInContractWithCustomerLiability", "IncreaseDecreaseInDeferredRevenue", "IncreaseDecreaseInDeferredRevenueAndCustomerAdvancesAndDeposits",
+  "IncreaseDecreaseInCustomerAdvances", "IncreaseDecreaseInCustomerDeposits", "IncreaseDecreaseInBillingInExcessOfCostOfEarnings",
+  "IncreaseDecreaseInOtherOperatingLiabilities", "IncreaseDecreaseInOtherCurrentLiabilities", "IncreaseDecreaseInOtherNoncurrentLiabilities",
+  "IncreaseDecreaseInDueToRelatedParties", "IncreaseDecreaseInDueToRelatedPartiesCurrent", "IncreaseDecreaseInDueToAffiliates",
+  "IncreaseDecreaseInDeferredLiabilities", "IncreaseDecreaseInOtherDeferredLiability", "IncreaseDecreaseInDeferredCompensation",
+  "IncreaseDecreaseInPensionAndPostretirementObligations", "IncreaseDecreaseInPensionPlanObligations", "IncreaseDecreaseInPostretirementObligations",
+  "IncreaseDecreaseInAssetRetirementObligations", "IncreaseDecreaseInOperatingLeaseLiability", "IncreaseDecreaseInOperatingLiabilities",
+  "IncreaseDecreaseInRegulatoryLiabilities", "IncreaseDecreaseInManagementAndIncentiveFeesPayable",
+];
+// Already net of both sides, so the sign follows "operating capital grew" — a use of cash, like an asset.
+export const WC_NET = [
+  "IncreaseDecreaseInOtherOperatingCapitalNet", "IncreaseDecreaseInOtherNoncurrentAssetsAndLiabilitiesNet",
+  "IncreaseDecreaseInOtherCurrentAssetsAndLiabilitiesNet", "IncreaseDecreaseInDerivativeAssetsAndLiabilities",
+  "IncreaseDecreaseInCommodityContractAssetsAndLiabilities", "IncreaseDecreaseInRiskManagementAssetsAndLiabilities",
+];
+// A combined tag is taken ONLY where neither of its parts is tagged, or the filer's own line is
+// counted twice. The same shape as rule 21's component-beating-the-total, one statement over.
+export const WC_COMBINED = {
+  IncreaseDecreaseInAccountsPayableAndAccruedLiabilities: ["IncreaseDecreaseInAccountsPayable", "IncreaseDecreaseInAccruedLiabilities"],
+  IncreaseDecreaseInAccruedLiabilitiesAndOtherOperatingLiabilities: ["IncreaseDecreaseInAccruedLiabilities", "IncreaseDecreaseInOtherOperatingLiabilities"],
+  IncreaseDecreaseInOtherAccountsPayableAndAccruedLiabilities: ["IncreaseDecreaseInAccountsPayable", "IncreaseDecreaseInAccruedLiabilities"],
+};
+// Everything else in the census is deliberately OUT, each for a reason a reader can check: a bank's
+// or broker's balance-sheet movements are its business rather than its working capital (deposits,
+// trading books, repo, securities lending, loans held for sale), an insurer's reserves likewise,
+// restricted cash is not working capital, and deferred income taxes are a non-cash addback counted
+// as one. Those filers are blanked from the DCF by NOT_APPLICABLE in any case.
+const RECV_RE = /Receivable/, INVT_RE = /Inventor|MaterialsAndSupplies/, PAYS_RE = /Payable|Accrued/;
+
+// The gate needs to know whether this filer carries inventory AT ALL — demanding an inventory tag
+// from a services company would blank it for not reporting something it does not have. Read from
+// the balance sheet rather than from the resolved column, because this runs during the fetch pass.
+const carriesInventory = (facts, instantEnd, ccy) => {
+  const f = pickFact(facts, ["InventoryNet"], { end: instantEnd }, { ccy });
+  return !!(f && f.value != null && Math.abs(f.value) > 0);
+};
+
+// `fetchFlow` is injected rather than assumed, because every component here is a DURATION and the
+// trailing-twelve-month column stitches durations across three periods. Hard-coding `pickFact` would
+// have given the LTM sheet a working-capital change measured over the fiscal year while every other
+// flow beside it was measured over the last twelve months — rule 12's failure, one row down, and
+// invisible because the number would look entirely ordinary.
+export function changeInWorkingCapital(facts, ccy, fetchFlow, instantEnd) {
+  const hit = t => { const f = fetchFlow(t); return f && f.value != null ? f : null; };
+  const sub = hit(WC_SUBTOTAL);
+  // The filer's own total. Carries its accession, so the cell still links to the filing.
+  if (sub) return { value: sub.value, unit: sub.unit, tag: sub.tag, accn: sub.accn, form: sub.form, filed: sub.filed, wcSource: "subtotal" };
+  let assets = 0, liabs = 0, net = 0, used = 0;
+  let hasRecv = false, hasPays = false, hasInv = false;
+  for (const t of WC_ASSET) {
+    const f = hit(t); if (!f) continue;
+    assets += f.value; used++;
+    if (RECV_RE.test(t)) hasRecv = true;
+    if (INVT_RE.test(t)) hasInv = true;
+  }
+  for (const t of WC_LIAB) {
+    const f = hit(t); if (!f) continue;
+    liabs += f.value; used++;
+    if (PAYS_RE.test(t)) hasPays = true;
+  }
+  for (const [combo, parts] of Object.entries(WC_COMBINED)) {
+    const f = hit(combo); if (!f) continue;
+    if (parts.some(p => hit(p))) continue;
+    liabs += f.value; used++; hasPays = true;
+  }
+  for (const t of WC_NET) { const f = hit(t); if (!f) continue; net += f.value; used++; }
+  if (!used) return { value: null, status: "not-tagged" };
+  const needsInv = carriesInventory(facts, instantEnd, ccy);
+  const missing = [!hasRecv && "ar", !hasPays && "ap", needsInv && !hasInv && "inventory"].filter(Boolean);
+  // Rule 7: a partial total is worse than no total, and this one would be subtracted from a cash
+  // flow the valuation divides into. The raw sum and the names of the missing legs travel with the
+  // refusal, because whether a missing leg MATTERS depends on its balance against the cash flow it
+  // would adjust — and neither is known yet. `promoteWorkingCapital` decides, after the fetch pass.
+  if (missing.length) return { value: null, status: "wc-partial", wcRaw: assets - liabs + net, wcMissing: missing, wcTags: used };
+  return { value: assets - liabs + net, status: "computed", wcSource: "components", wcTags: used };
+}
+
+// A leg a filer never tagged is not automatically a leg that matters. Costco tags no receivables
+// movement and Alphabet no inventory movement, and both are refused by the presence test above —
+// but Alphabet's entire inventory is 0.6% of its revenue, and a leg cannot move by more than it is.
+// So a refusal is reconsidered against the BALANCE of what is missing, measured as a share of the
+// cash flow the row adjusts. That denominator is the point: Costco's receivables are 1.2% of revenue
+// and **68% of its unlevered cash flow**, because its margins are thin — scaling by revenue would
+// wave through the filer this test most needs to stop.
+//
+// **The threshold is a judgement, like THIN_EQUITY, and the population does not separate**: the
+// missing leg's balance runs p25 10%, p50 30%, p75 80% of that cash flow, with no gap to cut at.
+// 10% is chosen to be tight — it recovers 21 of the 86 measurable refusals and still declines
+// Costco (68%), Comcast (69%), Colgate (83%) and Paramount (142%). A leg whose BALANCE is untagged
+// is never promoted: an unbounded leg cannot be shown to be small, and that is 78 of the 164
+// refusals — the larger half, left refused.
+export const WC_IMMATERIAL = 0.10;
+export function promoteWorkingCapital(v, meta) {
+  const m = meta.chgNwc;
+  if (!m || m.status !== "wc-partial" || m.wcRaw == null) return;
+  if (v.ebit == null) return;
+  const taxRate = v.tax != null && v.pretax ? v.tax / v.pretax : null;
+  if (taxRate == null) return;
+  const scale = Math.abs(v.ebit * (1 - taxRate) + (v.da || 0) - (v.capex || 0));
+  if (!scale) return;
+  const legs = { ar: v.ar, ap: v.ap, inventory: v.inventory };
+  for (const name of m.wcMissing) {
+    const bal = legs[name];
+    if (bal == null || Math.abs(bal) / scale > WC_IMMATERIAL) return;   // unbounded, or big enough to matter
+  }
+  v.chgNwc = m.wcRaw;
+  meta.chgNwc = { value: m.wcRaw, status: "computed", wcSource: "components", wcTags: m.wcTags, wcImmaterial: m.wcMissing.join(" and ") };
+}
+
 // Deriving a missing EBIT as revenue − CostsAndExpenses was tried and REMOVED. It looks like the
 // operating subtotal and is not one: `CostsAndExpenses` is "total costs and expenses", which for
 // most filers includes interest, so the difference is pre-tax income. Welltower derived to MINUS
@@ -873,7 +1051,12 @@ export const DERIVED = {
   sbcPctRev: v => div(v.sbc, v.revenue),
   bvps: v => div(v.equity, v.sharesOut),
   tbvps: v => (v.equity == null ? null : div(v.equity - (v.goodwill || 0) - (v.intangibles || 0), v.sharesOut)),
-  ufcf: v => (v.nopat == null ? null : v.nopat + (v.da || 0) - (v.capex || 0)),
+  // Rule 25. The change in working capital is REQUIRED, not summed — the same distinction EBIT
+  // draws two hundred lines up, and for the same reason. `nopat + da - capex` is a real quantity but
+  // it is not unlevered free cash flow, and shipping it under that label put a figure on the
+  // Valuation tab that the plate beside it described as something else. Where ΔWC is unavailable the
+  // row blanks and the reverse DCF falls back to cash from operations less capex, saying so.
+  ufcf: v => (v.nopat == null || v.chgNwc == null ? null : v.nopat + (v.da || 0) - (v.capex || 0) - v.chgNwc),
   cashTaxRate: v => (v.tax == null ? null : div(v.tax - (v.deferredTax || 0), v.pretax)),
 };
 

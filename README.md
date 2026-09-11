@@ -663,6 +663,90 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     10-K reporting the figure, which is the link doing its job rather than a regression.
     `full-diff.mjs`: **106 values changed across the 167** (34 of them rules 21 and 23), 0 vanished.
 
+25. **A formula the engine does not implement is a lie the page tells confidently — and the obvious
+    implementation was the wrong one.** Rule 22 found three declared-and-never-implemented rows and
+    fixed one. Two survived it in the same section. `chgNwc` was declared `how: "computed"` with the
+    formula `nwc - nwc[-1]` and implemented **nowhere**, so "Change in NWC" rendered blank on every
+    sheet ever served, carrying a `ƒ` marker whose tooltip advertised a formula nothing computed. And
+    `ufcf`, declared `nopat + da - capex - chgNwc`, silently computed **`nopat + da - capex`**. Rule
+    22's defect class exactly: a blank cannot be mis-computed, so nothing could fail — and
+    `t-declared.mjs`, the tool written to catch precisely this, was never committed and died with its
+    session.
+
+    It reached the reader. The reverse DCF divides into `ufcf`, and its plate told them the basis was
+    *"NOPAT + D&A − capex − change in NWC"*. Measured across 160 filers: the omission moves the
+    implied growth rate by a **median 1.97 points**, by more than a point on **39 of 60** filers, and
+    Apple's unlevered free cash flow reads $111.26bn where the stated formula gives $86.26bn.
+
+    **The balance-sheet delta is what the template declared and it is not the right number.**
+    `nwc - nwc[-1]` is two balance sheets subtracted, so it carries acquisitions, disposals, FX
+    translation and reclassifications the filer never called working capital. What a cash flow
+    statement reports is the operating movement alone — and it is a figure the filer *tagged*, which
+    is what this tool promises on every other row. The two disagree materially: on NVIDIA the
+    balance-sheet delta is $64.97bn against a filed movement of $15.95bn.
+
+    **There is no universal subtotal, so rule 7 governs.** Across the 160 filers the movement is
+    filed as a long tail of **159 distinct `IncreaseDecreaseIn*` tags**;
+    `IncreaseDecreaseInOperatingCapital`, the filer's own total, appears at **8 of them**. A sum over
+    components therefore has rule 7's trap built in: `sum()` treats a missing input as zero, and a
+    filer that tags payables but not receivables reports a FRACTION of its own movement that looks
+    exactly like the whole of it. Ungated, **Target FY2023 would have contributed a partial ΔWC of
+    $2.44bn against a UFCF of $0.30bn, and Alphabet FY2018 −$6.68bn against −$0.91bn** — far worse
+    than the omission being fixed.
+
+    So: the filer's own subtotal wins where it files one (rule 23's principle, one statement over —
+    **Coca-Cola files both the subtotal and its components, and summing them read exactly 2x**);
+    otherwise the classified components, but only where the set could be complete — receivables AND
+    payables/accruals AND inventory, the last demanded only of a filer whose balance sheet carries
+    any. Otherwise blank, and **`ufcf` blanks with it** rather than reverting to a figure that means
+    something else (rule 21: a row may not mean one concept on one sheet and another on the next).
+    The reverse DCF already falls back to cash from operations less capex, saying on the plate that
+    it is levered.
+
+    **The sign convention was verified, not asserted.** Two filers in the sweep tag both their own
+    subtotal and its components — Chevron FY2018 ($718m) and Coca-Cola FY2018 through FY2023 — and
+    the components reproduce the subtotal **to the dollar** under ΔWC = assets − liabilities + net.
+    That is the only place in this data the convention can be checked.
+
+    **A refusal gets one reconsideration, and the denominator is the whole design.** Costco tags no
+    receivables movement and Alphabet no inventory movement, but Alphabet's entire inventory is 0.6%
+    of its revenue — a leg cannot move by more than it is. So a missing leg's **balance** is measured
+    against the cash flow the row adjusts, and waived below 10%. Scaling by revenue instead would
+    wave Costco through at 1.2% when its untagged receivables are **68% of its unlevered cash flow**,
+    because its margins are thin. Like `THIN_EQUITY` the threshold is a judgement and the population
+    does not separate (p25 10%, p50 30%, p75 80%); 10% is deliberately tight, recovering 21 of the 86
+    measurable refusals while still declining Costco, Comcast (69%), Colgate (83%) and Paramount
+    (142%). A leg whose balance is *also* untagged is never waived — 78 of 164 refusals, the larger
+    half — because an unbounded leg cannot be shown to be small.
+
+    **The CFO reconciliation was measured as a gate and REJECTED.**
+    `netIncome + D&A + SBC + deferred tax − ΔWC ≈ CFO` is the test that looks decisive and it does
+    not separate: the residual is continuous (**p50 5.4%, p75 15.3%, p90 32.8%** of the
+    reconciliation's own magnitude) because it is dominated by non-cash items this engine does not
+    fetch — impairments, gains on sale, equity-method income, provisions. Any threshold refuses
+    honest reconstructions without proving the rest complete. Waiving the gate for a filer tagging
+    only an aggregate net line was measured too: 18 filer-years, **all of them Goldman and AIG**,
+    both already excluded from the DCF. It buys nothing.
+
+    ΔWC resolves for **777 of 1,217 filer-years (63.8%)** and 78 of 100 DCF-applicable filers keep an
+    unlevered basis. `full-diff.mjs` across the 160: **131 filers moved, and exactly two keys are
+    touched** — `chgNwc` (837 cells appeared, on a row that had never shown a number) and `ufcf` (642
+    changed, 143 vanished). **0 values changed on any other row.**
+
+    **Rule 5 gained a SIXTH kind of blank, and it arrived the way the fifth did.** A refused ΔWC fell
+    through to *"not tagged"* — which means *disclosed but untagged, go and look* — and that is wrong
+    twice over: the filer did tag it, and the missing leg is one no amount of reading will find,
+    because the filer folded it into another line. It now reads **"partly tagged"**. Found by looking
+    at the page, along with its companion: JPMorgan's row read "partly tagged" too, inviting a reader
+    to hunt for a depository's working capital. `nwc` was already in `NOT_APPLICABLE` for banks and
+    both carriers for exactly that reason; `chgNwc` simply had not been added beside it, and the
+    suite now asserts the two cannot drift apart.
+
+    `test/t-wc.mjs` — 36 assertions, **11 of 11 mutations caught**. The eleventh was added *because*
+    of the mutation run: dropping the net term from the sum passed every other assertion in the file,
+    and `IncreaseDecreaseInOtherOperatingCapitalNet` is the second most common working-capital tag in
+    the census (62 of 160 filers).
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
