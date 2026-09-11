@@ -783,6 +783,20 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     count filed as zero"**, with a note saying the figure is on the cover of the latest filing but not
     in the data this page is built from.
 
+    **And the reverse-DCF plate was still lying, which was only visible in PRODUCTION.** Its
+    fall-through prints *"No price available, so no enterprise value to solve against"* whenever the
+    bridge comes out null, because the only alternative it had was `quoteNote` — which is set solely
+    when the quote FETCH fails. Blanking these share counts did not create that defect but it
+    **widened it from 17 filers to about 26**, and the first production check after the push found UPS
+    saying it with a live price on the page above. The plate now separates the two real causes — no
+    current share count, and an untagged total debt — from an absent quote. Local dev structurally
+    cannot show any of this: there is no Finnhub key, so `ev` is null for every filer and the branch
+    is unreachable. Same route as the $155bn Chubb enterprise value and the ASML currency line.
+    Nothing offline can cover it either, which is the standing gap: the plate is inline JSX in
+    `App.jsx`, so the assertion that exists is one layer below it — `t-valuation.mjs` proves the
+    column carries `no-share-count` rather than `market`, and the sentence on top of that is checked
+    by looking.
+
 27. **The Chubb defect was closed for the two carriers and never for a depository or a broker-dealer.**
     `NOT_APPLICABLE` blanks `ev`, `evRev` and `evFcf` for `pc` and `life`; the `bank` list stopped at
     `evEbitda` and `evEbit`, and `advisory` never had any of them. So **JPMorgan printed a $422.5bn

@@ -1220,6 +1220,15 @@ function PricedIn({ grid, industry, note, S }) {
       {!applicable ? `A reverse DCF is n/a for a ${industry === "advisory" ? "broker-dealer or asset manager" : INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow." : "it is funded by client payables, repo and consolidated fund liabilities, which total debt cannot see — so enterprise value and unlevered cash flow are category errors here, not gaps."}`
         : ev == null && evMeta.status === "not-applicable" ? "Enterprise value is n/a for this filer's industry — it is a category error for a bank or a carrier, so there is nothing to solve against."
         : ev == null && evMeta.status === "currency-mismatch" ? `The price is in dollars and these figures are in ${evMeta.ccy}, as filed — no enterprise value is built across the two, so there is nothing to solve against.`
+        // The price arrived and the bridge still did not close, which is a different sentence. Saying
+        // "no price available" here is false and sends a reader looking for a quote that is on the page
+        // above — rule 5 on the plate, and the same mistake the currency branch above exists to avoid.
+        // It reaches ~26 filers: Alphabet, Meta, Shopify and Snap file no undimensioned cover count at
+        // all, and UPS, Comcast, Nike and Simon Property are refused under rule 26. `c.v.price` rather
+        // than the quote object, which this component is not given — and which is the right test
+        // anyway, since it is the price that actually reached the column.
+        : ev == null && evMeta.status === "no-share-count" ? "SEC's company-facts API carries no current share count for this filer — it reports one per class of stock, and only the undimensioned figure is in this data — so there is no market capitalisation to build an enterprise value on. The price above is fine."
+        : ev == null && c.v.price != null ? "The filer's total debt is not tagged for this period, so the enterprise-value bridge cannot close. The price above is fine."
         : ev == null ? (note || "No price available, so no enterprise value to solve against.")
         : "No free cash flow on the newest column — nothing to grow."}
     </p>}
