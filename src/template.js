@@ -275,7 +275,12 @@ export const SECTIONS = [
   { k: "wasoDil", label: "Weighted avg shares, diluted", how: "fetched", tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"] },
   // `latest` because the cover-page count is dated the day the filing went out, not the fiscal
   // year end — it matches no period and must be taken as the most recent value instead.
-  { k: "sharesOut", label: "Shares outstanding (cover)", how: "fetched", latest: true, tags: ["dei:EntityCommonStockSharesOutstanding"], note: "Cover page of the most recent filing — the count market cap is built on" },
+  // `mustBeCurrent`: companyfacts carries only the UNDIMENSIONED dei fact, so a filer that moved to a
+  // per-class cover page stops appearing and the last figure it ever filed goes on being used —
+  // UPS's is from 2010. A count that is stale, or zero, is refused rather than priced. See
+  // `latestFact`; the population separates cleanly and the README gives the measurement.
+  { k: "sharesOut", label: "Shares outstanding (cover)", how: "fetched", latest: true, mustBeCurrent: true, tags: ["dei:EntityCommonStockSharesOutstanding"], note: "Cover page of the most recent filing — the count market cap is built on",
+    blankNote: "SEC's company-facts API carries this count only for filers that report it as a single undimensioned figure. This filer's most recent one is too old to price against — it is on the cover of its latest filing, but not in the data this page is built from." },
   { k: "dps", label: "Dividends per share", how: "fetched", tags: ["CommonStockDividendsPerShareDeclared"] },
 ]},
 // ─────────────────────────────────────────────────────────────── DERIVED
@@ -468,6 +473,12 @@ export const INDUSTRY = sic => {
 // a reader has to decode is worse than no label.
 export const INDUSTRY_LABEL = {
   bank: "bank", pc: "P&C insurer", life: "life insurer", health: "health plan", reit: "REIT",
+  // Stays short because this is a STATUS CHIP on a sticky label cell that is `white-space: nowrap`,
+  // and the widest label in a table sets that column's width for every row in it. Spelling out
+  // "broker-dealer or asset manager" here measured 359px against 194px for the next-widest label on
+  // Blackstone's ratios sheet — the note-widens-the-column failure the layout section documents,
+  // which pushes year columns off an 8-column sheet. The reverse-DCF plate names both businesses
+  // instead; it is prose in a paragraph and has the room. Three surfaces, three amounts of room.
   advisory: "broker-dealer",
 };
 
@@ -505,7 +516,13 @@ export const NOT_APPLICABLE = {
   bank: ["cogs", "grossProfit", "inventory", "dio", "dpo", "ccc", "currentRatio", "quickRatio",
     "curAssets", "curLiab", "totalOpex", "ebit", "ebitda", "ebitdaSbc", "ebitMargin", "ebitdaMargin",
     "ebitdaGrowth", "netLev", "grossLev", "intCover", "fccr", "nwc", "chgNwc", "nwcPctRev", "assetTurn",
-    "capexPctRev", "prepaid", "ap", "evEbitda", "evEbit", "ufcf", "nopat", "roic", "investedCap"],
+    "capexPctRev", "prepaid", "ap", "evEbitda", "evEbit", "ufcf", "nopat", "roic", "investedCap",
+    // The Chubb defect, which was closed for the two carriers and never for a depository. A bank is
+    // funded by DEPOSITS, and `totalDebt` cannot see them — so the bridge reads market cap plus a
+    // sliver of debt less cash and calls it an enterprise value. JPMorgan printed one. The rows above
+    // already say a bank is levered on capital ratios rather than on EBITDA; these are the same
+    // sentence, and they were simply missed when that list was written.
+    "ev", "evRev", "evFcf"],
   // A carrier's liabilities ARE the business, so the whole EBITDA/enterprise-value apparatus is a
   // category error, not a gap: nobody quotes EV/EBITDA on Chubb. Insurance comps are P/B, P/TBV,
   // P/E and ROE, which the corporate template already computes. Working capital is meaningless for
@@ -530,7 +547,27 @@ export const NOT_APPLICABLE = {
   // Deliberately short, like the health plans. A broker-dealer has no inventory and no working
   // capital cycle, but Goldman's balance sheet is real and the boutiques tag operating income, so
   // blanking the corporate apparatus wholesale would delete a sheet that is largely correct.
-  advisory: ["inventory", "dio", "dpo", "ccc"],
+  //
+  // The ENTERPRISE VALUE rows are the exception, and they are here rather than in the corporate set
+  // because SIC 6211/6282 is the one industry bucket that mixes two businesses. A broker-dealer or
+  // an alternative manager is funded by client payables, repo and consolidated fund liabilities, and
+  // `totalDebt` sees none of them: Stifel and Raymond James read 1.5% and 0.8% debt-to-assets on
+  // balance sheets of $41bn and $88bn, which makes them look like boutiques and their enterprise
+  // values ($6.0bn, $8.6bn) meaningless. Goldman's reads $236bn, Morgan Stanley's $395bn, Schwab's
+  // $157.8bn. Measured across the nine in the sweep, SEVEN are wrong this way.
+  //
+  // **It costs the two that are right, and they are named so this can be revisited**: Lazard carries
+  // real corporate debt (34.2% of assets) and its $11.4bn EV is a number a reader would want, and
+  // Piper Sandler's $6.5bn is defensible. The pure boutiques — Evercore, Moelis, Houlihan Lokey, PJT
+  // — tag no total debt at all, so the bridge already returned null for them and nothing changes.
+  // The house rule decides it: failing to a blank is recoverable, failing to a plausible wrong
+  // number is not, and a reader cannot tell Lazard's EV from Stifel's by looking.
+  //
+  // This is also what stops the reverse DCF for them. `dcfApplicable` reads this list, so adding
+  // `ev` answers Schwab printing a 5.3% implied growth rate off cash from operations that swings
+  // with client balances — the bank sentence in `reverse.js`, arriving for the filers it also
+  // describes. Goldman and Morgan Stanley were held back only by the sign their CFO happened to take.
+  advisory: ["inventory", "dio", "dpo", "ccc", "ev", "evRev", "evEbitda", "evEbit", "evFcf"],
   reit: ["inventory", "dio", "dpo", "ccc"],
 };
 

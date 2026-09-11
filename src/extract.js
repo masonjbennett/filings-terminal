@@ -467,15 +467,41 @@ function dedupeLabels(periods) {
 // count is the one that matters: its date is the COVER date — 2025-10-17 for a year ending
 // 2025-09-27 — so matching it against period ends finds nothing, ever. That silently emptied book
 // value per share, tangible book, market cap and every multiple built on them. Take the newest.
-export function latestFact(facts, tags) {
-  let best = null;
+// `notBefore` is the filer's OWN newest periodic report, not a wall clock. The cover-page share
+// count is the one input market capitalisation is built on, and companyfacts carries only the
+// UNDIMENSIONED `dei` fact — so a filer that moved to a per-class cover page simply stops appearing
+// here, and `latestFact` goes on returning whatever it last filed. UPS's count is from **2010**
+// (713,924,267 against ~848m today) and Comcast's from 2010 (2.06bn against ~3.7bn); Nike's is from
+// 2015 and Sony's from 2019. Those printed market caps, enterprise values, P/E and P/B that were
+// wrong by a decade of buybacks and issuance and looked entirely ordinary.
+//
+// **The population separates, which is why this is a rule and not a judgement.** Across 148 filers
+// the lag between that fact's filing date and the filer's newest report is 0 days at the median,
+// 91 at p90 — and then jumps straight to **2,557 days**. Nothing at all lands between 200 days and
+// seven years. 400 days is chosen inside that gap: comfortably past an annual-only filer plus a late
+// filing, and nowhere near the cliff. It blanks 9 of 148.
+//
+// A count of **ZERO** is rejected outright and is a different failure: Simon Property, Paramount and
+// iHeartMedia all file 0, which made market capitalisation $0 and left enterprise value silently
+// equal to net debt — SPG showed a $28.91bn EV with no equity in it. A listed company cannot have
+// zero shares, so this is a tagging artifact rather than a fact, and rule 24's `preferNonZero` is no
+// help: for SPG the next non-zero candidate is from 2009, which trades a visibly broken number for
+// an invisibly wrong one. Both cases fail CLOSED.
+export const COVER_STALE_DAYS = 400;
+export function latestFact(facts, tags, opts = {}) {
+  let best = null, rejected = null;
   for (const tag of tags || []) {
     const all = factsFor(facts, tag);
     if (!all) continue;
     for (const f of all) if (!best || f.end > best.end) best = { ...f, tag };
   }
-  return best ? { value: best.val, unit: best.unit, tag: best.tag, accn: best.accn, form: best.form, filed: best.filed, end: best.end, status: "reported" }
-              : { value: null, status: "never-tagged" };
+  if (!best) return { value: null, status: "never-tagged" };
+  if (opts.mustBeCurrent) {
+    if (best.val === 0) rejected = "cover-zero";
+    else if (opts.notBefore && best.filed && days(best.filed, opts.notBefore) > COVER_STALE_DAYS) rejected = "cover-stale";
+    if (rejected) return { value: null, status: rejected, filed: best.filed, staleValue: best.val, tag: best.tag };
+  }
+  return { value: best.val, unit: best.unit, tag: best.tag, accn: best.accn, form: best.form, filed: best.filed, end: best.end, status: "reported" };
 }
 
 // ── Trailing twelve months ─────────────────────────────────────────────────────────────────────

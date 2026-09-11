@@ -202,7 +202,22 @@ function applyQuote(c, industry, quote, ccy) {
     c.meta[k] = { status: "market" };
   };
   mark("price", quote.price);
+  // The price arrived. If the bridge still cannot close, saying "needs price" is false and sends a
+  // reader hunting a quote that is already on the page — rule 5's complaint on the valuation block,
+  // and the same mistake the currency suppression was written to avoid. Which input is missing is
+  // known right here, so the row says that instead. Alphabet and Meta reach this through a share
+  // count companyfacts does not carry undimensioned; Simon Property and Paramount through one
+  // refused as stale or zero.
   const mktCap = v.sharesOut != null ? quote.price * v.sharesOut : null;
+  if (mktCap == null) {
+    for (const k of ["mktCap", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "pb", "fcfYield"]) {
+      if ((NOT_APPLICABLE[industry] || []).includes(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; continue; }
+      v[k] = null; c.meta[k] = { status: "no-share-count" };
+    }
+    mark("pe", v.epsDil ? quote.price / v.epsDil : null);
+    mark("divYield", v.dps ? v.dps / quote.price : null);
+    return;
+  }
   mark("mktCap", mktCap);
   const ev = mktCap == null || v.totalDebt == null ? null
     : mktCap + v.totalDebt + (v.preferred || 0) + (v.nciBs || 0) - (v.cash || 0) - (v.sti || 0);
@@ -286,9 +301,17 @@ export function buildGrid(data, quote, limit = 8) {
     pinned[line.k] = order || tagsByRun(facts, line.tags, calEnds);
   }
 
+  // The filer's own newest periodic report, which is what a cover-page figure is measured as stale
+  // against. Taken from the filing list the payload already carries rather than from a clock, so the
+  // answer is deterministic: a cached payload builds the same sheet tomorrow as it does today, and a
+  // test can assert it without freezing time.
+  const newestFiledDate = (data.filings || [])
+    .filter(f => /^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(f.form)).map(f => f.filed).sort().pop() || null;
+  const latestOpts = line => (line.mustBeCurrent ? { mustBeCurrent: true, notBefore: newestFiledDate } : undefined);
+
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
     line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickFact(facts, [t], p, { ccy }), p.end)
-    : line.latest ? latestFact(facts, line.tags) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
+    : line.latest ? latestFact(facts, line.tags, latestOpts(line)) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
@@ -305,7 +328,7 @@ export function buildGrid(data, quote, limit = 8) {
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickLtm(facts, [t], w, ccy), w.end)
-      : line.latest ? latestFact(facts, line.tags)
+      : line.latest ? latestFact(facts, line.tags, latestOpts(line))
       : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy, preferNonZero: line.preferNonZero })
       : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned),
   }));

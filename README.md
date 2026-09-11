@@ -747,6 +747,79 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     and `IncreaseDecreaseInOtherOperatingCapitalNet` is the second most common working-capital tag in
     the census (62 of 160 filers).
 
+26. **The cover-page share count is the one input everything above the valuation is built on, and it
+    can be sixteen years old or zero.** `latestFact` took the newest `dei` fact by date and asked
+    nothing else of it. Two things go wrong and only one of them looks wrong.
+
+    **Stale.** companyfacts carries only the UNDIMENSIONED `dei:EntityCommonStockSharesOutstanding`,
+    so a filer that moved to a per-class cover page simply stops appearing there — and the engine goes
+    on using whatever it last filed. **UPS's count is from February 2010** (713,924,267 against roughly
+    848m today) and produced a $71.4bn market capitalisation and an $89.1bn enterprise value.
+    **Comcast's is from 2010** (2.06bn against ~3.7bn, a $206.3bn market cap), **Nike's from 2015**,
+    Sony's and Ares' from 2019. Every one of those printed a market cap, an enterprise value, a P/B and
+    a book value per share that were wrong by a decade of buybacks and issuance and looked ordinary.
+
+    **The population separates, which is what makes this a rule rather than a judgement.** Across 148
+    filers, the lag between that fact's filing date and the filer's own newest periodic report is **0
+    days at the median and 91 at p90 — and then jumps straight to 2,557**. Nothing lands between 200
+    days and seven years. `COVER_STALE_DAYS` is 400: comfortably past an annual-only filer plus a late
+    filing, nowhere near the cliff, and it blanks 9 of 148. It is measured against **the filer's own
+    newest report, taken from the filing list the payload already carries — not a clock** — so a
+    cached payload builds the same sheet tomorrow as today and a test can assert it without freezing
+    time.
+
+    **Zero.** Simon Property, Paramount and iHeartMedia all file the count as `0`. Market cap came out
+    **$0** and enterprise value was therefore **silently equal to net debt** — SPG showed a $28.91bn EV
+    with no equity in it at all. A listed company cannot have zero shares, so this is a tagging
+    artifact, not a fact. **Rule 24's `preferNonZero` is the obvious fix and is wrong here**: SPG's
+    next non-zero candidate is from *2009*, so preferring it trades a visibly broken number for an
+    invisibly wrong one. Both cases fail closed.
+
+    **And the rows it feeds must stop saying "needs price".** The price arrived; the share count is
+    what is missing. Saying otherwise sends a reader hunting a quote that is already on the page —
+    rule 5's complaint, arriving on the valuation block through a door the currency work did not
+    cover. Alphabet, Meta, Shopify and Snap reach it too, with no undimensioned count on file at all.
+    They read **"no share count"**; the count's own row reads **"cover count from 2010"** or **"cover
+    count filed as zero"**, with a note saying the figure is on the cover of the latest filing but not
+    in the data this page is built from.
+
+27. **The Chubb defect was closed for the two carriers and never for a depository or a broker-dealer.**
+    `NOT_APPLICABLE` blanks `ev`, `evRev` and `evFcf` for `pc` and `life`; the `bank` list stopped at
+    `evEbitda` and `evEbit`, and `advisory` never had any of them. So **JPMorgan printed a $422.5bn
+    enterprise value, Bank of America $805.6bn, Goldman $236bn, Morgan Stanley $395.3bn and Schwab
+    $157.8bn**. A bank is funded by DEPOSITS and a dealer by client payables and repo, and `totalDebt`
+    sees neither — the bridge reads market cap plus a sliver of debt less cash and calls it an
+    enterprise value.
+
+    **`advisory` needed measuring rather than blanking, because SIC 6200-6299 is one bucket holding
+    three businesses** — bulge-bracket dealers, advisory boutiques and alternative managers. Debt-to-
+    assets does not separate them: **Stifel reads 1.5% and Raymond James 0.8%**, which looks like a
+    boutique, on balance sheets of $41bn and $88bn funded by client money. Of the nine swept, **seven
+    are wrong this way**. It costs the two that are right and they are named so this can be revisited:
+    **Lazard** carries real corporate debt (34.2% of assets) and its $11.4bn EV is a figure a reader
+    would want, and Piper Sandler's $6.5bn is defensible. The pure boutiques — Evercore, Moelis,
+    Houlihan Lokey, PJT — tag no total debt at all, so the bridge already returned null and nothing
+    changes for them. The house rule decides it: failing to a blank is recoverable, failing to a
+    plausible wrong number is not, and a reader cannot tell Lazard's EV from Stifel's by looking.
+
+    **This is also what stops the reverse DCF for them.** `dcfApplicable` reads the template's own
+    lists rather than a second copy, so adding `ev` answers **Schwab printing a 5.3% implied growth
+    rate** off cash from operations that swings with client balances. Goldman and Morgan Stanley were
+    held back only by the sign their operating cash flow happened to take this year. The `advisory`
+    sentence in the plate had been written and **had never once fired**.
+
+    **Making it fire exposed a label, and then a layout rule.** "n/a for a broker-dealer" is wrong for
+    Blackstone, so the obvious follow-on was to spell out "broker-dealer or asset manager" — which
+    measured **359px against 194px for the next-widest label** on its ratios sheet. The label cell is
+    `white-space: nowrap` and the widest label sets that column for every row, so it pushes year
+    columns off an 8-column sheet: the note-widens-the-column failure in **Layout**, arriving through
+    a status chip instead of a note. The chip stays short and **the plate says it in full**, because
+    the plate is prose and has the room. Three surfaces, three amounts of room.
+
+    `full-diff.mjs` across the 160 at a live price: **22 filers moved, 0 values changed, 0 appeared,
+    234 vanished.** Every move is a removal — nothing became a different number. `test/t-valuation.mjs`,
+    47 assertions, **10 of 10 mutations caught**.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

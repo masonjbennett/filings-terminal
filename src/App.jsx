@@ -1214,7 +1214,10 @@ function PricedIn({ grid, industry, note, S }) {
       <span style={{ fontSize: 10, color: C.faint, fontFamily: MONO }}>reverse DCF · newest column only, FY{c.period.fy} ({c.period.end})</span>
     </div>
     {!ready && <p style={{ fontSize: 12, color: C.bronze, margin: "4px 0 0", fontFamily: MONO, lineHeight: 1.6 }}>
-      {!applicable ? `A reverse DCF is n/a for a ${INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow." : "its liabilities are the business, so enterprise value and unlevered cash flow are category errors, not gaps."}`
+      {/* The plate has room the row status does not, so it names the business in full. SIC 6200-6299
+          is one bucket holding bulge-bracket dealers, advisory boutiques and alternative managers,
+          and the sticky-column measurement is why that only gets said here. */}
+      {!applicable ? `A reverse DCF is n/a for a ${industry === "advisory" ? "broker-dealer or asset manager" : INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow." : "it is funded by client payables, repo and consolidated fund liabilities, which total debt cannot see — so enterprise value and unlevered cash flow are category errors here, not gaps."}`
         : ev == null && evMeta.status === "not-applicable" ? "Enterprise value is n/a for this filer's industry — it is a category error for a bank or a carrier, so there is nothing to solve against."
         : ev == null && evMeta.status === "currency-mismatch" ? `The price is in dollars and these figures are in ${evMeta.ccy}, as filed — no enterprise value is built across the two, so there is nothing to solve against.`
         : ev == null ? (note || "No price available, so no enterprise value to solve against.")
@@ -1325,10 +1328,21 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
       // the filing, because the filer folded it into another line. The row is not empty for want of
       // a number; it is empty because the numbers on file do not add up to the one it is named for.
       const wcPartial = newest && newest.m.status === "wc-partial";
+      // The cover-page share count, refused as stale or as zero. Both must be said in words: the
+      // count IS on the cover of the latest filing, so "not tagged" would send a reader to look at
+      // something that is right there and disagrees with the page. What is missing is the count in
+      // SEC's company-facts API, which carries only the undimensioned figure.
+      const coverBad = newest && (newest.m.status === "cover-stale" ? `cover count from ${String(newest.m.filed || "").slice(0, 4)}`
+        : newest.m.status === "cover-zero" ? "cover count filed as zero" : null);
+      // ...and every row the market-cap bridge could not reach because of it. "needs price" is false
+      // here — the price arrived and is fine.
+      const noShares = newest && newest.m.status === "no-share-count";
       const status = has ? null
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : ccyBlocked ? `reported in ${ccyBlocked}`
         : ccyOther ? `filed in ${ccyOther}`
+        : coverBad ? coverBad
+        : noShares ? "no share count"
         : wcPartial ? "partly tagged"
         : line.how === "manual" ? "judgement"
         : line.how === "market" ? "needs price"
