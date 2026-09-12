@@ -13,7 +13,9 @@ export default async function handler(req, res) {
   if (!/^[A-Z.\-]{1,12}$/.test(symbol)) return res.status(400).json({ error: "bad symbol" });
   // Quotes move; the filings they are divided into do not. A short cache keeps this inside the free
   // tier's rate limit when several lookups land together, without showing a stale tape.
-  res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+  // Success path only — see the note in api/facts.js. A cached "no quote for XYZ" or a cached
+  // "the quote desk answered 502" outlives the condition that produced it.
+  const CACHE_OK = "public, s-maxage=60, stale-while-revalidate=300";
   const key = process.env.FINNHUB_KEY;
   if (!key) return res.status(503).json({ error: "no FINNHUB_KEY set on this deployment", needsKey: true });
   try {
@@ -23,6 +25,7 @@ export default async function handler(req, res) {
     // Finnhub answers 200 with zeroes for a symbol it does not cover, which would otherwise become
     // a market cap of zero and an EV that quietly equals net debt.
     if (!d || typeof d.c !== "number" || d.c === 0) return res.status(404).json({ error: `no quote for ${symbol}` });
+    res.setHeader("Cache-Control", CACHE_OK);
     return res.status(200).json({ symbol, price: d.c, change: d.dp, high: d.h, low: d.l, prevClose: d.pc, at: Date.now() });
   } catch (e) {
     console.error("quote failed:", e && e.message);

@@ -119,7 +119,14 @@ export default async function handler(req, res) {
   if (!cik || cik.length > 10) return res.status(400).json({ error: "cik must be digits" });
   // Filings change once a quarter at most, so a long shared cache is honest here and it is also
   // what keeps this inside SEC's rate limits when several lookups land at once.
-  res.setHeader("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=86400");
+  // The cache header goes on the SUCCESS path only, at the single `return res.status(200)` below.
+  // It used to be set here, before the try — so every failure carried it too, and a 502 saying
+  // "couldn't reach SEC" or a 404 saying "no XBRL data on file" was handed to the edge with six
+  // hours of s-maxage and a day of stale-while-revalidate behind it. One blip at SEC and every
+  // reader looking up that company gets the error for six hours, after SEC has recovered, with
+  // nothing retrying because the CDN is answering. A failure is the one response that must not be
+  // cached: it is the one most likely to be wrong a second later.
+  const CACHE_OK = "public, s-maxage=21600, stale-while-revalidate=86400";
   try {
     const [factsRes, subRes] = await Promise.all([
       fetch(`${SEC}/api/xbrl/companyfacts/CIK${pad(cik)}.json`, { headers: UA }),
@@ -161,6 +168,7 @@ export default async function handler(req, res) {
       filings.push({ form: r.form[i], filed: r.filingDate[i], accn: r.accessionNumber[i], doc: r.primaryDocument[i], period: r.reportDate ? r.reportDate[i] : null });
       if (filings.length >= 120) break;
     }
+    res.setHeader("Cache-Control", CACHE_OK);
     return res.status(200).json({
       // The NUMERIC sic is what industry detection keys off. The description is prose that varies
       // ("State Commercial Banks", "National Commercial Banks"), whereas the code is a range you

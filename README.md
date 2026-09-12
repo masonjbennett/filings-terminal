@@ -2164,6 +2164,24 @@ development exercises the real code path against real SEC responses.
 
 ## Next
 
+0. **A stock split fabricates an EPS collapse, and there is no split handling anywhere in the engine.**
+   Demonstrated rather than measured — it needs no filer to confirm, only the mechanism. `epsBasic`,
+   `epsDil` and `dps` are `how: "fetched"` per period, and rule 2 takes the value from the NEWEST
+   filing carrying that period. A 10-K carries three years of comparatives, so the years inside a
+   recent filing's window get the filer's SPLIT-RESTATED figures while older years keep the
+   pre-split figures from their own filings. Every column is individually correct — the filer really
+   did report each one — and the SERIES is a fabrication. On a fixture with a 10-for-1 split three
+   years into an eight-year sheet, EPS reads 19 → 2.4 at the boundary and **`epsGrowth` prints
+   −87.4% for a year in which earnings per share actually grew 26%.** The population is the opposite
+   of obscure: NVDA (10:1, 2024), AMZN and GOOGL (20:1, 2022), TSLA (3:1 2022, 5:1 2020), AAPL (4:1,
+   2020) — an eight-year sheet on any of them spans a split.
+   **The data to fix it is already in the payload.** companyfacts carries every reported fact
+   including the same period filed more than once, so where two filings state one period's EPS at a
+   clean ratio, that ratio IS the split factor and can be carried back over the earlier years. That
+   makes it a rule rather than a lookup — no split calendar, no outside source. It wants measuring
+   across the fixture cache before it ships, which is why it is here and not done: the risk is
+   mistaking a restatement for a split.
+
 1. **Tronox's $39m double count, the one thing rule 15 and rule 16 between them still cannot reach.**
    Its long-term tag carries FINANCE LEASES as well, so `T` equals neither Noncurrent nor
    Noncurrent + Current and no identity closes; its lease residual is untagged, so there is no second

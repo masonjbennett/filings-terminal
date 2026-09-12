@@ -35,14 +35,29 @@ export default async function handler(req, res) {
   if (!cik) return res.status(400).json({ error: "cik required" });
   // The accession number becomes part of a URL path, so it is validated rather than trusted.
   if (!/^\d{10}-\d{2}-\d{6}$/.test(accn)) return res.status(400).json({ error: "accn must look like 0000320193-25-000079" });
-  res.setHeader("Cache-Control", "public, s-maxage=604800, stale-while-revalidate=604800");
+  // A WEEK of shared cache, which is right for the answer and was wrong for the failures. This
+  // header used to be set here, before the try — and both failure paths below return HTTP **200**
+  // with `rendered: false`, because "this filing predates the renderer" is a legitimate answer. So a
+  // timeout, a DNS blip or a 503 from SEC was cached as a SUCCESS for seven days, with seven more of
+  // stale-while-revalidate: that filing's per-cell section links silently gone for a fortnight, for
+  // every reader, with nothing retrying because the edge is answering. On a page whose argument is
+  // that every reported figure opens the document it came from, a cached-success failure is the
+  // quietest way to lose it.
+  //
+  // A 404 IS the durable answer — the filing genuinely has no FilingSummary — so it keeps the week.
+  // Everything else is transient and must not be cached at all.
+  const CACHE_OK = "public, s-maxage=604800, stale-while-revalidate=604800";
+  const NO_CACHE = "no-store";
 
   const base = `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accn.replace(/-/g, "")}`;
   try {
     const r = await fetch(`${base}/FilingSummary.xml`, { headers: UA });
     // Older filings predate the Financial Report renderer. That is not an error — the caller just
     // links to the filing index instead, which always exists.
-    if (!r.ok) return res.status(200).json({ base, index: `${base}/`, reports: [], rendered: false });
+    if (!r.ok) {
+      res.setHeader("Cache-Control", r.status === 404 ? CACHE_OK : NO_CACHE);
+      return res.status(200).json({ base, index: `${base}/`, reports: [], rendered: false });
+    }
     const xml = await r.text();
     const reports = [];
     for (const m of xml.matchAll(/<Report[^>]*>([\s\S]*?)<\/Report>/g)) {
@@ -53,9 +68,11 @@ export default async function handler(req, res) {
       const kinds = Object.entries(SECTION_PATTERNS).filter(([, re]) => re.test(clean)).map(([k]) => k);
       reports.push({ name: clean, url: `${base}/${file}`, kinds });
     }
+    res.setHeader("Cache-Control", CACHE_OK);
     return res.status(200).json({ base, index: `${base}/`, reports, rendered: true });
   } catch (e) {
     console.error("sections failed:", e && e.message);
+    res.setHeader("Cache-Control", NO_CACHE);
     return res.status(200).json({ base, index: `${base}/`, reports: [], rendered: false });
   }
 }

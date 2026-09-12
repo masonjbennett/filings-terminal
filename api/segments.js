@@ -281,7 +281,9 @@ export default async function handler(req, res) {
   if (!cik || cik.length > 10) return res.status(400).json({ error: "cik must be digits" });
   // A 10-K changes once a year. The long shared cache is what keeps a segment lookup — three fetches
   // and up to 20MB of parsing — from being repeated for every reader.
-  res.setHeader("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=604800");
+  // Success path only — see api/facts.js. A cached 404 here means "no 10-K on file" or "no XBRL
+  // instance" survives a day plus a week of stale-while-revalidate, for a filer that has both.
+  const CACHE_OK = "public, s-maxage=86400, stale-while-revalidate=604800";
   try {
     const sub = await get(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, true);
     const r = (sub.filings && sub.filings.recent) || { form: [] };
@@ -683,6 +685,7 @@ export default async function handler(req, res) {
     views.push(...out);
     for (const t of Object.keys(consolidated)) if (!views.some(v => v.concepts.includes(t))) delete consolidated[t];
 
+    res.setHeader("Cache-Control", CACHE_OK);
     return res.status(200).json({
       cik, name: sub.name, accn, period: r.reportDate ? r.reportDate[i] : null, filed: r.filingDate[i],
       filingUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${bare}/${accn}-index.htm`,
