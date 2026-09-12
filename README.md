@@ -37,9 +37,9 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 1,028 assertions, 58 of 58 mutations behaved as required (56 caught, 2 negative controls
+  Sep 12 2026: 1,028 assertions, 64 of 64 mutations behaved as required (62 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
-  baseline (items 11-12 under Next) so that a NEW instance fails and so does fixing an old one
+  EXACT baselines that are now all empty — every row it found is fixed, and emptying each one required deleting its entry, which is the ratchet biting in the direction that fires least often so that a NEW instance fails and so does fixing an old one
   without deleting its entry — which is not theoretical: deleting `DERIVED_PC.lossesTotal`, the dead
   derivation it found, failed the suite until its baseline entry went too. Its scoping is the part
   worth knowing if you extend it: every name-match is checked against the keys its READ SITE can see,
@@ -85,6 +85,19 @@ Two decisions inside it:
   see them, `mktCap + totalDebt + preferred + nciBs - cash - sti` among them, which is the one a
   reader most wants on a page arguing provenance. Found by `t-declared`, which now asserts both
   halves — that the card carries each line's formula and that it draws the marker from it.
+  **The card also carries the treasury-stock method now** (Sep 12 2026). `treasuryMethod` was declared
+  `how: "computed"` in the dilution section and implemented nowhere, so "Fully diluted shares (TSM)"
+  rendered blank on every sheet ever served. It could not be wired where it stood — it divides by the
+  price, and the derivations run before a price exists and over every column, while a price belongs to
+  one — so it moved to the `ev` section and `applyQuote`, with its four fetched inputs staying in the
+  dilution section where a reader comparing them wants them. Two refusals carry it: **all three award
+  inputs or nothing**, because a count built from options while the RSUs are untagged is a partial
+  total under a label that says "fully diluted", and the row's own NAME is the claim; and the
+  increment **floors at zero** when the weighted-average strike is at or above the price, because a
+  weighted average cannot say which tranches are in the money and the raw formula would otherwise
+  SUBTRACT shares and print a diluted count below basic. Untagged it is absent from the card rather
+  than blank on it. **NOT measured**: how many filers tag all three undimensioned — the award tags are
+  commonly dimensioned by plan, so this may resolve for very few. That is coverage, not correctness.
 
 ## Rules in the extraction engine
 
@@ -1455,6 +1468,23 @@ which tags are present — a corporate with a finance arm reports loans too.
   have, including every EBITDA-based leverage ratio: a bank is levered on capital ratios, so Net
   debt/EBITDA is a category error rather than a gap.
 
+  **A bank's top line needs BOTH legs, and the reconstruction has to run before the row that uses it**
+  (Sep 12 2026, found by `t-declared`). Net interest income plus fees is the identity, and three rows
+  computed it as `sum(nii, noninterestIncome)` — but `sum` returns a total when only ONE argument is
+  present, treating the missing one as zero. So a filer tagging fee income and no net interest income
+  printed its FEES as total revenue: **$30bn against a real $90bn** in the fixture that found it, which
+  is rule 7's partial total in the register the template's first comment describes for MetLife — a
+  fraction of the top line, with every margin, growth rate and EV/Revenue built on it. The identity is
+  one named helper now and refuses unless both legs are present.
+  Separately, and the reason it surfaced: `DERIVED_BANK.revenue` sits at **slot 0**, because
+  `DERIVED.revenue` is a no-op reserving it so the bank override precedes every margin that divides by
+  revenue — while `DERIVED_BANK.nii` was appended at **slot 47**, since a key only in an industry set
+  lands at the end. The derivations run in insertion order over one shared column, so `revenue` read
+  `nii` before the reconstruction filled it, and **"Total revenue" disagreed with "Total revenue
+  (bank)" two rows below it** — the same expression, running later. `DERIVED.nii: () => null` reserves
+  the earlier slot. **NOT measured**: how many real filers sit in either population. Both need the
+  fixture cache; the fix makes the sheet refuse rather than misreport either way.
+
   The sweep held up better than the record suggested — money-centres, regionals, a card issuer and a
   custody bank all populate, and State Street's 0.17 loans/deposits is correct for a custodian
   rather than a bug. Three things it did find: **Capital One reported $1.1bn of total debt** (its
@@ -2194,38 +2224,6 @@ development exercises the real code path against real SEC responses.
    comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
    and a structure that has usually been reorganised, which is why it was not done — but the tab now
    carries enough filers that the question is worth re-asking.
-11. **`treasuryMethod` is rule 25 still open, and it is in the wrong LAYER rather than missing an
-   entry.** `dilution/treasuryMethod` declares `how: "computed"` over
-   `sharesOut + optionsOut - (optionsOut * optionsStrike / price) + rsuOut`. Three of those four are
-   fetched; `price` is a `how: "market"` row. And a market input is invisible to the derivation layer:
-   `fillCol` runs the derivations over a column with no price in it, and `applyQuote` runs afterwards
-   and only on the NEWEST column, because there is one price and an EV/EBITDA against FY2019 would be
-   today's enterprise value over a six-year-old profit. So adding a `DERIVED` entry would compute it
-   from an absent price on every column — the obvious fix is the wrong one.
-   **The placement it needs is already solved once here, in the other direction.** Every
-   price-dependent figure lives in the `ev` section, which was lifted OUT of the year grid precisely
-   because "a table row of seven blanks buried the only real value off the right-hand edge of the
-   scroll". A treasury-method share count in the grid would recreate exactly that, so the decision is
-   whether the row moves to the `ev` section and the card, or goes. `t-declared` now asserts the class
-   — a computed row naming a market input — so the same mistake cannot be made quietly on a new row.
-   Its sibling `premia/premium1d` is the second instance and is doubly stuck: it divides by
-   `undisturbed`, a market row the free quote tier cannot supply at all.
-   **`netDebtBridge`, the other half of this item, is fixed** (Sep 12 2026). It declared `netDebt` and
-   was implemented nowhere, so "Net debt (equity bridge)" rendered blank on every sheet ever served
-   under a ƒ advertising the formula. It is one line, sitting directly under `netDebt` because the
-   derivations run in insertion order over one shared `v`; no `NOT_APPLICABLE` list carries `netDebt`,
-   so it makes no claim for any industry the row above does not already make. Verified in a browser
-   against a fixture: five of five columns filled, arithmetic matching total debt less cash.
-12. **A bank's revenue reconstruction may run too early to use its own `nii` reconstruction — NOT
-   measured.** The derivations run in insertion order over one shared `v`, and `DERIVED.revenue` is a
-   no-op that exists purely to reserve slot 0, so `DERIVED_BANK.revenue` lands before every margin
-   that divides by revenue. That is deliberate and right. But it means `revenue` reads `v.nii` at
-   slot 0, while `DERIVED_BANK.nii` reconstructs `nii` from gross interest income and expense at the
-   END of the table. So a bank tagging neither a revenue total nor `nii`, but tagging the two
-   interest lines, would get its `nii` reconstructed too late for its revenue to be. Whether any
-   filer is in that intersection is **unmeasured** — it needs the fixture cache, and both halves are
-   individually rare. Recorded rather than fixed for that reason; `t-declared` pins this read and the
-   one other like it so a third cannot appear unnoticed.
 
 
 ## A note on how this got built

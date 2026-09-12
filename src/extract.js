@@ -977,6 +977,14 @@ export const DERIVED = {
   // Occupying the first position here means DERIVED_BANK's `revenue` reconstruction lands before
   // netMargin, revGrowth, assetTurn and EV/Revenue read it. Same reason `totalDebt` is overridden
   // in place rather than added.
+  // Reserves a slot the same way `revenue` below does, and for a dependency between the two. A key
+  // only present in an industry set is APPENDED, so `DERIVED_BANK.nii` used to land at the end of the
+  // merged table — after `revenue` at slot 0 had already read `v.nii` and found nothing. The two rows
+  // computing a bank's top line from the identical expression then disagreed purely by position:
+  // "Total revenue" read $30bn of fee income while "Total revenue (bank)" two rows down read the full
+  // $90bn, because only the second ran after the reconstruction. Reserving the slot puts the
+  // reconstruction first and makes the sheet answer the question once.
+  nii: () => null,
   revenue: () => null,
   // Net income cannot be SMALLER than net income available to common — the second is the first
   // less preferred dividends. Where that invariant breaks, the `NetIncomeLoss` fact is a
@@ -1099,6 +1107,15 @@ export const DERIVED = {
 
 // Bank-only derivations. Kept separate so they only run for a depository — computing an efficiency
 // ratio for Apple would produce a number, and a number that means nothing is worse than a blank.
+// A bank's top line is net interest income PLUS fees, and BOTH legs are required — which `sum` does
+// not enforce, because it treats a missing argument as zero and returns a total when only one leg is
+// present. Three rows shared that expression and all three could therefore print fee income alone as
+// a bank's revenue: a filer tagging `NoninterestIncome` and no net interest income read $30bn against
+// a real $90bn in the fixture that found it. That is rule 7's partial total, in the register the
+// template's own first comment describes for MetLife — 3% of the top line, with every margin, growth
+// rate and EV/Revenue built on it. Named once so the three cannot drift apart again.
+const bankTopLine = v => (v.nii == null || v.noninterestIncome == null ? null : v.nii + v.noninterestIncome);
+
 export const DERIVED_BANK = {
   // Returns NULL where the filer tagged it, not the fetched figure. `fillCol` writes
   // `meta[k] = { status: "computed" }` for ANY derivation returning non-null, so handing back the
@@ -1115,9 +1132,9 @@ export const DERIVED_BANK = {
   // where a bank tags no revenue total at all this reconstructs it rather than leaving the top line
   // of the income statement blank: Truist files neither `Revenues` nor `RevenuesNetOfInterestExpense`.
   // Returns null when the filer did tag one, leaving the reported figure untouched.
-  revenue: v => (v.revenue != null ? null : sum(v.nii, v.noninterestIncome)),
-  totalRevenueBank: v => sum(v.nii, v.noninterestIncome),
-  efficiency: v => div(v.noninterestExpense, sum(v.nii, v.noninterestIncome)),
+  revenue: v => (v.revenue != null ? null : bankTopLine(v)),
+  totalRevenueBank: bankTopLine,
+  efficiency: v => div(v.noninterestExpense, bankTopLine(v)),
   niiOnAssets: v => div(v.nii, v.totalAssets),
   loansToDeposits: v => div(v.loans, v.deposits),
   loansGross: v => sum(v.loans, v.allowance),

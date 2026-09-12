@@ -416,6 +416,13 @@ export const SECTIONS = [
   { k: "divYield", label: "Dividend yield", how: "market", formula: "dps / price" },
   { k: "bvps", label: "Book value per share", how: "computed", formula: "equity / sharesOut" },
   { k: "tbvps", label: "Tangible book per share", how: "computed", formula: "(equity - goodwill - intangibles) / sharesOut" },
+  // The treasury stock method, and `market` rather than `computed` because it needs the price — which
+  // is what put it in this section. Gated on ALL of its inputs being tagged, not just some: a "fully
+  // diluted" count built from options while the filer's RSUs are untagged is a partial total wearing
+  // the label of a total, which is rule 7's trap, and the row's own name is the claim. Untagged, it
+  // is ABSENT from the card rather than blank on it, because the card drops null rows — failing to
+  // nothing is recoverable, failing to a plausible wrong share count is not.
+  { k: "treasuryMethod", label: "Fully diluted shares (TSM)", how: "market", formula: "sharesOut + optionsOut - (optionsOut * optionsStrike / price) + rsuOut" },
 ]},
 { id: "dcf", title: "DCF Inputs", feeds: "DCF", lines: [
   // Rule 25. Both rows below were declared and neither was implemented: `chgNwc` rendered blank on
@@ -446,7 +453,12 @@ export const SECTIONS = [
   { k: "optionsStrike", label: "Weighted avg exercise price", how: "fetched", tags: ["ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingWeightedAverageExercisePrice"] },
   { k: "rsuOut", label: "Unvested RSUs", how: "fetched", tags: ["ShareBasedCompensationArrangementByShareBasedPaymentAwardEquityInstrumentsOtherThanOptionsNonvestedNumber"] },
   { k: "unrecognisedComp", label: "Unrecognised comp cost", how: "fetched", tags: ["EmployeeServiceShareBasedCompensationNonvestedAwardsTotalCompensationCostNotYetRecognized"] },
-  { k: "treasuryMethod", label: "Fully diluted shares (TSM)", how: "computed", formula: "sharesOut + optionsOut - (optionsOut * optionsStrike / price) + rsuOut" },
+  // `treasuryMethod` used to sit here, declared `how: "computed"` and implemented nowhere, so it
+  // rendered blank on every sheet ever served. It could not be wired where it stood: it divides by
+  // `price`, and the derivations run before any price exists and over every column, while a price
+  // belongs to one. It lives in the `ev` section now, with the rest of the priced figures, on the
+  // card that was lifted out of the grid for exactly that reason. The four rows above are its inputs
+  // and stay here, where a reader comparing them to the diluted count wants them. Sep 12 2026.
 ]},
 // The EA build carried a Premia Paid tab off the undisturbed price. Both inputs are market data,
 // not filings — but the announcement 8-K that sets the "undisturbed" date IS findable.

@@ -7,6 +7,7 @@
 import { ok, eq, done } from "./_t.mjs";
 import { SECTIONS } from "../src/template.js";
 import { DERIVED_BANK } from "../src/extract.js";
+import { buildGrid } from "../src/grid.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -119,6 +120,47 @@ const tempEquity = SECTIONS.flatMap(s => s.lines).find(l => l.k === "tempEquity"
   eq(selfReturning.length, 0,
     `no derivation returns its own fetched value${selfReturning.length ? " — found: " + selfReturning.join(", ") : ""}. ` +
     `fillCol overwrites meta for any non-null return, so doing that silently deletes the cell's link to its filing.`);
+}
+
+// ── A bank's top line needs BOTH legs, and the reconstruction must run before the row that uses it ──
+// Rule 7 — a partial total is worse than no total — arriving through a helper rather than a tag.
+// `sum` returns a total when only ONE argument is present, treating the missing one as zero, and
+// three rows computed a bank's top line as `sum(nii, noninterestIncome)`. So a filer tagging fee
+// income and no net interest income printed its FEES as total revenue: $30bn against a real $90bn in
+// the fixture below. That is the MetLife shape the template's first comment describes — a fraction of
+// the top line, with every margin, growth rate and EV/Revenue built on it.
+//
+// The second half is position. `DERIVED_BANK.revenue` sits at slot 0, because `DERIVED.revenue` is a
+// no-op reserving it so the bank override precedes every margin that divides by revenue. But
+// `DERIVED_BANK.nii` was APPENDED at slot 47, so `revenue` read `v.nii` before the reconstruction
+// filled it — and "Total revenue" then disagreed with "Total revenue (bank)" two rows below, which is
+// the same expression running later. `DERIVED.nii: () => null` reserves the earlier slot.
+// MUTATION: restoring `sum(...)` in any of the three rows, or dropping the reserved `nii` slot, fails.
+{
+  const FILED = "2026-02-01", END = "2025-12-31";
+  const d = (tag, val) => ({ [tag]: { label: tag, units: { USD: [{ start: "2025-01-01", end: END, val, fy: 2025, fp: "FY", filed: FILED, form: "10-K", accn: "a-1" }] } } });
+  const bank = facts => {
+    const g = buildGrid({ cik: "1", name: "BANK", sicCode: "6022", facts,
+      filings: [{ form: "10-K", filed: FILED, accn: "a-1", period: END }] }, null, 8);
+    return g.cols[g.cols.length - 1];
+  };
+  // Neither a revenue total nor net interest income tagged, but both interest lines and fees are.
+  const c = bank({ ...d("InterestAndDividendIncomeOperating", 100e9), ...d("InterestExpense", 40e9), ...d("NoninterestIncome", 30e9) });
+  eq(c.v.nii, 60e9, "net interest income is reconstructed from the two interest lines: 100 − 40");
+  eq(c.v.revenue, 90e9, "and the TOP LINE uses it — 60 + 30 — rather than reading a null and printing fees alone");
+  eq(c.v.totalRevenueBank, 90e9, "the bank-overlay row computing the same identity agrees");
+  eq(c.v.revenue, c.v.totalRevenueBank, "the two rows cannot disagree by position again, which is the whole point of the reserved slot");
+  // Fees and nothing else: no net interest income, none reconstructible. A bank's revenue is not its
+  // fee income, so the row refuses rather than printing a third of the top line.
+  const fees = bank(d("NoninterestIncome", 30e9));
+  eq(fees.v.revenue, null, "fee income alone is NOT a bank's revenue — both legs or nothing");
+  eq(fees.v.totalRevenueBank, null, "and the overlay row refuses identically");
+  eq(fees.v.efficiency, null, "so does the efficiency ratio, which divides by the same total");
+  // The ordinary case still behaves: a bank that tags its own total keeps it, untouched.
+  const tagged = bank({ ...d("Revenues", 182.4e9), ...d("InterestIncomeExpenseNet", 95.4e9), ...d("NoninterestIncome", 87e9) });
+  eq(tagged.v.revenue, 182.4e9, "a bank that tags its own revenue keeps the filed figure (the JPMorgan shape)");
+  eq(tagged.meta.revenue.status, "reported", "and it keeps `reported` status, so the cell still opens the filing it came from");
+  eq(tagged.v.totalRevenueBank, 182.4e9, "while the reconstruction beside it agrees to the dollar: 95.4 + 87.0");
 }
 
 done("t-balance");

@@ -130,4 +130,54 @@ for (const ind of ["pc", "life", "health", "reit"])
 for (const [k, label] of Object.entries(INDUSTRY_LABEL))
   ok(label.length <= 16, `the "${k}" status label stays short enough not to widen the sticky column — "${label}" is ${label.length} chars`);
 
+// ── The treasury stock method: all three inputs or nothing, and never below basic ────────────────
+// `treasuryMethod` was declared `how: "computed"` in the dilution section and implemented NOWHERE,
+// so "Fully diluted shares (TSM)" rendered blank on every sheet ever served. It could not be wired
+// where it stood: it divides by the price, and the derivations run before a price exists and over
+// every column, while a price belongs to one. It is a `market` row in the `ev` section now, computed
+// in applyQuote beside the rest of the bridge, and shown on the card.
+//
+// Two refusals carry it, and both are the house rule — failing to nothing is recoverable, failing to
+// a plausible wrong number is not. A share count is the worst place to be plausibly wrong: every
+// per-share figure divides by it.
+// MUTATION: dropping any leg of the readiness gate, or the in-the-money floor, fails here.
+{
+  const FILED = "2026-02-01", END = "2025-12-31";
+  const shares = (tag, val, unit = "shares") => ({ [tag]: { label: tag, units: { [unit]: [{ end: END, val, fy: 2025, fp: "FY", filed: FILED, form: "10-K", accn: "a-1" }] } } });
+  const OPT = "ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingNumber";
+  const STRIKE = "ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingWeightedAverageExercisePrice";
+  const RSU = "ShareBasedCompensationArrangementByShareBasedPaymentAwardEquityInstrumentsOtherThanOptionsNonvestedNumber";
+  const build = (extra, price) => {
+    const facts = {
+      Revenues: { label: "r", units: { USD: [{ start: "2025-01-01", end: END, val: 1000, fy: 2025, fp: "FY", filed: FILED, form: "10-K", accn: "a-1" }] } },
+      ...shares("dei:EntityCommonStockSharesOutstanding", 1000),
+      ...extra,
+    };
+    const g = buildGrid({ cik: "1", name: "N", sicCode: "3674", facts, filings: [{ form: "10-K", filed: FILED, accn: "a-1", period: END }] }, { price }, 8);
+    return g.cols[g.cols.length - 1];
+  };
+  const all = { ...shares(OPT, 100), ...shares(STRIKE, 50, "USD/shares"), ...shares(RSU, 20) };
+
+  // In the money: the assumed buyback retires half the grant at a $50 strike against a $100 price,
+  // so 100 options add 50 shares, and the RSUs add their 20 in full — they have no exercise price.
+  eq(build(all, 100).v.treasuryMethod, 1070, "in the money: 1,000 basic + (100 − 100×50/100) + 20 RSUs = 1,070");
+
+  // Out of the money, which is the one that would print a diluted count BELOW basic without the
+  // floor: at a $150 strike the raw formula gives 100 − 150 = −50 shares.
+  eq(build({ ...shares(OPT, 100), ...shares(STRIKE, 150, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod, 1020,
+    "out of the money: the increment floors at ZERO, so the count is basic plus RSUs — never below basic");
+  ok(build({ ...shares(OPT, 100), ...shares(STRIKE, 150, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod >= 1000,
+    "and stating the invariant directly: a fully diluted count is never below the basic count");
+  eq(build({ ...shares(OPT, 100), ...shares(STRIKE, 100, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod, 1020,
+    "at the money the increment is zero too — the boundary is >=, not >");
+
+  // All three or nothing. Each leg dropped in turn, because a gate that checks two of three passes
+  // every test written with the third present.
+  eq(build({ ...shares(STRIKE, 50, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod, null, "no options count, no diluted count");
+  eq(build({ ...shares(OPT, 100), ...shares(RSU, 20) }, 100).v.treasuryMethod, null, "no exercise price, no diluted count — the buyback cannot be sized");
+  eq(build({ ...shares(OPT, 100), ...shares(STRIKE, 50, "USD/shares") }, 100).v.treasuryMethod, null,
+    "no RSU count, no diluted count: options-only would be a PARTIAL total under a label that says fully diluted, which is rule 7 with the claim in the row's own name");
+  eq(build({}, 100).v.treasuryMethod, null, "and a filer tagging none of them gets nothing rather than its basic count relabelled");
+}
+
 done("t-valuation");

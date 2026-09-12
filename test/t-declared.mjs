@@ -219,16 +219,17 @@ for (const sec of SECTIONS)
 // Valuation sheet of the workbook (src/App.jsx:464 skips only `manual` lines). They are rule 25's
 // exact shape, still open, and they are a FIX rather than a suite's business — changing the engine
 // wants the 160-filer fixture cache and a full-diff, which is the next session's work.
-const UNIMPLEMENTED_ON_A_TAB = {
-  "dilution/treasuryMethod": "the treasury-stock method over `optionsOut`/`optionsStrike`/`rsuOut` — all three fetched — divided by `price`, which is a MARKET input. The next check is why that cannot simply be wired.",
-};
+// EMPTY, and that is the state to defend. Both rows that were here are resolved: `netDebtBridge` is
+// implemented (it restates `netDebt`, one line, directly under it), and `treasuryMethod` moved to the
+// `ev` section and applyQuote, because it needs a price and the derivation layer never has one.
+// MUTATION: un-implementing either, or declaring a new computed row with no derivation, fails here.
+const UNIMPLEMENTED_ON_A_TAB = {};
 const unimplementedOnATab = rows
   .filter(r => r.line.how === "computed" && !implemented.has(r.line.k) && tabSecs.has(r.sec.id))
   .map(r => r.id).sort();
 eq(unimplementedOnATab.join("\n"), Object.keys(UNIMPLEMENTED_ON_A_TAB).sort().join("\n"),
-  `exactly the known computed rows on a RENDERED tab have no implementation. A row added to this list is rule 25 again — ` +
-  `a blank cell under a ƒ marker advertising a formula, with status deliberately null so nothing on the page says it was never computed. ` +
-  `A row REMOVED from it is a fix: delete its entry here.`);
+  `no computed row on a RENDERED tab is without an implementation. One that is, is rule 25 again — a blank cell under a ƒ marker ` +
+  `advertising a formula, with status deliberately null so nothing on the page says it was never computed.`);
 
 // Every OTHER computed row is implemented. Stated as its own assertion so the baseline above can
 // never quietly grow to cover the whole template.
@@ -246,16 +247,14 @@ for (const r of rows)
 // Two derivations read a later key, and BOTH are deliberate, so this is a ratchet rather than a rule:
 //   · `nciDerived` reads `nciBs` and MUST run first — it asks "did the filer tag the interest?", and
 //     `nciBs`'s own derivation fills that key. Reversed, it would always see a value and never fire.
-//   · `DERIVED_BANK.revenue` reads `nii`, and `DERIVED.revenue: () => null` exists purely to RESERVE
-//     SLOT 0 so the bank override lands before netMargin, revGrowth, assetTurn and EV/Revenue read it.
-//     Its cost is real but unmeasured here: a bank tagging neither a revenue total nor `nii`, but
-//     tagging gross interest income and expense, gets `nii` reconstructed at the end of the table —
-//     too late for the revenue reconstruction at the front to use it.
+// There WAS a second, and finding it is what this check is for: `DERIVED_BANK.revenue` read `nii`
+// from slot 0 while `nii` was reconstructed at slot 47, so a bank's top line and the identical
+// expression two rows below it disagreed by position. `DERIVED.nii: () => null` now reserves the
+// earlier slot and both answer the same. Fixed Sep 12 2026 rather than recorded.
 // MUTATION: moving `netDebtBridge` above `netDebt`, or adding any new later-key read, fails here.
 {
   const KNOWN_FORWARD_READS = {
     "DERIVED.nciDerived → nciBs": "asks whether the FILER tagged it, so it must run before nciBs's own derivation fills the key",
-    "bank.revenue → nii": "DERIVED.revenue reserves slot 0 so the bank override precedes every margin that divides by revenue; nii is reconstructed at the end",
   };
   const forward = [];
   for (const ind of [null, ...Object.keys(DERIVED_BY_INDUSTRY)]) {
@@ -295,10 +294,12 @@ for (const r of rows)
 // MUTATION: declaring a computed formula over a market input on a new row fails here.
 {
   const marketK = new Set(rows.filter(r => r.line.how === "market").map(r => r.line.k));
-  eq(marketK.size, 11, `11 rows are how:"market" — found ${marketK.size}`);
-  const NEEDS_A_PRICE = {
-    "dilution/treasuryMethod": "divides by `price`; sits in the year grid, where a price-dependent row is the thing the EV bridge was moved out to avoid",
-  };
+  eq(marketK.size, 12, `12 rows are how:"market" — found ${marketK.size}`);
+  // EMPTY. `treasuryMethod` was here and is now a `market` row in the `ev` section, computed in
+  // applyQuote where a price exists; `premium1d` is `manual`, because both of ITS inputs are deal
+  // terms. What the check defends is the shape: the next person to declare a computed row over a
+  // priced input finds out here rather than from a blank column.
+  const NEEDS_A_PRICE = {};
   const needsPrice = rows.filter(r => r.line.how === "computed" && r.line.formula &&
     [...r.line.formula.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)].some(m => marketK.has(m[0]))).map(r => r.id).sort();
   eq(needsPrice.join("\n"), Object.keys(NEEDS_A_PRICE).sort().join("\n"),

@@ -230,6 +230,27 @@ function applyQuote(c, industry, quote, ccy) {
   mark("pb", mktCap && v.equity ? mktCap / v.equity : null);
   mark("fcfYield", mktCap && v.fcf != null ? v.fcf / mktCap : null);
   mark("divYield", v.dps ? v.dps / quote.price : null);
+  // The treasury stock method, here rather than in DERIVED because it needs the price and the
+  // derivations run before one exists. Two rules decide what it refuses.
+  //
+  // (1) ALL THREE INPUTS OR NOTHING. A count built from options while the RSUs are untagged is a
+  // partial total under a label that says "fully diluted" — rule 7, and worse than usual because the
+  // row's NAME is the claim. A reader cannot see which leg was missing.
+  //
+  // (2) OPTIONS ARE ONLY DILUTIVE IN THE MONEY, and a weighted-average strike cannot say which
+  // tranches are. The standard treatment is all-or-nothing on the average: at or above the price the
+  // assumed buyback absorbs the whole grant, so the increment is ZERO, never negative. Without that
+  // floor an out-of-the-money grant would SUBTRACT shares and print a diluted count below basic,
+  // which is arithmetic no filing supports.
+  //
+  // NOT MEASURED: how many filers tag all three. companyfacts carries the undimensioned facts only,
+  // and the three award tags are commonly dimensioned by plan — so this may resolve for very few.
+  // That is a coverage question, not a correctness one, and it needs the fixture cache to answer.
+  const tsmReady = v.sharesOut != null && v.optionsOut != null && v.optionsStrike != null && v.rsuOut != null;
+  const tsmIncrement = !tsmReady ? null
+    : v.optionsStrike >= quote.price ? 0
+    : v.optionsOut - (v.optionsOut * v.optionsStrike) / quote.price;
+  mark("treasuryMethod", tsmReady ? v.sharesOut + tsmIncrement + v.rsuOut : null);
 }
 
 // Four windows, because that is what a three-year CAGR spans — the newest LTM column plus the three
