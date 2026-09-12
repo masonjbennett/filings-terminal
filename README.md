@@ -2187,6 +2187,15 @@ development exercises the real code path against real SEC responses.
    Noncurrent + Current and no identity closes; its lease residual is untagged, so there is no second
    witness. A per-filer test needs a witness and this filer supplies none — which may mean the answer
    is the XBRL instance rather than another tag.
+2. **AMT's FY2019 total debt reads $1.9m against a filed $24,055m — UNVERIFIED, and on its face the
+   most severe thing on this list.** An agent finding from the Sep 10 audit whose verifier never ran.
+   If it is real it is not a display bug: `totalDebt` feeds `netDebt`, the EV bridge, `netLev`,
+   `grossLev`, `debtCap` and `debtEquity`, so a filer reading four orders of magnitude light would
+   print an enterprise value, a leverage ratio and a credit profile that all look ordinary and are
+   all wrong — the Capital One and Equinix shape, which rules 15, 16 and the `corpDebt` guard were
+   each written for. What it needs is the narrow thing: fetch AMT, read which tag `totalDebt`
+   actually resolved for FY2019 and what its own balance sheet says. Then either it joins the rules
+   or it is struck from this list as an agent claim that did not survive contact.
 3. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
    honest and marked the comps columns, which is right as far as it goes — the ratio and multiple rows
    are dimensionless and compare fine, and the median is taken only over those. But **Revenue, EBITDA
@@ -2258,6 +2267,16 @@ development exercises the real code path against real SEC responses.
    comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
    and a structure that has usually been reorganised, which is why it was not done — but the tab now
    carries enough filers that the question is worth re-asking.
+11. **A 53-week year flips the sign of revenue growth on four mega-caps — UNVERIFIED.** The other
+   finding the Sep 10/11 audits left without a verifier. A 52/53-week filer runs 371 days in the long
+   year, and the calendar rules (`annualPeriods`, the overlap rule, `gapBefore`) were written for
+   fiscal-year CHANGES rather than for the extra week, so the claim is that a 53-week column compared
+   against a 52-week one inverts the growth rate rather than merely inflating it by ~2%. Note this
+   engine already knows about the shape — the period-length section counts 370-day years explicitly,
+   and the transition-report frame covers year-end changes — so the question is narrow: does the
+   extra week reach `crossColumn`, and on which filers. Worth pairing with item 0: both are about a
+   SERIES being wrong while every column in it is right, which is the class this engine is least
+   instrumented for.
 
 
 ## A note on how this got built
