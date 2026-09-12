@@ -271,20 +271,22 @@ for (const r of rows)
 
 // ── A derivation nothing displays and nothing reads is work thrown away ─────────────────────────
 // The mirror of rule 22: there, a declared formula with no implementation; here, an implementation
-// with no declaration. `DERIVED_PC.lossesTotal` runs on every column of every P&C insurer and its
-// result is displayed by no row and read by no note — every other pc derivation calls the `pcLosses`
-// helper directly rather than reading `v.lossesTotal`.
+// with no declaration. This suite found one on its first run — `DERIVED_PC.lossesTotal`, which
+// computed on every column of every P&C insurer into a key no row declared and no note read, while
+// the five derivations beside it called the `pcLosses` helper directly. It is deleted, and the list
+// below is empty, which is the state worth defending.
 //
 // A derivation key is legitimately absent from the rows when a `flagNote` keys off it — that is how
 // `nciDerived`, `equityThin` and `grossProfitDerived` earn their place, which is the next check.
+// MUTATION: adding a derivation for a key no row declares fails here; so did deleting lossesTotal,
+// which is the ratchet working in the direction that matters least often and matters most.
 const rowKeys = new Set(rows.map(r => r.line.k));
 const flagKeys = new Set(rows.flatMap(r => (r.line.flagNote ? Object.keys(r.line.flagNote) : [])));
-const ORPHANS = { "pc.lossesTotal": "computed on every P&C column and read by nothing — the other pc derivations call the `pcLosses` helper, not `v.lossesTotal`" };
 const orphans = [];
 for (const [name, tbl] of Object.entries({ DERIVED, ...DERIVED_BY_INDUSTRY }))
   for (const k of Object.keys(tbl)) if (!rowKeys.has(k) && !flagKeys.has(k)) orphans.push(`${name === "DERIVED" ? "DERIVED" : name}.${k}`);
-eq(orphans.sort().join("\n"), Object.keys(ORPHANS).sort().join("\n"),
-  "exactly the known orphan derivations compute into `v` without a row or a flagNote reading the result");
+eq(orphans.sort().join("\n"), "",
+  `no derivation computes into \`v\` without a row or a flagNote reading the result${orphans.length ? ` — orphaned: ${orphans.join(", ")}` : ""}`);
 
 // ── Names that must match other names, or nothing is enforced ───────────────────────────────────
 // Every check below is of the same kind and it is the kind that fails silently: a set naming a row
@@ -292,21 +294,62 @@ eq(orphans.sort().join("\n"), Object.keys(ORPHANS).sort().join("\n"),
 // fire, and an industry key INDUSTRY() cannot return is unreachable code that looks like a rule.
 // None of these is hypothetical — the mezzanine row held a KEEP slot for a tag SEC 404s, and nothing
 // could fail because a tag that never matches looks exactly like a filer that never tagged.
+// SCOPE IS THE HALF THAT IS EASY TO GET WRONG, and the first version of this suite got it wrong:
+// it checked every set against the UNION of core and all six overlays, which passes a name that
+// exists but can never be reached from where the set is read. `NOT_APPLICABLE.bank` naming a
+// pc-only key would then blank nothing on a bank — the Chubb enterprise-value failure, back inside
+// the one list that exists to prevent it. So each set is checked against the keys its READ SITE can
+// actually see, and nothing wider.
+const coreK = new Set(SECTIONS.flatMap(s => s.lines.map(l => l.k)));
+const overlayK = Object.fromEntries(Object.entries(OVERLAY_SECTIONS)
+  .map(([ind, secs]) => [ind, new Set(secs.flatMap(s => s.lines.map(l => l.k)))]));
 const allK = new Set(rows.map(r => r.line.k));
-const mustBeRows = (label, names) => {
-  const bad = [...names].filter(n => !allK.has(n));
-  eq(bad.join(" "), "", `every name in ${label} is a line \`k\` the template actually declares${bad.length ? ` — orphaned: ${bad.join(" ")}` : ""}`);
+const forIndustry = ind => new Set([...coreK, ...overlayK[ind]]);
+const mustBeRows = (label, names, scope, why) => {
+  const bad = [...names].filter(n => !scope.has(n));
+  eq(bad.join(" "), "", `every name in ${label} is a line \`k\` reachable from where it is read${bad.length ? ` — out of scope: ${bad.join(" ")}` : ""} — ${why}`);
 };
-mustBeRows("EQUITY_DENOMINATED", EQUITY_DENOMINATED);
-mustBeRows("CURRENCY_DENOMINATED", CURRENCY_DENOMINATED);
-mustBeRows("COMPS_MEDIAN", COMPS_MEDIAN);
-mustBeRows("COMPS_ROWS", COMPS_ROWS.flatMap(g => g.rows.map(r => r.k)));
-for (const [ind, list] of Object.entries(NOT_APPLICABLE)) mustBeRows(`NOT_APPLICABLE.${ind}`, list);
-mustBeRows("YOY keys", Object.keys(YOY));
-mustBeRows("YOY sources", Object.values(YOY));
-mustBeRows("CAGRS keys", Object.keys(CAGRS));
-mustBeRows("CAGRS sources", Object.values(CAGRS).map(c => c[0]));
-mustBeRows("pinIdentity minus/equals", rows.filter(r => r.line.pinIdentity).flatMap(r => [r.line.pinIdentity.minus, r.line.pinIdentity.equals]));
+// The comps sets are read as `r.k` on a COMPS_ROWS entry, and a comps sheet is built from core rows
+// only, so an overlay key in any of them is a rule that can never fire.
+mustBeRows("EQUITY_DENOMINATED", EQUITY_DENOMINATED, coreK, "the comps table reads it off a comps row, which is always a core row");
+mustBeRows("CURRENCY_DENOMINATED", CURRENCY_DENOMINATED, coreK, "same read site, same scope");
+mustBeRows("COMPS_MEDIAN", COMPS_MEDIAN, coreK, "a median is taken over comps rows");
+mustBeRows("COMPS_ROWS", COMPS_ROWS.flatMap(g => g.rows.map(r => r.k)), coreK, "every comps row must exist on the sheet the set is built from");
+// `NOT_APPLICABLE[industry]` blanks keys on a sheet built from core PLUS that industry's overlay and
+// nothing else — grid.js writes `v[k] = null` for each, so an out-of-scope name blanks nothing at all.
+for (const [ind, list] of Object.entries(NOT_APPLICABLE))
+  mustBeRows(`NOT_APPLICABLE.${ind}`, list, forIndustry(ind), `a ${ind} sheet is core plus the ${ind} overlay, so a key from another industry's overlay would blank nothing`);
+// The cross-column passes run for EVERY industry, so a source that only exists on one overlay leaves
+// the growth row permanently blank elsewhere while its meta still says "computed" — revCagr3 exactly.
+mustBeRows("YOY keys", Object.keys(YOY), coreK, "crossColumn runs for every industry");
+mustBeRows("YOY sources", Object.values(YOY), coreK, "a source only some industries have renders the growth row blank for the rest, with meta still claiming computed");
+mustBeRows("CAGRS keys", Object.keys(CAGRS), coreK, "same pass, same reason");
+mustBeRows("CAGRS sources", Object.values(CAGRS).map(c => c[0]), coreK, "same");
+// `pinIdentity` is resolved through `lineByKey`, which holds the merged list for the filer in hand —
+// so a target outside that filer's scope degrades silently to `tagsByRun` with nothing blank to notice.
+for (const r of rows.filter(r => r.line.pinIdentity)) {
+  const scope = r.ind ? forIndustry(r.ind) : coreK;
+  for (const target of [r.line.pinIdentity.minus, r.line.pinIdentity.equals]) {
+    ok(scope.has(target), `\`${r.id}\`'s pinIdentity target \`${target}\` is reachable on the sheets this row renders on — otherwise rule 23 degrades to rule 21's proxy with nothing to show for it`);
+    const t = rows.find(x => x.line.k === target);
+    ok(t && Array.isArray(t.line.tags) && t.line.tags.length, `and \`${target}\` carries tags, which is what tagsByIdentity is handed`);
+  }
+}
+
+// ── An overlay line must not shadow a core line ─────────────────────────────────────────────────
+// `fillCol` writes `v[line.k]` over the MERGED section list, and `lineByKey[line.k] = line` is
+// last-writer-wins. So an overlay line sharing a core key would overwrite the core row's value AND
+// the meta carrying its accession, and hand `pinIdentity` the wrong tag list — rule 29's damage by a
+// different route. Zero today, per industry, and asserted per industry because the merge is per
+// industry: two overlays may safely share a key, and three pairs do.
+// MUTATION: renaming any overlay line to a core key fails here.
+for (const [ind, keys] of Object.entries(overlayK)) {
+  const shadow = [...keys].filter(k => coreK.has(k));
+  eq(shadow.join(" "), "", `no ${ind} overlay line shadows a core line${shadow.length ? ` — ${shadow.join(" ")}` : ""} — fillCol keys v by \`k\` and the last writer wins`);
+  const own = OVERLAY_SECTIONS[ind].flatMap(s => s.lines.map(l => l.k));
+  const dup = own.filter((k, i) => own.indexOf(k) !== i);
+  eq(dup.join(" "), "", `and no ${ind} overlay line is declared twice within the overlay${dup.length ? ` — ${dup.join(" ")}` : ""}`);
+}
 
 // A `tagNote` keyed to a tag the row does not ask for can never fire — the read is
 // `line.tagNote[newest.m.tag]`, and `m.tag` can only ever be one of the row's own candidates.
@@ -494,6 +537,105 @@ for (const k of EQUITY_DENOMINATED) {
 // be the row that needs it — `pb` is in the `ev` section, which only the card draws.
 eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, so the valuation card is the only surface that can mark it");
 
+// ── A formula string is a promise about rows, and it is now shown to readers ────────────────────
+// The ƒ tooltip prints `line.formula` verbatim, on the sheet and — since the card was given the
+// marker — on the valuation card too. So every identifier inside one is a claim that a row by that
+// name exists. Rename `reGross` and the REIT's `debtToGrossRE` keeps promising `totalDebt / reGross`
+// to every reader who hovers it, with no blank anywhere to notice: the row it describes still has a
+// value, the sentence describing it is just false. That is worse than the blank class, and making
+// these visible is what made it worth asserting.
+// MUTATION: renaming a row named in any formula, without updating the formula, fails here.
+{
+  // Words that are prose or arithmetic rather than row names. `or` is the odd one and it is real:
+  // the REIT float row's formula reads "(lossReservesNet or lossReserves - reinsRecov) + …", which
+  // describes a fallback in English because there is no operator for it.
+  const PROSE = new Set(["sum", "last", "quarters", "or", "price"]);
+  const unresolved = [];
+  for (const r of rows) {
+    if (!r.line.formula) continue;
+    const scope = r.ind ? forIndustry(r.ind) : coreK;
+    for (const m of r.line.formula.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g))
+      if (!PROSE.has(m[0]) && !scope.has(m[0])) unresolved.push(`${r.id} → ${m[0]}`);
+  }
+  eq(unresolved.join("\n"), "",
+    `every identifier inside a declared \`formula\` names a row reachable on the sheets that formula renders on` +
+    `${unresolved.length ? ` — unresolved: ${unresolved.join(", ")}` : ""}. The tooltip prints the formula verbatim, so a stale ` +
+    `name is a false sentence under a figure that still has a value — nothing goes blank to give it away.`);
+  ok(rows.filter(r => r.line.formula).length > 100, "and the formulas were actually walked, rather than the loop finding nothing to check");
+}
+
+// ── A note that is a FUNCTION must produce a sentence, not "NaN%" ───────────────────────────────
+// `flagNote` values may be functions of the flagged column, so a note can print the filer's own
+// figure rather than assert a category — which is the whole reason `thinEquity`'s threshold is
+// allowed to be a judgement: it decides only when to speak, and the number shown is the filer's.
+// That makes these the one name-match in the template whose failure is a FALSE SENTENCE rather than
+// a blank: `EQUITY_THIN_NOTE` reads `col.v.equity` and `col.v.totalAssets`, and renaming either
+// prints "Shareholders' equity is NaN% of total assets" on two rows. A blank cannot be mis-computed;
+// this can.
+// MUTATION: renaming `equity` or `totalAssets`, or breaking the note's arithmetic, fails here.
+{
+  const col = { v: { equity: -1.2e8, totalAssets: 3.7e10 }, period: { end: "2024-12-31" } };
+  let fns = 0;
+  for (const r of rows) if (r.line.flagNote) for (const [k, text] of Object.entries(r.line.flagNote)) {
+    if (typeof text !== "function") { ok(typeof text === "string" && text.length > 0, `\`${r.id}\`'s flagNote for ${k} is a non-empty string or a function`); continue; }
+    fns++;
+    const out = text(col);
+    ok(typeof out === "string" && out.length > 0, `\`${r.id}\`'s flagNote function for ${k} returns a string`);
+    ok(!/NaN|undefined|Infinity/.test(out), `and it reads as a sentence rather than "${(out.match(/NaN|undefined|Infinity/) || [])[0]}" — ${r.id}/${k} prints the filer's own figure, so a renamed input produces a FALSE sentence under a figure that still has a value`);
+    // The percentage it prints is the one the reader is asked to believe, so the arithmetic is
+    // checked rather than assumed: 1.2e8 / 3.7e10 is 0.32%.
+    ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
+    // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
+    for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
+      ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
+  }
+  eq(fns, 2, `both function-valued flagNotes were exercised — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+}
+
+// ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────
+// `const REV = SECTIONS[0].lines[0].tags;` and three industries then use REV unchanged, so
+// `PERIOD_TAGS.corporate` IS that array — the same object, by identity. Nothing copies it and nothing
+// should mutate it: a single `push` or `sort` on the fiscal-calendar list would silently rewrite the
+// revenue row's candidate ORDER for every filer, which is rule 11's "first hit wins" rewritten from
+// a distance. Pinned by identity rather than by restating the tags, so the intent is what is asserted.
+// MUTATION: copying REV instead of aliasing it, or reordering the revenue row's tags, fails here.
+{
+  const revTags = SECTIONS[0].lines[0].tags;
+  for (const ind of ["corporate", "advisory", "reit"])
+    ok(PERIOD_TAGS[ind] === revTags, `PERIOD_TAGS.${ind} is the revenue row's own tag array, by identity — the fiscal calendar and the top line are deliberately one list`);
+  for (const [ind, list] of Object.entries(PERIOD_TAGS)) {
+    ok(Array.isArray(list) && list.length > 0, `PERIOD_TAGS.${ind} is a non-empty tag list`);
+    ok(list.slice(0, revTags.length).join(" ") === revTags.join(" ") || list !== revTags,
+      `PERIOD_TAGS.${ind} either IS the revenue list or extends it — an industry that reorders the shared prefix would reorder the revenue row too`);
+  }
+  // The bank list re-adds a tag REV already ends with. Harmless — first hit wins — but pinned so the
+  // duplicate is a known one rather than a new one nobody counted.
+  const dupes = Object.entries(PERIOD_TAGS).map(([i, l]) => [i, l.length - new Set(l).size]).filter(([, n]) => n > 0);
+  eq(dupes.map(([i, n]) => `${i}:${n}`).join(" "), "bank:1",
+    "exactly the known duplicate tag across the PERIOD_TAGS lists — bank re-adds the lending top line REV already ends with");
+}
+
+// ── `tab` and `after` place an overlay section, and both fail by putting it somewhere useless ───
+// `after` is read ONLY while iterating the overlay list, so a core section declaring it would be
+// silently inert — and `out.splice(at >= 0 ? at + 1 : out.length, …)` turns a typo into a quiet
+// append at the very bottom rather than an error. `tab` decides which tab renders the section, and
+// `TABS` contains a `segments` entry with NO `secs`: a section tabbed there is fetched in full and
+// then rendered by nothing — not on the page, not in the workbook, not in the clipboard.
+// MUTATION: declaring `after` on a core section, pointing it at an id that does not exist, or
+// tabbing an overlay section to `segments`, fails here.
+{
+  eq(SECTIONS.filter(s => s.after).length, 0, "no CORE section declares `after` — sectionsFor reads it only while placing overlays, so on a core section it would be inert");
+  const gridTabs = new Set();
+  for (const m of ENGINE["src/App.jsx"].matchAll(/\{\s*id:\s*"(\w+)",\s*label:\s*"[^"]*",\s*secs:\s*\[([^\]]*)\]/g))
+    if (m[2].trim()) gridTabs.add(m[1]);
+  eq([...gridTabs].sort().join(" "), "ratios statements valuation", "the tabs that actually render a grid were parsed — `segments` has no secs and renders none of the template");
+  const coreIds = new Set(SECTIONS.map(s => s.id));
+  for (const [ind, secs] of Object.entries(OVERLAY_SECTIONS)) for (const sec of secs) {
+    ok(gridTabs.has(sec.tab), `${ind}/${sec.id} declares a \`tab\` that renders a grid (got ${JSON.stringify(sec.tab)}) — a section tabbed to \`segments\` is fetched in full and drawn nowhere`);
+    if (sec.after) ok(coreIds.has(sec.after), `${ind}/${sec.id}'s \`after\` names a core section (got ${JSON.stringify(sec.after)}) — an unknown id splices the section silently onto the BOTTOM rather than failing`);
+  }
+}
+
 // ── `how` is a closed vocabulary, and `k` is the join key for everything above ──────────────────
 // `how` decides fetching (grid.js:72), the ƒ marker, the status label and whether the row exports.
 // A fifth value would take the `else` branch everywhere at once — fetched, with no tags, silently.
@@ -598,7 +740,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 }
 
 // ── The mutation record ─────────────────────────────────────────────────────────────────────────
-// 40 mutations, 38 required to FAIL this suite and 2 required to leave it green, all 40 behaving as
+// 53 mutations, 51 required to FAIL this suite and 2 required to leave it green, all 53 behaving as
 // required. The harness ran against a COPY of the repo in the session scratchpad and has died with
 // it — deliberately not committed, for the reason t-reverse records: a runner that rewrites `src/`
 // leaves a mutated source file on disk if it is interrupted, which is a worse failure than the one it
@@ -610,7 +752,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // same failure the rule-28 session hit from the CRLF side, and a harness that cannot tell "survived"
 // from "never mutated anything" is worse than no harness.
 //
-// The 38 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
+// The 51 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
 // a duplicated core `k`; rule 29 restored on `nii`; a tagNote keyed to a tag the row does not ask for;
 // an omitFor industry typo; a flagNote keyed to nothing; NOT_APPLICABLE naming a row that does not
 // exist; an unreachable industry key; grid.js ceasing to read `line.instant`, `sec.after` and
@@ -625,7 +767,13 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // does not exist; an EQUITY_DENOMINATED member reachable on neither surface; and a section prepended
 // above the income statement, in both its forms — empty, which crashes template.js at import and so
 // cannot ship quietly, and WITH lines, which does not crash and is caught by the positional assertions
-// plus three others independently.
+// plus three others independently. Then, from the completeness pass: NOT_APPLICABLE.bank naming a key
+// from another industry's overlay; an overlay line shadowing a core line; a formula naming a row that
+// no longer exists; the equity-thin note reading a renamed column key; PERIOD_TAGS copying the revenue
+// row's tag array instead of aliasing it; an overlay section tabbed to `segments`, which renders no
+// grid; `after` pointing at an id that does not exist, and `after` declared on a core section where it
+// is inert; ValuationCard dropping `formula` or its marker; the card's note ceasing to name P/B; and
+// the deleted orphan derivation coming back.
 // The 2 correctly left green: a comment mentioning a fake property, and reordering two tags on a row.
 //
 // The receiver list looked like the weak link and was MEASURED rather than assumed, which reversed

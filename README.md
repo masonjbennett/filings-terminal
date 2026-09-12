@@ -37,10 +37,15 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 939 assertions, 44 of 44 mutations behaved as required (42 caught, 2 negative controls
+  Sep 12 2026: 1,016 assertions, 53 of 53 mutations behaved as required (51 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
   baseline (items 11-13 under Next) so that a NEW instance fails and so does fixing an old one
-  without deleting its entry.
+  without deleting its entry — which is not theoretical: deleting `DERIVED_PC.lossesTotal`, the dead
+  derivation it found, failed the suite until its baseline entry went too. Its scoping is the part
+  worth knowing if you extend it: every name-match is checked against the keys its READ SITE can see,
+  not against the union of core and all six overlays. The union passes a name that exists but can
+  never be reached — `NOT_APPLICABLE.bank` naming a pc-only key would blank nothing on a bank, which
+  is the Chubb enterprise-value failure back inside the one list that exists to prevent it.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
 searching normally rewrites the address bar to match, so any lookup can be pasted into an email —
@@ -2206,12 +2211,7 @@ development exercises the real code path against real SEC responses.
    and a tab, or go — and that is a judgement about what those sections are FOR, which is why none was
    taken here. Worth noting `lbo/ltmEbitda` and `lbo/ltmRevenue` are computed for every other tab by
    the LTM path already.
-13. **`DERIVED_PC.lossesTotal` is computed on every P&C column and read by nothing.** The mirror of
-   rule 22: there a declared formula with no implementation, here an implementation with no
-   declaration. No row displays it and no `flagNote` keys off it — every other pc derivation calls the
-   `pcLosses` helper directly. Deleting it is almost certainly right; it is listed rather than removed
-   because this session changed no engine behaviour at all.
-14. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
+13. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
    Measured at a 1280px viewport with the card's `minmax(190px,1fr)` grid giving 211px columns:
    "Market capitalisation" wraps to two lines at 79px and its value is 133px of digits, so the row
    needs 224px and the number runs into "Enterprise value" beside it. It is not a fixture artefact —

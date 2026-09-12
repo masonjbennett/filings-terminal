@@ -1135,7 +1135,12 @@ const all = (...xs) => xs.every(x => x != null);
 const pcLosses = v => (v.lossesIncurred == null ? null : v.lossesIncurred + (v.lifeBenefits || 0));
 
 export const DERIVED_PC = {
-  lossesTotal: pcLosses,
+  // No `lossesTotal` row here. It existed as `lossesTotal: pcLosses` and computed on every column of
+  // every P&C insurer for nothing: no template line declares that key, so no row displayed it, and no
+  // `flagNote` keyed off it — every derivation below calls the `pcLosses` helper directly rather than
+  // reading `v.lossesTotal`. The mirror of rule 22, which is a declared formula with no implementation;
+  // this was an implementation with no declaration. Found by `t-declared`, which asserts the class in
+  // both directions. Sep 12 2026.
   lossRatio: v => div(pcLosses(v), v.npe),
   expenseRatio: v => (all(v.dacAmort, v.otherUwExp) ? div(v.dacAmort + v.otherUwExp, v.npe) : null),
   combinedRatio: v => (all(pcLosses(v), v.dacAmort, v.otherUwExp, v.npe) && v.npe !== 0
