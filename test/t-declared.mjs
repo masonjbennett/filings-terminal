@@ -340,6 +340,124 @@ const settable = new Set([...rowKeys, ...implemented]);
 for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.flagNote))
   ok(settable.has(k), `\`${r.id}\`'s flagNote keys on \`${k}\`, which the engine sets — a note keyed to nothing never fires, and this row's note is what stops a computed figure reading as filed`);
 
+// ── A `formula` on a row that is not computed can never be displayed ────────────────────────────
+// The ƒ marker and its tooltip are the ONLY reader of `formula`, and that read is guarded on
+// `line.how === "computed"` (src/App.jsx:1397). So a formula declared on a market row is consumed by
+// nothing — and the `ev` section, which is where all ten of them live, is not even drawn by the row
+// renderer: it is lifted into `ValuationCard` above the tabs, which draws no ƒ and no tooltip at all.
+// Ten of the template's 103 formula declarations are therefore unreachable twice over.
+//
+// This is the defect class sitting inside the property that defines it, which is why it is a baseline
+// and not a silent pass: the EV bridge's arithmetic is the most worth showing a reader on the page
+// ("market cap + total debt + preferred + NCI − cash − ST investments" is the line a banker checks),
+// and it is written down where nothing can print it.
+const FORMULA_NOT_DISPLAYABLE = {
+  "ev/mktCap": "price * sharesOut", "ev/ev": "the EV bridge itself", "ev/evRev": "ev / revenue",
+  "ev/evEbitda": "ev / ebitda", "ev/evEbit": "ev / ebit", "ev/evFcf": "ev / fcf",
+  "ev/pe": "price / epsDil", "ev/pb": "mktCap / equity", "ev/fcfYield": "fcf / mktCap",
+  "ev/divYield": "dps / price",
+};
+const formulaUnreachable = rows.filter(r => r.line.formula && r.line.how !== "computed").map(r => r.id).sort();
+eq(formulaUnreachable.join("\n"), Object.keys(FORMULA_NOT_DISPLAYABLE).sort().join("\n"),
+  `exactly the known non-computed rows declare a \`formula\`. The ƒ tooltip is formula's only reader and it is guarded on ` +
+  `how==="computed", so a formula anywhere else is documentation the page cannot show. Adding one is the same defect; ` +
+  `giving ValuationCard a ƒ, or deleting them, removes entries from this list.`);
+
+// ── A tag the template asks for and the proxy drops never arrives ────────────────────────────────
+// `api/facts.js` slims a 10–15MB companyfacts document down to the ~235 concepts the template needs,
+// and it says of itself that a tag added to the template must be added to `KEEP` too "or the value
+// silently never arrives". That is this suite's exact subject matter: the row then renders
+// "not tagged", pointing a reader at EDGAR to hunt for something the browser was never sent.
+// t-balance asserts this for the three tags of ONE row, because that row proved it can happen. Here
+// it is asserted for every tag on every fetched row.
+// MUTATION: adding a tag to any row without adding it to KEEP fails here.
+{
+  const keepSrc = read("api/facts.js");
+  const keep = new Set([...keepSrc.matchAll(/"([A-Za-z][A-Za-z0-9:]*)"/g)].map(m => m[1]));
+  ok(keep.size > 300, `api/facts.js's KEEP was parsed — ${keep.size} string literals, or every tag below would look dropped`);
+  const tplTags = [...new Set(rows.flatMap(r => r.line.tags || []))];
+  eq(tplTags.length, 248, `the template asks for 248 distinct tags — found ${tplTags.length}`);
+  // The `dei` taxonomy is reached by a different door: facts.js loops us-gaap and dei, and its dei
+  // branch admits exactly one element BY NAME rather than through KEEP. So the template's `dei:` tag
+  // is checked against that gate instead, and the two spellings must agree — the template writes the
+  // prefixed form, facts.js writes the bare one.
+  const deiGate = keepSrc.match(/ns === "dei" && tag !== "(\w+)"/);
+  ok(deiGate, "facts.js's dei branch gates its one admitted element by name — if that changes shape, teach this check the new one");
+  for (const tag of tplTags) {
+    if (tag.startsWith("dei:")) {
+      eq(tag.slice(4), deiGate[1], `the template's \`${tag}\` is the element facts.js's dei branch admits — the prefixed and bare spellings must agree or the share count never arrives`);
+      continue;
+    }
+    ok(keep.has(tag), `\`${tag}\` has a KEEP slot in api/facts.js — a tag the template asks for and the proxy slims out renders "not tagged", which sends a reader to EDGAR for something the browser was never sent`);
+  }
+}
+
+// ── Three hand-kept sets of line keys, outside the template, that nothing else joins ────────────
+// Each is a list of `k` strings maintained by hand in another file, so a key that stops existing — or
+// never existed — is silently inert. The formatting sets have already failed exactly this way: the
+// comment above them records `revCagr3`/`revCagr5` rendering as "1" instead of "100%" because a
+// percentage row was missing from PCT, which is the same two rows rule 22 found declared and never
+// implemented. A wrong key here is not a crash; it is a number in the wrong units.
+// MUTATION: renaming any line `k` without updating these fails here.
+{
+  const sectionIds = new Set([...SECTIONS.map(s => s.id), ...Object.values(OVERLAY_SECTIONS).flat().map(s => s.id)]);
+  const setOf = (src, name) => {
+    const m = src.match(new RegExp("const " + name + " = new Set\\(\\[([\\s\\S]*?)\\]\\);"));
+    ok(m, `${name} was found and parsed — an unparsed set passes this check vacuously`);
+    return [...stripComments(m[1]).matchAll(/"([A-Za-z][A-Za-z0-9]*)"/g)].map(x => x[1]);
+  };
+  const appSrc = read("src/App.jsx"), gridRaw = read("src/grid.js");
+  for (const [name, universe, label] of [
+    ["PCT", allK, "a percentage row missing from PCT renders 1 instead of 100%"],
+    ["MULT", allK, "a multiple row missing from MULT loses its x suffix"],
+    ["DAYS", allK, "a day-count row missing from DAYS is formatted as a plain number"],
+  ]) {
+    const keys = setOf(appSrc, name);
+    const bad = keys.filter(k => !universe.has(k));
+    eq(bad.join(" "), "", `every key in App.jsx's ${name} is a line the template declares${bad.length ? ` — orphaned: ${bad.join(" ")}` : ""} — ${label}`);
+  }
+  const instSecs = setOf(gridRaw, "INSTANT_SECTIONS");
+  eq(instSecs.filter(id => !sectionIds.has(id)).join(" "), "", "every id in grid.js's INSTANT_SECTIONS is a section that exists — an unknown one silently matches a balance sheet as a duration, which is how a bank's deposits and loans read \"not tagged\"");
+  const instLines = setOf(gridRaw, "INSTANT_LINES");
+  eq(instLines.filter(k => !allK.has(k)).join(" "), "", "and every key in INSTANT_LINES is a line that exists");
+}
+
+// ── Two reads that do not go through a name at all ───────────────────────────────────────────────
+// `const REV = SECTIONS[0].lines[0].tags;` (src/template.js) builds PERIOD_TAGS from the revenue row
+// by POSITION. Move revenue, or put a new section above the income statement, and the fiscal calendar
+// for every corporate filer is derived from the wrong row — which would not fail, it would produce a
+// different set of years.
+// MUTATION: reordering the first section's lines, or prepending a section, fails here.
+eq(SECTIONS[0].id, "is", "the income statement is still the first section — PERIOD_TAGS reads SECTIONS[0].lines[0] by position");
+eq(SECTIONS[0].lines[0].k, "revenue", "and revenue is still its first line, which is the row the whole fiscal calendar is built from");
+eq(PERIOD_TAGS.corporate[0], SECTIONS[0].lines[0].tags[0], "so PERIOD_TAGS.corporate really does lead with the revenue row's first tag");
+// `dcfApplicable` decides whether the reverse DCF runs, off two row names written as string literals
+// in src/reverse.js. A typo there silently re-enables the plate for a bank.
+{
+  const lits = [...read("src/reverse.js").matchAll(/includes\("(\w+)"\)/g)].map(m => m[1]);
+  eq(lits.join(" "), "ufcf ev", "dcfApplicable still gates on the two row names it was written for");
+  for (const k of lits) ok(allK.has(k), `\`${k}\` is a real template row, or the reverse DCF's gate reads a NOT_APPLICABLE list for a row that cannot be in it`);
+}
+
+// ── A set is only enforced where it is read, and `pb` is read nowhere ───────────────────────────
+// `EQUITY_DENOMINATED` exists so "the sheet's notes and the comps table cannot drift apart about which
+// figures a near-cancelled equity makes incomparable" — its own comment. It has exactly one read site,
+// `EQUITY_DENOMINATED.has(r.k)` in the COMPS table, where `r` is a comps row. So a member that is not
+// a comps row can never fire there, and on the single-filer sheet the equivalent marking is the
+// per-line `flagNote: { equityThin }`.
+//
+// Cross-joining the two: `roe` is covered twice, `debtEquity` once, and **`pb` on neither surface** —
+// it is not a comps row and carries no flagNote. Which is the one that most needed it: a book multiple
+// against nearly no book is the member whose own tail text says the figure is a residual.
+const compsK = new Set(COMPS_ROWS.flatMap(g => g.rows.map(r => r.k)));
+const flagged = new Set(rows.filter(r => r.line.flagNote && "equityThin" in r.line.flagNote).map(r => r.line.k));
+const UNMARKED_EQUITY = { pb: "not a comps row and no equityThin flagNote, so the near-cancelled-equity note reaches no reader on either surface" };
+const unmarked = [...EQUITY_DENOMINATED].filter(k => !compsK.has(k) && !flagged.has(k)).sort();
+eq(unmarked.join(" "), Object.keys(UNMARKED_EQUITY).sort().join(" "),
+  `exactly the known EQUITY_DENOMINATED members are unreachable on both surfaces. A member added to this list is a ratio ` +
+  `dividing by a residual with nothing saying so; giving \`pb\` an equityThin flagNote, or a comps row, empties it.`);
+for (const k of EQUITY_DENOMINATED) ok(allK.has(k), `EQUITY_DENOMINATED's \`${k}\` is a real template row`);
+
 // ── `how` is a closed vocabulary, and `k` is the join key for everything above ──────────────────
 // `how` decides fetching (grid.js:72), the ƒ marker, the status label and whether the row exports.
 // A fifth value would take the `else` branch everywhere at once — fetched, with no tags, silently.
@@ -444,7 +562,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 }
 
 // ── The mutation record ─────────────────────────────────────────────────────────────────────────
-// 30 mutations, 28 required to FAIL this suite and 2 required to leave it green, all 30 behaving as
+// 40 mutations, 38 required to FAIL this suite and 2 required to leave it green, all 40 behaving as
 // required. The harness ran against a COPY of the repo in the session scratchpad and has died with
 // it — deliberately not committed, for the reason t-reverse records: a runner that rewrites `src/`
 // leaves a mutated source file on disk if it is interrupted, which is a worse failure than the one it
@@ -456,7 +574,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // same failure the rule-28 session hit from the CRLF side, and a harness that cannot tell "survived"
 // from "never mutated anything" is worse than no harness.
 //
-// The 28 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
+// The 38 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
 // a duplicated core `k`; rule 29 restored on `nii`; a tagNote keyed to a tag the row does not ask for;
 // an omitFor industry typo; a flagNote keyed to nothing; NOT_APPLICABLE naming a row that does not
 // exist; an unreachable industry key; grid.js ceasing to read `line.instant`, `sec.after` and
@@ -464,7 +582,14 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // visible read; COMPS_MEDIAN naming a missing row; a pinIdentity pointing at one; a SEVENTH
 // unimplemented computed row on a tab; one baseline entry FIXED (the ratchet biting the other way); an
 // orphan derivation added; an export nothing imports; a stale EXPORT_EXEMPT entry; both README counts
-// drifting; tally disagreeing with its own breakdown; and a genuine rename of grid.js's `line` receiver.
+// drifting; tally disagreeing with its own breakdown; a genuine rename of grid.js's `line` receiver; a
+// formula declared on a row that is not computed; a tag added to a row but not to KEEP; a tag removed
+// from KEEP the template still asks for; the dei gate drifting from the template's `dei:` spelling; a
+// PCT key that is not a row; an INSTANT_LINES key that is not a row; dcfApplicable gating on a row that
+// does not exist; an EQUITY_DENOMINATED member reachable on neither surface; and a section prepended
+// above the income statement, in both its forms — empty, which crashes template.js at import and so
+// cannot ship quietly, and WITH lines, which does not crash and is caught by the positional assertions
+// plus three others independently.
 // The 2 correctly left green: a comment mentioning a fake property, and reordering two tags on a row.
 //
 // The receiver list looked like the weak link and was MEASURED rather than assumed, which reversed

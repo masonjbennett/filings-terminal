@@ -37,9 +37,9 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 660 assertions, 30 of 30 mutations behaved as required (28 caught, 2 negative controls
+  Sep 12 2026: 932 assertions, 40 of 40 mutations behaved as required (38 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
-  baseline (items 11 and 12 under Next) so that a NEW instance fails and so does fixing an old one
+  baseline (items 11-15 under Next) so that a NEW instance fails and so does fixing an old one
   without deleting its entry.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
@@ -2204,6 +2204,22 @@ development exercises the real code path against real SEC responses.
    declaration. No row displays it and no `flagNote` keys off it — every other pc derivation calls the
    `pcLosses` helper directly. Deleting it is almost certainly right; it is listed rather than removed
    because this session changed no engine behaviour at all.
+14. **The EV bridge's arithmetic is written down where nothing can print it.** All ten rows of the `ev`
+   section declare a `formula`, and `formula` has exactly one reader — the ƒ tooltip at
+   `src/App.jsx:1397`, which is guarded on `how === "computed"`. Every `ev` row is `how: "market"`, so
+   the guard can never see them; and the `ev` section is not drawn by the row renderer at all but
+   lifted into `ValuationCard` above the tabs, which draws no ƒ and no tooltip. Ten of the template's
+   103 formula declarations are unreachable twice over. It is worth fixing in the other direction:
+   `mktCap + totalDebt + preferred + nciBs − cash − sti` is exactly the line a reader checks on a page
+   whose argument is provenance, and the card is the one place an EV bridge should show its work.
+15. **`pb` carries the near-cancelled-equity warning on neither surface.** `EQUITY_DENOMINATED` exists
+   so "the sheet's notes and the comps table cannot drift apart about which figures a near-cancelled
+   equity makes incomparable", and it has one read site — `EQUITY_DENOMINATED.has(r.k)` in the comps
+   table, where `r` is a comps row. Cross-joining that against the per-line `flagNote: { equityThin }`
+   that marks the single-filer sheet: `roe` is covered twice, `debtEquity` once, and **`pb` zero
+   times** — it is not a comps row and has no flagNote. That is the member that most needed it, since
+   a book multiple against nearly no book is the case the note's own tail text describes. One
+   `flagNote` closes it.
 
 ## A note on how this got built
 
