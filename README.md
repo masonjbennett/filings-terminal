@@ -21,12 +21,26 @@ lookup did.
 - `api/quote.js` — share price ONLY. Market cap is computed as price × the company's own cover-page
   share count, so the EV bridge stays traceable to filings with exactly one outside input. Needs
   `FINNHUB_KEY`; without it the valuation block says so.
-- `src/template.js` — 279 line items across 15 core sections plus industry overlays, grounded in standard
+- `src/template.js` — 278 line items across 15 core sections plus industry overlays, grounded in standard
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
-  (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections).
+  (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections). Those two counts are no
+  longer prose: `t-declared.mjs` parses them out of this sentence and checks them against `tally()`,
+  because a number written down in two places drifts. This one said 279 against a template of 278.
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
 - `src/reverse.js` — the reverse DCF's solve, pure and node-testable; `test/` holds the committed
   suites (`npm test`), discovered by filename so a suite nobody runs cannot look like one that passes.
+- `test/t-declared.mjs` — **the declared-vs-read audit: every value declared in `template.js` must be
+  read by the engine.** The one suite that tests for ABSENCE, because absence is the defect class this
+  repo keeps producing — a declared value nothing reads has no behaviour, so no test of behaviour can
+  fail on it, and the page renders a blank, which cannot be mis-computed. Five instances so far:
+  `revCagr3`/`revCagr5`, `fallback:`, `derivedOnly:`, and rule 25's `chgNwc` and `ufcf`. A suite of
+  this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
+  Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
+  still on the page three weeks after the tool that would have caught them first ran. Committed
+  Sep 12 2026: 660 assertions, 30 of 30 mutations behaved as required (28 caught, 2 negative controls
+  correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
+  baseline (items 11 and 12 under Next) so that a NEW instance fails and so does fixing an old one
+  without deleting its entry.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
 searching normally rewrites the address bar to match, so any lookup can be pasted into an email —
@@ -2162,6 +2176,34 @@ development exercises the real code path against real SEC responses.
    comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
    and a structure that has usually been reorganised, which is why it was not done — but the tab now
    carries enough filers that the question is worth re-asking.
+11. **Two computed rows on the Valuation tab are rule 25 still open, and they reach the reader.**
+   `dcf/netDebtBridge` (declared `netDebt`) and `dilution/treasuryMethod` (the treasury-stock method)
+   declare `how: "computed"` and are implemented NOWHERE. Every computed row renders a ƒ marker whose
+   tooltip IS `line.formula`, and its status is deliberately `null` — so each is a blank cell
+   advertising a formula, with nothing on the page saying it was never computed. That is strictly
+   worse than "not tagged", which at least sends the reader somewhere. Both also export as rows of
+   blanks into the Valuation sheet, since the workbook skips only `manual` lines. Neither is hard:
+   `netDebtBridge` restates a row the engine already computes, and the treasury method's three
+   fetched inputs are all present — it needs the price, which the row does not declare as an input.
+   **Held back deliberately** rather than fixed alongside the suite that found them: an engine change
+   wants the 160-filer fixture cache and a full-diff, and landing the gate in the same commit as the
+   fix would blur which did what. `t-declared` holds them as an exact baseline meanwhile.
+12. **Six lines in the footer sections compute nothing and render nowhere.** `lbo`, `pta` and `premia`
+   are deliberately not tabs ("as a tab with your name on it, four blank fields read as a tool that
+   cannot do LBOs"), and the footer prints only their `how: "manual"` labels under "Deliberately not
+   computed". So the six lines there that are NOT manual — `premia/undisturbed`, `premia/premium1d`,
+   `lbo/ltmEbitda`, `lbo/ltmRevenue`, `lbo/entryNetDebt` and `pta/ptaFilings` — are declared rows that
+   claim to be obtainable, are obtained by nothing, and are shown to no one. `ptaFilings` is the
+   sharpest: `how: "fetched"` with no `tags` at all, so `fillCol` skips it and it could never fetch.
+   Each wants one of three answers — become `manual` so the footer names it honestly, get implemented
+   and a tab, or go — and that is a judgement about what those sections are FOR, which is why none was
+   taken here. Worth noting `lbo/ltmEbitda` and `lbo/ltmRevenue` are computed for every other tab by
+   the LTM path already.
+13. **`DERIVED_PC.lossesTotal` is computed on every P&C column and read by nothing.** The mirror of
+   rule 22: there a declared formula with no implementation, here an implementation with no
+   declaration. No row displays it and no `flagNote` keys off it — every other pc derivation calls the
+   `pcLosses` helper directly. Deleting it is almost certainly right; it is listed rather than removed
+   because this session changed no engine behaviour at all.
 
 ## A note on how this got built
 
