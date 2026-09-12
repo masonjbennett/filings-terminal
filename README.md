@@ -37,7 +37,7 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 1,016 assertions, 53 of 53 mutations behaved as required (51 caught, 2 negative controls
+  Sep 12 2026: 1,021 assertions, 56 of 56 mutations behaved as required (54 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
   baseline (items 11-13 under Next) so that a NEW instance fails and so does fixing an old one
   without deleting its entry — which is not theoretical: deleting `DERIVED_PC.lossesTotal`, the dead
@@ -2188,18 +2188,28 @@ development exercises the real code path against real SEC responses.
    comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
    and a structure that has usually been reorganised, which is why it was not done — but the tab now
    carries enough filers that the question is worth re-asking.
-11. **Two computed rows on the Valuation tab are rule 25 still open, and they reach the reader.**
-   `dcf/netDebtBridge` (declared `netDebt`) and `dilution/treasuryMethod` (the treasury-stock method)
-   declare `how: "computed"` and are implemented NOWHERE. Every computed row renders a ƒ marker whose
-   tooltip IS `line.formula`, and its status is deliberately `null` — so each is a blank cell
-   advertising a formula, with nothing on the page saying it was never computed. That is strictly
-   worse than "not tagged", which at least sends the reader somewhere. Both also export as rows of
-   blanks into the Valuation sheet, since the workbook skips only `manual` lines. Neither is hard:
-   `netDebtBridge` restates a row the engine already computes, and the treasury method's three
-   fetched inputs are all present — it needs the price, which the row does not declare as an input.
-   **Held back deliberately** rather than fixed alongside the suite that found them: an engine change
-   wants the 160-filer fixture cache and a full-diff, and landing the gate in the same commit as the
-   fix would blur which did what. `t-declared` holds them as an exact baseline meanwhile.
+11. **`treasuryMethod` is rule 25 still open, and it is in the wrong LAYER rather than missing an
+   entry.** `dilution/treasuryMethod` declares `how: "computed"` over
+   `sharesOut + optionsOut - (optionsOut * optionsStrike / price) + rsuOut`. Three of those four are
+   fetched; `price` is a `how: "market"` row. And a market input is invisible to the derivation layer:
+   `fillCol` runs the derivations over a column with no price in it, and `applyQuote` runs afterwards
+   and only on the NEWEST column, because there is one price and an EV/EBITDA against FY2019 would be
+   today's enterprise value over a six-year-old profit. So adding a `DERIVED` entry would compute it
+   from an absent price on every column — the obvious fix is the wrong one.
+   **The placement it needs is already solved once here, in the other direction.** Every
+   price-dependent figure lives in the `ev` section, which was lifted OUT of the year grid precisely
+   because "a table row of seven blanks buried the only real value off the right-hand edge of the
+   scroll". A treasury-method share count in the grid would recreate exactly that, so the decision is
+   whether the row moves to the `ev` section and the card, or goes. `t-declared` now asserts the class
+   — a computed row naming a market input — so the same mistake cannot be made quietly on a new row.
+   Its sibling `premia/premium1d` is the second instance and is doubly stuck: it divides by
+   `undisturbed`, a market row the free quote tier cannot supply at all.
+   **`netDebtBridge`, the other half of this item, is fixed** (Sep 12 2026). It declared `netDebt` and
+   was implemented nowhere, so "Net debt (equity bridge)" rendered blank on every sheet ever served
+   under a ƒ advertising the formula. It is one line, sitting directly under `netDebt` because the
+   derivations run in insertion order over one shared `v`; no `NOT_APPLICABLE` list carries `netDebt`,
+   so it makes no claim for any industry the row above does not already make. Verified in a browser
+   against a fixture: five of five columns filled, arithmetic matching total debt less cash.
 12. **Six lines in the footer sections compute nothing and render nowhere.** `lbo`, `pta` and `premia`
    are deliberately not tabs ("as a tab with your name on it, four blank fields read as a tool that
    cannot do LBOs"), and the footer prints only their `how: "manual"` labels under "Deliberately not
@@ -2211,7 +2221,17 @@ development exercises the real code path against real SEC responses.
    and a tab, or go — and that is a judgement about what those sections are FOR, which is why none was
    taken here. Worth noting `lbo/ltmEbitda` and `lbo/ltmRevenue` are computed for every other tab by
    the LTM path already.
-13. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
+13. **A bank's revenue reconstruction may run too early to use its own `nii` reconstruction — NOT
+   measured.** The derivations run in insertion order over one shared `v`, and `DERIVED.revenue` is a
+   no-op that exists purely to reserve slot 0, so `DERIVED_BANK.revenue` lands before every margin
+   that divides by revenue. That is deliberate and right. But it means `revenue` reads `v.nii` at
+   slot 0, while `DERIVED_BANK.nii` reconstructs `nii` from gross interest income and expense at the
+   END of the table. So a bank tagging neither a revenue total nor `nii`, but tagging the two
+   interest lines, would get its `nii` reconstructed too late for its revenue to be. Whether any
+   filer is in that intersection is **unmeasured** — it needs the fixture cache, and both halves are
+   individually rare. Recorded rather than fixed for that reason; `t-declared` pins this read and the
+   one other like it so a third cannot appear unnoticed.
+14. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
    Measured at a 1280px viewport with the card's `minmax(190px,1fr)` grid giving 211px columns:
    "Market capitalisation" wraps to two lines at 79px and its value is 133px of digits, so the row
    needs 224px and the number runs into "Enterprise value" beside it. It is not a fixture artefact —

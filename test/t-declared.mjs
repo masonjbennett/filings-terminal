@@ -220,8 +220,7 @@ for (const sec of SECTIONS)
 // exact shape, still open, and they are a FIX rather than a suite's business — changing the engine
 // wants the 160-filer fixture cache and a full-diff, which is the next session's work.
 const UNIMPLEMENTED_ON_A_TAB = {
-  "dcf/netDebtBridge": "declared `netDebt`, which is a row the engine already computes — the equity-bridge restatement of it was never wired",
-  "dilution/treasuryMethod": "declared as the treasury-stock method over `optionsOut`/`optionsStrike`/`rsuOut`, all three of which ARE fetched; it needs a price, which the row does not declare as an input",
+  "dilution/treasuryMethod": "the treasury-stock method over `optionsOut`/`optionsStrike`/`rsuOut` — all three fetched — divided by `price`, which is a MARKET input. The next check is why that cannot simply be wired.",
 };
 const unimplementedOnATab = rows
   .filter(r => r.line.how === "computed" && !implemented.has(r.line.k) && tabSecs.has(r.sec.id))
@@ -236,6 +235,78 @@ eq(unimplementedOnATab.join("\n"), Object.keys(UNIMPLEMENTED_ON_A_TAB).sort().jo
 for (const r of rows)
   if (r.line.how === "computed" && !(r.id in UNIMPLEMENTED_ON_A_TAB) && !footerSecs.includes(r.sec.id))
     ok(implemented.has(r.line.k), `\`${r.id}\` declares how:"computed" and something computes it — formula: ${r.line.formula || "(none declared)"}`);
+
+// ── Derivations run in INSERTION ORDER over one shared `v`, and two read a key filled later ─────
+// `fillCol` does `for (const [k, fn] of Object.entries(derivations))` over `{...DERIVED,
+// ...DERIVED_BY_INDUSTRY[ind]}`, so position is behaviour: a derivation reading a key whose own
+// derivation runs later sees whatever the FETCH pass left there, which is the filer's tagged value or
+// nothing at all. That is a silent dependency — no error, just a null — and `netDebtBridge` is the
+// newest thing to depend on it, which is why it sits directly under `netDebt`.
+//
+// Two derivations read a later key, and BOTH are deliberate, so this is a ratchet rather than a rule:
+//   · `nciDerived` reads `nciBs` and MUST run first — it asks "did the filer tag the interest?", and
+//     `nciBs`'s own derivation fills that key. Reversed, it would always see a value and never fire.
+//   · `DERIVED_BANK.revenue` reads `nii`, and `DERIVED.revenue: () => null` exists purely to RESERVE
+//     SLOT 0 so the bank override lands before netMargin, revGrowth, assetTurn and EV/Revenue read it.
+//     Its cost is real but unmeasured here: a bank tagging neither a revenue total nor `nii`, but
+//     tagging gross interest income and expense, gets `nii` reconstructed at the end of the table —
+//     too late for the revenue reconstruction at the front to use it.
+// MUTATION: moving `netDebtBridge` above `netDebt`, or adding any new later-key read, fails here.
+{
+  const KNOWN_FORWARD_READS = {
+    "DERIVED.nciDerived → nciBs": "asks whether the FILER tagged it, so it must run before nciBs's own derivation fills the key",
+    "bank.revenue → nii": "DERIVED.revenue reserves slot 0 so the bank override precedes every margin that divides by revenue; nii is reconstructed at the end",
+  };
+  const forward = [];
+  for (const ind of [null, ...Object.keys(DERIVED_BY_INDUSTRY)]) {
+    const tbl = ind ? { ...DERIVED, ...DERIVED_BY_INDUSTRY[ind] } : DERIVED;
+    const keys = Object.keys(tbl);
+    const pos = new Map(keys.map((k, i) => [k, i]));
+    keys.forEach((k, i) => {
+      for (const m of stripComments(tbl[k].toString()).matchAll(/\bv\s*\.\s*(\w+)/g)) {
+        const j = pos.get(m[1]);
+        if (j !== undefined && j > i) forward.push(`${ind && DERIVED_BY_INDUSTRY[ind][k] ? ind : "DERIVED"}.${k} → ${m[1]}`);
+      }
+    });
+  }
+  eq([...new Set(forward)].sort().join("\n"), Object.keys(KNOWN_FORWARD_READS).sort().join("\n"),
+    `exactly the known derivations read a key whose own derivation runs later. Position is behaviour here — a new one gets whatever ` +
+    `the fetch pass left, silently — so a row added to this list needs its ordering thought about, not accepted.`);
+  // The one that motivated the check: netDebtBridge restates netDebt and must follow it.
+  const d = Object.keys(DERIVED);
+  ok(d.indexOf("netDebtBridge") > d.indexOf("netDebt"), "`netDebtBridge` runs after `netDebt`, which is the row it restates — above it, it would read undefined and render blank exactly as it did before it was implemented");
+}
+
+// ── A computed row whose formula needs a PRICE cannot be a derivation at all ────────────────────
+// This is the mechanism behind the two rows above that look like an oversight and are not, and it is
+// worth stating as its own rule because "just wire it up" is the obvious wrong answer.
+//
+// `fillCol` runs the derivations over one column's `v` with no price in it. The price arrives later
+// and elsewhere: `applyQuote` runs AFTER the whole grid is built, and only on the NEWEST column,
+// because there is one price — today's — and an EV/EBITDA against FY2019 would be today's enterprise
+// value over a six-year-old profit. So a `how: "computed"` row whose formula names a `how: "market"`
+// input is not a missing entry in DERIVED; it is a row in the wrong layer. Wiring it into the
+// derivations would silently compute it from an absent price on every column.
+//
+// And the placement it actually needs is already solved once in this repo, in the other direction:
+// every price-dependent figure lives in the `ev` section, which was LIFTED OUT of the year grid
+// precisely because "a table row of seven blanks buried the only real value off the right-hand edge
+// of the scroll". A treasury-method share count in the year grid would recreate exactly that.
+// MUTATION: declaring a computed formula over a market input on a new row fails here.
+{
+  const marketK = new Set(rows.filter(r => r.line.how === "market").map(r => r.line.k));
+  eq(marketK.size, 12, `12 rows are how:"market" — found ${marketK.size}`);
+  const NEEDS_A_PRICE = {
+    "dilution/treasuryMethod": "divides by `price`; sits in the year grid, where a price-dependent row is the thing the EV bridge was moved out to avoid",
+    "premia/premium1d": "divides by `undisturbed`, a market row the free quote tier cannot supply at all — and it sits in a footer section that renders nothing",
+  };
+  const needsPrice = rows.filter(r => r.line.how === "computed" && r.line.formula &&
+    [...r.line.formula.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)].some(m => marketK.has(m[0]))).map(r => r.id).sort();
+  eq(needsPrice.join("\n"), Object.keys(NEEDS_A_PRICE).sort().join("\n"),
+    `exactly the known computed rows name a market input in their formula. Such a row cannot be a derivation: applyQuote runs after ` +
+    `fillCol and only on the newest column, so the derivation layer never sees a price. A row added here needs a LAYER decision — ` +
+    `the ev section and its card — not a DERIVED entry.`);
+}
 
 // ── The footer prints only its manual lines, so a non-manual line there renders NOWHERE ─────────
 // The tighter statement of the same class, and the one that sorts the severity out. src/App.jsx:749
@@ -740,7 +811,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 }
 
 // ── The mutation record ─────────────────────────────────────────────────────────────────────────
-// 53 mutations, 51 required to FAIL this suite and 2 required to leave it green, all 53 behaving as
+// 56 mutations, 54 required to FAIL this suite and 2 required to leave it green, all 56 behaving as
 // required. The harness ran against a COPY of the repo in the session scratchpad and has died with
 // it — deliberately not committed, for the reason t-reverse records: a runner that rewrites `src/`
 // leaves a mutated source file on disk if it is interrupted, which is a worse failure than the one it
@@ -752,7 +823,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // same failure the rule-28 session hit from the CRLF side, and a harness that cannot tell "survived"
 // from "never mutated anything" is worse than no harness.
 //
-// The 51 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
+// The 54 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
 // a duplicated core `k`; rule 29 restored on `nii`; a tagNote keyed to a tag the row does not ask for;
 // an omitFor industry typo; a flagNote keyed to nothing; NOT_APPLICABLE naming a row that does not
 // exist; an unreachable industry key; grid.js ceasing to read `line.instant`, `sec.after` and
@@ -773,7 +844,8 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // row's tag array instead of aliasing it; an overlay section tabbed to `segments`, which renders no
 // grid; `after` pointing at an id that does not exist, and `after` declared on a core section where it
 // is inert; ValuationCard dropping `formula` or its marker; the card's note ceasing to name P/B; and
-// the deleted orphan derivation coming back.
+// the deleted orphan derivation coming back; netDebtBridge un-implemented again or moved above the
+// row it restates; and a new computed row whose formula divides by a market price.
 // The 2 correctly left green: a comment mentioning a fake property, and reordering two tags on a row.
 //
 // The receiver list looked like the weak link and was MEASURED rather than assumed, which reversed

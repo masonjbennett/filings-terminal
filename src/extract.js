@@ -1051,6 +1051,17 @@ export const DERIVED = {
   debtLikeTotal: v => sum(v.olCur, v.olNon, v.flCur, v.flNon, v.pensionUnderfunded, v.deferredComp, v.assetRetirement),
   totalDebtLeases: v => sum(v.totalDebt, v.olCur, v.olNon, v.flCur, v.flNon),
   netDebt: v => (v.totalDebt == null ? null : v.totalDebt - (v.cash || 0) - (v.sti || 0)),
+  // The DCF tab's equity-bridge restatement of the row above. The SAME quantity by construction — the
+  // template declares this row's formula as `netDebt` and that is exactly what it returns — and it
+  // exists because the bridge from enterprise to equity value is where a reader looks for the figure,
+  // which is a different tab from the credit ratios. Declared since the row was written and
+  // implemented NOWHERE, so "Net debt (equity bridge)" rendered blank on every sheet ever served,
+  // under a ƒ marker whose tooltip advertised the formula and a status deliberately suppressed to
+  // null: rule 25's class exactly, found by `t-declared` rather than by anything going wrong.
+  // Order matters — derivations run in insertion order over one shared `v`, so this must stay AFTER
+  // `netDebt` or it would read undefined. No NOT_APPLICABLE list carries `netDebt`, so this makes no
+  // claim for any industry the row above does not already make, and inherits its null.
+  netDebtBridge: v => (v.netDebt == null ? null : v.netDebt),
   netLev: v => div(v.netDebt, v.ebitda),
   grossLev: v => div(v.totalDebt, v.ebitda),
   intCover: v => div(v.ebitda, v.intExp),
