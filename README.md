@@ -2162,6 +2162,32 @@ development exercises the real code path against real SEC responses.
   are honoured in `api/*.js`. **Do not remove the UA** — requests without one are refused, and the
   failure looks like a network error rather than a policy rejection.
 
+## The fixture cache
+
+Six of the items below are blocked on it, so it is worth knowing what it is. `scripts/build-fixtures.mjs`
+writes one slimmed companyfacts payload per filer into `fixtures/`, **by driving the shipping
+`api/facts.js`** rather than by fetching SEC directly — so each file is byte-identical to what the
+browser receives, and a suite run against it is running the real data path. That is what makes a
+same-session full-diff over 160 filers, and a 1,217-filer-year census, possible at all.
+
+```
+node scripts/build-fixtures.mjs                    # → fixtures/, resumable, throttled under SEC's cap
+node scripts/build-fixtures.mjs --tickers AAPL,JPM # → one or two
+FILINGS_FIXTURES=/path/to/cache npm test           # → point the suites at a copy
+```
+
+`scripts/fixture-tickers.json` is the filer list: 161 names recovered from the filers this README and
+the working notes actually measured rules against, so the cache is a regression set rather than an
+arbitrary sample — Chubb, Tronox, AIRI, ATEX, Instacart, AMTD, Paramount, CBL and the rest are all in
+it. `test/_fixtures.mjs` loads it and lets a suite skip cleanly when it is absent, which is the point:
+**write the suite now, run it when the cache exists.** The cache has been built twice and died twice,
+both times because it lived only in a session scratchpad.
+
+One thing to know before running it in a Claude Code **web** session: `data.sec.gov` is not on the
+default network allowlist, so every fetch comes back 403 from the agent proxy. The script says so
+explicitly rather than printing 161 identical failures. Either allow the host on the environment, or
+build the cache from a local session and copy it in.
+
 ## Next
 
 0. **A stock split fabricates an EPS collapse, and there is no split handling anywhere in the engine.**

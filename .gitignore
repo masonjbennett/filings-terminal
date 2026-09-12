@@ -6,3 +6,9 @@ dist
 # if a .env is ever created for local testing it must not be able to follow the code to GitHub.
 .env
 .env.*
+
+# The fixture cache: 161 filers of slimmed companyfacts, rebuilt by scripts/build-fixtures.mjs.
+# Not committed by default — it is derived data and the size is not known until it is built. If it
+# comes in small enough to be worth the clone, delete this line and commit it; the whole reason the
+# script exists is that the cache has died with its session twice.
+fixtures/
