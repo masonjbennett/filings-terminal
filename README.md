@@ -27,6 +27,20 @@ lookup did.
   longer prose: `t-declared.mjs` parses them out of this sentence and checks them against `tally()`,
   because a number written down in two places drifts. This one said 279 against a template of 278.
 - `src/extract.js` — the selection engine. Everything correct or wrong about the numbers is here.
+  Five tables fill a column, and they are tables rather than code so that both the engine and the
+  audit can walk them: `DERIVED` and `DERIVED_BY_INDUSTRY` run over the fetched values, `YOY` and
+  `CAGRS` run across columns, and **`DERIVED_PRICED` runs once today's share price arrives** — the
+  EV bridge, the multiples, and the treasury-stock share count. All five share one contract (a
+  function of the column, returning a value or null) and one hazard: **insertion order is behaviour**,
+  because each walks one shared `v` and a later entry reads an earlier one's result. `DERIVED_PRICED`
+  was a run of statements inside `applyQuote` until Sep 12 2026, which meant `t-declared` had to
+  recover the layer by regexing `mark("…")` out of `grid.js` and then assert the regex had matched
+  anything — a check whose own failure mode was "every market row looks unimplemented". It also meant
+  a new priced row had nowhere to go, which is part of why `treasuryMethod` sat declared and
+  unimplemented for the life of the project. The refactor changed no number: a 312-line snapshot of
+  every priced value and status across 13 filer shapes and both column types is identical but for
+  four lines, all of them `treasuryMethod` gaining an explicit status in the two branches that used
+  to return before reaching it, which neither the card nor the workbook can tell from absent.
 - `src/reverse.js` — the reverse DCF's solve, pure and node-testable; `test/` holds the committed
   suites (`npm test`), discovered by filename so a suite nobody runs cannot look like one that passes.
 - `test/t-declared.mjs` — **the declared-vs-read audit: every value declared in `template.js` must be

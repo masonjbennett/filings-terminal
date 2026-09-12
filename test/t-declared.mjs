@@ -38,7 +38,7 @@
 import { ok, eq, done } from "./_t.mjs";
 import { SECTIONS, OVERLAY_SECTIONS, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED, tally,
   NOT_APPLICABLE, PERIOD_TAGS, INDUSTRY, INDUSTRY_LABEL } from "../src/template.js";
-import { DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "../src/extract.js";
+import { DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "../src/extract.js";
 import { isInstant, sectionsFor } from "../src/grid.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -175,22 +175,18 @@ for (const name of Object.keys(EXPORT_EXEMPT)) {
 // src/grid.js's own text — the `mark("…")` calls in applyQuote and the `v.<key> =` facts fillCol
 // writes directly. A hand-maintained list here would be one more declaration nothing enforces.
 const gridSrc = ENGINE["src/grid.js"];
+// The priced layer is IMPORTED, not recovered from grid.js's text. It used to be a run of
+// `mark("…")` statements inside applyQuote, so this file had to regex them out and then assert the
+// regex had matched anything — a check whose own failure mode was "every market row looks
+// unimplemented". `DERIVED_PRICED` is a table now, like the other four, so the audit reads it the
+// same way. The only thing still recovered by regex is the handful of column facts `fillCol` writes
+// directly (`v.equityThin` and friends), which are flags rather than rows.
 const implementedBase = new Set([
-  ...Object.keys(DERIVED), ...Object.keys(YOY), ...Object.keys(CAGRS),
-  ...[...gridSrc.matchAll(/\bmark\(\s*"(\w+)"/g)].map(m => m[1]),
+  ...Object.keys(DERIVED), ...Object.keys(YOY), ...Object.keys(CAGRS), ...Object.keys(DERIVED_PRICED),
   ...[...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].map(m => m[1]),
 ]);
-const implemented = new Set([
-  ...Object.keys(DERIVED),
-  ...Object.values(DERIVED_BY_INDUSTRY).flatMap(d => Object.keys(d)),
-  ...Object.keys(YOY), ...Object.keys(CAGRS),
-  ...[...gridSrc.matchAll(/\bmark\(\s*"(\w+)"/g)].map(m => m[1]),
-  ...[...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].map(m => m[1]),
-]);
-// The matcher has to have matched something, or this whole check passes vacuously. applyQuote's
-// bridge is eleven rows and fillCol writes six column facts; both regexes earn their place.
-ok([...gridSrc.matchAll(/\bmark\(\s*"(\w+)"/g)].length >= 11, "the applyQuote bridge was found in grid.js — if this regex stops matching, every market row looks unimplemented");
-ok([...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].length >= 6, "fillCol's directly-written column facts were found — same vacuous-pass risk");
+const implemented = new Set([...implementedBase, ...Object.values(DERIVED_BY_INDUSTRY).flatMap(d => Object.keys(d))]);
+ok([...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].length >= 6, "fillCol's directly-written column facts were found — a regex that stops matching passes this check vacuously");
 
 const rows = [];
 for (const sec of SECTIONS) for (const line of sec.lines) rows.push({ sec, line, id: `${sec.id}/${line.k}` });
@@ -308,6 +304,51 @@ for (const r of rows)
   // The one that motivated the check: netDebtBridge restates netDebt and must follow it.
   const d = Object.keys(DERIVED);
   ok(d.indexOf("netDebtBridge") > d.indexOf("netDebt"), "`netDebtBridge` runs after `netDebt`, which is the row it restates — above it, it would read undefined and render blank exactly as it did before it was implemented");
+}
+
+// ── The priced layer, now that it is a table the audit can read ────────────────────────────────
+// `DERIVED_PRICED` is imported rather than regexed out of grid.js, so these checks are about the
+// structure itself rather than about whether a pattern still matches.
+// MUTATION: reordering the table, mis-scoping PRICED_NEEDS_SHARES, or blanking `ev` for an industry
+// without blanking the multiples built on it, each fail here.
+{
+  const priced = Object.keys(DERIVED_PRICED);
+  // Every `how: "market"` row is in the table and vice versa — the template and the layer that fills
+  // it are two lists of the same rows, which is exactly the shape that drifts.
+  const marketRows = rows.filter(r => r.line.how === "market").map(r => r.line.k).sort();
+  eq(priced.slice().sort().join(" "), marketRows.join(" "),
+    "the priced table and the template's how:\"market\" rows are the same set — a row in one and not the other is either a figure nothing fills or a figure no row shows");
+
+  // ORDER IS BEHAVIOUR here as in DERIVED: applyQuote walks the table over one shared `v`, so an
+  // entry reading another priced key must come after it. `ev` reads `mktCap`; the four multiples
+  // read `ev`; `pb` and `fcfYield` read `mktCap`.
+  const pos = new Map(priced.map((k, i) => [k, i]));
+  const readsOf = k => [...new Set([...stripComments(DERIVED_PRICED[k].toString()).matchAll(/\bv\s*\.\s*(\w+)/g)].map(m => m[1]))];
+  for (const k of priced) for (const r of readsOf(k)) if (pos.has(r))
+    ok(pos.get(r) < pos.get(k), `\`${k}\` runs after \`${r}\`, the priced value it reads — above it, it would read whatever the fetch pass left`);
+
+  // PRICED_NEEDS_SHARES must be the TRANSITIVE closure of what depends on the cover-page count,
+  // or a row built on a refused share count says "needs price" when the price is fine.
+  const needs = new Set();
+  for (let again = true; again; ) {
+    again = false;
+    for (const k of priced) {
+      if (needs.has(k)) continue;
+      const r = readsOf(k);
+      if (r.includes("sharesOut") || r.some(x => needs.has(x))) { needs.add(k); again = true; }
+    }
+  }
+  eq([...PRICED_NEEDS_SHARES].sort().join(" "), [...needs].sort().join(" "),
+    "PRICED_NEEDS_SHARES is exactly what depends on the cover-page count, directly or through another entry");
+
+  // The blanking chain, which is what makes reading `v.ev` safe rather than reading a local. A
+  // multiple must never be built from an enterprise value the sheet has just refused to show — the
+  // Chubb failure — and the same for anything built on a market cap.
+  const CHAIN = { ev: ["evRev", "evEbitda", "evEbit", "evFcf"], mktCap: ["ev", "pb", "fcfYield", "treasuryMethod"] };
+  for (const [ind, list] of Object.entries(NOT_APPLICABLE))
+    for (const [src, dependents] of Object.entries(CHAIN))
+      if (list.includes(src)) for (const d of dependents)
+        ok(list.includes(d), `NOT_APPLICABLE.${ind} blanks \`${src}\`, so it must blank \`${d}\` too — applyQuote reads the WRITTEN value, so a dependent left off the list would be computed from a figure the sheet refuses to show`);
 }
 
 // ── A computed row whose formula needs a PRICE cannot be a derivation at all ────────────────────
@@ -863,12 +904,12 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
     eq(risky.length, 0, `no line of ${file} carries a bare \`//\` inside a string literal — one would be stripped as a comment and take any read site after it off this suite's radar`);
   }
   // The real files must actually be in hand, or every read site above came from an empty string.
-  ok(ENGINE["src/grid.js"].length > 10000 && ENGINE["src/App.jsx"].length > 50000, "both engine files were read and are the real ones, not empty");
+  ok(ENGINE["src/grid.js"].length > 8000 && ENGINE["src/App.jsx"].length > 50000, "both engine files were read and are the real ones, not empty");
   ok(/\blet line2 = line\.omitFor\b/.test(ENGINE["src/grid.js"]), "and comment-stripping left the code intact — grid.js's omitFor read survives it");
 }
 
 // ── The mutation record ─────────────────────────────────────────────────────────────────────────
-// 68 mutations, 66 required to FAIL this suite and 2 required to leave it green, all 68 behaving as
+// 72 mutations, 70 required to FAIL this suite and 2 required to leave it green, all 72 behaving as
 // required. The harness ran against a COPY of the repo in the session scratchpad and has died with
 // it — deliberately not committed, for the reason t-reverse records: a runner that rewrites `src/`
 // leaves a mutated source file on disk if it is interrupted, which is a worse failure than the one it
@@ -880,7 +921,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // same failure the rule-28 session hit from the CRLF side, and a harness that cannot tell "survived"
 // from "never mutated anything" is worse than no harness.
 //
-// The 66 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
+// The 70 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
 // a duplicated core `k`; rule 29 restored on `nii`; a tagNote keyed to a tag the row does not ask for;
 // an omitFor industry typo; a flagNote keyed to nothing; NOT_APPLICABLE naming a row that does not
 // exist; an unreachable industry key; grid.js ceasing to read `line.instant`, `sec.after` and

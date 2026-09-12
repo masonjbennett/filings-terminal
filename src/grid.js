@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, DERIVED, DERIVED_BY_INDUSTRY, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -182,78 +182,32 @@ const PRICE_CURRENCY = "USD";
 function applyQuote(c, industry, quote, ccy) {
   if (!c || !quote || !quote.price) return;
   const v = c.v;
+  const priced = Object.keys(DERIVED_PRICED);
   if (ccy && ccy !== PRICE_CURRENCY) {
-    for (const k of ["price", "mktCap", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "pe", "pb", "fcfYield", "divYield"]) {
-      v[k] = null; c.meta[k] = { status: "currency-mismatch", ccy };
-    }
+    for (const k of priced) { v[k] = null; c.meta[k] = { status: "currency-mismatch", ccy }; }
     return;
   }
-  // Like the YoY pass above, this runs AFTER the inapplicable lines are blanked — and unlike it,
-  // this one writes VALUES, not just labels. So a price arriving quietly resurrected every row
+  // Like the YoY pass, this runs AFTER the inapplicable lines are blanked — and unlike it, this one
+  // writes VALUES, not just labels. So a price arriving quietly resurrected every row
   // NOT_APPLICABLE had just deleted: Chubb printed a $155bn enterprise value, 2.62x EV/Revenue and
   // 12.12x EV/FCF, the exact three rows the P&C list exists to suppress, because enterprise value
   // is a category error for a carrier whose liabilities ARE the business. It only appeared in
   // production, since the quote needs FINNHUB_KEY and local dev has none — which is why the
   // blanking is enforced here rather than trusted to have happened earlier.
   const na = new Set(NOT_APPLICABLE[industry] || []);
-  const mark = (k, val) => {
-    if (na.has(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; return; }
-    v[k] = val == null || !isFinite(val) ? null : val;
+  // The cover count was refused as stale or filed at zero (rule 26), so every figure built on it is
+  // missing for a reason the reader can act on. "needs price" would be false here — the price
+  // arrived and is fine — and would send them hunting a quote that is already on the page. Alphabet
+  // and Meta reach this through a share count companyfacts does not carry undimensioned; Simon
+  // Property and Paramount through one refused as stale or zero.
+  const noShares = v.sharesOut == null;
+  for (const [k, fn] of Object.entries(DERIVED_PRICED)) {
+    if (na.has(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; continue; }
+    if (noShares && PRICED_NEEDS_SHARES.has(k)) { v[k] = null; c.meta[k] = { status: "no-share-count" }; continue; }
+    const out = fn(v, quote.price);
+    v[k] = out == null || !isFinite(out) ? null : out;
     c.meta[k] = { status: "market" };
-  };
-  mark("price", quote.price);
-  // The price arrived. If the bridge still cannot close, saying "needs price" is false and sends a
-  // reader hunting a quote that is already on the page — rule 5's complaint on the valuation block,
-  // and the same mistake the currency suppression was written to avoid. Which input is missing is
-  // known right here, so the row says that instead. Alphabet and Meta reach this through a share
-  // count companyfacts does not carry undimensioned; Simon Property and Paramount through one
-  // refused as stale or zero.
-  const mktCap = v.sharesOut != null ? quote.price * v.sharesOut : null;
-  if (mktCap == null) {
-    for (const k of ["mktCap", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "pb", "fcfYield"]) {
-      if ((NOT_APPLICABLE[industry] || []).includes(k)) { v[k] = null; c.meta[k] = { status: "not-applicable" }; continue; }
-      v[k] = null; c.meta[k] = { status: "no-share-count" };
-    }
-    mark("pe", v.epsDil ? quote.price / v.epsDil : null);
-    mark("divYield", v.dps ? v.dps / quote.price : null);
-    return;
   }
-  mark("mktCap", mktCap);
-  const ev = mktCap == null || v.totalDebt == null ? null
-    : mktCap + v.totalDebt + (v.preferred || 0) + (v.nciBs || 0) - (v.cash || 0) - (v.sti || 0);
-  mark("ev", ev);
-  mark("evRev", ev && v.revenue ? ev / v.revenue : null);
-  mark("evEbitda", ev && v.ebitda ? ev / v.ebitda : null);
-  mark("evEbit", ev && v.ebit ? ev / v.ebit : null);
-  mark("evFcf", ev && v.fcf ? ev / v.fcf : null);
-  mark("pe", v.epsDil ? quote.price / v.epsDil : null);
-  mark("pb", mktCap && v.equity ? mktCap / v.equity : null);
-  mark("fcfYield", mktCap && v.fcf != null ? v.fcf / mktCap : null);
-  mark("divYield", v.dps ? v.dps / quote.price : null);
-  // The treasury stock method, here rather than in DERIVED because it needs the price and the
-  // derivations run before one exists. Two rules decide what it refuses.
-  //
-  // (1) ALL THREE INPUTS OR NOTHING. A count built from options while the RSUs are untagged is a
-  // partial total under a label that says "fully diluted" — rule 7, and worse than usual because the
-  // row's NAME is the claim. A reader cannot see which leg was missing.
-  //
-  // (2) OPTIONS ARE ONLY DILUTIVE IN THE MONEY, and a weighted-average strike cannot say which
-  // tranches are. The standard treatment is all-or-nothing on the average: at or above the price the
-  // assumed buyback absorbs the whole grant, so the increment is ZERO, never negative. Without that
-  // floor an out-of-the-money grant would SUBTRACT shares and print a diluted count below basic,
-  // which is arithmetic no filing supports.
-  //
-  // NOT MEASURED: how many filers tag all three. companyfacts carries the undimensioned facts only,
-  // and the three award tags are commonly dimensioned by plan — so this may resolve for very few.
-  // That is a coverage question, not a correctness one, and it needs the fixture cache to answer.
-  // `Math.max(0, …)` IS the in-the-money floor, stated once rather than as a second ternary whose
-  // null branch nothing could read. `sharesOut` is in the gate although the function already returned
-  // above when it is missing: the row needs it, and a guard that documents its own inputs survives a
-  // change to the early return above it.
-  const tsmReady = v.sharesOut != null && v.optionsOut != null && v.optionsStrike != null && v.rsuOut != null;
-  mark("treasuryMethod", tsmReady
-    ? v.sharesOut + Math.max(0, v.optionsOut - (v.optionsOut * v.optionsStrike) / quote.price) + v.rsuOut
-    : null);
 }
 
 // Four windows, because that is what a three-year CAGR spans — the newest LTM column plus the three

@@ -1272,6 +1272,56 @@ export const YOY = {
   revGrowth: "revenue", ebitdaGrowth: "ebitda", epsGrowth: "epsDil",
 };
 
+// ── The PRICED layer ─────────────────────────────────────────────────────────────────────────────
+// Every figure that needs today's share price, as a table with the same contract as DERIVED — a
+// function of the column, returning a value or null — plus the price as a second argument, because
+// it is the one input that is not on the column.
+//
+// It is a TABLE rather than a run of statements inside `applyQuote` for the reason DERIVED is one:
+// the audit can import it and check it the way it checks the other four, instead of recovering the
+// layer by regexing `mark("…")` out of grid.js and then having to assert that the regex still
+// matched anything. It also gives the next priced row somewhere to go: `treasuryMethod` had no home
+// and sat declared-and-unimplemented for the life of the project partly because of that.
+//
+// ORDER IS BEHAVIOUR, exactly as in DERIVED. `applyQuote` walks this in insertion order over one
+// shared `v`, so a later entry reads an earlier one's result: the four multiples read `v.ev`, and
+// `pb`/`fcfYield` read `v.mktCap`. Reading the WRITTEN value rather than a local is deliberate — a
+// multiple must never be built from an enterprise value the sheet has just refused to show, which
+// is what `NOT_APPLICABLE` blanking means, and the audit asserts that chain.
+export const DERIVED_PRICED = {
+  price: (v, price) => price,
+  mktCap: (v, price) => (v.sharesOut == null ? null : price * v.sharesOut),
+  // The Goldman EA-proxy bridge: market cap plus debt, preferred and minority interest, less cash
+  // and short-term investments. Blank without total debt rather than assuming a debt-free company.
+  ev: v => (v.mktCap == null || v.totalDebt == null ? null
+    : v.mktCap + v.totalDebt + (v.preferred || 0) + (v.nciBs || 0) - (v.cash || 0) - (v.sti || 0)),
+  evRev: v => (v.ev && v.revenue ? v.ev / v.revenue : null),
+  evEbitda: v => (v.ev && v.ebitda ? v.ev / v.ebitda : null),
+  evEbit: v => (v.ev && v.ebit ? v.ev / v.ebit : null),
+  evFcf: v => (v.ev && v.fcf ? v.ev / v.fcf : null),
+  pe: (v, price) => (v.epsDil ? price / v.epsDil : null),
+  pb: v => (v.mktCap && v.equity ? v.mktCap / v.equity : null),
+  fcfYield: v => (v.mktCap && v.fcf != null ? v.fcf / v.mktCap : null),
+  divYield: (v, price) => (v.dps ? v.dps / price : null),
+  // The treasury stock method. All three award inputs or nothing — a count built from options while
+  // the RSUs are untagged is a partial total under a label that says "fully diluted", and the row's
+  // NAME is the claim. `Math.max(0, …)` is the in-the-money floor: a weighted-average strike cannot
+  // say which tranches are in the money, so at or above the price the assumed buyback absorbs the
+  // whole grant, and without the floor an out-of-the-money grant would SUBTRACT shares and print a
+  // diluted count below basic.
+  treasuryMethod: (v, price) => (v.sharesOut == null || v.optionsOut == null || v.optionsStrike == null || v.rsuOut == null
+    ? null
+    : v.sharesOut + Math.max(0, v.optionsOut - (v.optionsOut * v.optionsStrike) / price) + v.rsuOut),
+};
+
+// The entries whose value comes, directly or through another entry, from the cover-page share count.
+// They get their own status when that count is refused as stale or filed at zero (rule 26), because
+// "needs price" would be false — the price arrived and is fine — and would send a reader hunting a
+// quote that is already on the page. Declared rather than derived from the function bodies, and the
+// audit checks it against the transitive closure of what they actually read.
+export const PRICED_NEEDS_SHARES = new Set(
+  ["mktCap", "ev", "evRev", "evEbitda", "evEbit", "evFcf", "pb", "fcfYield", "treasuryMethod"]);
+
 // Multi-year CAGRs, as [source key, years back]. Separate from YOY and from DERIVED because a
 // derivation only ever sees ONE column: `v` is a single year, so a rate spanning three of them
 // cannot be expressed there. Both of these have been declared in the template with a formula since
