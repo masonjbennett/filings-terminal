@@ -233,15 +233,32 @@ export const SECTIONS = [
   // class-of-stock dimension and is invisible to companyfacts — README open item 9, unaffected.)
   // This is the Rhythm Pharmaceuticals failure the row was created for, still open on six mega-caps.
   //
-  // Both go LAST, which is rule 11's discipline: first hit wins, so the 16 filers resolving
-  // `...AttributableToParent` today are untouched and the new names only fire where the row is blank.
-  // The counter-population is real and was checked — the plural concept is BROADER than the
-  // parent-only one, so a filer tagging both could show the larger figure. None of the 16 can reach
-  // it, and Prudential tags both names at the same $2,794m, so there is no near-miss regime.
+  // **The ALL-IN concepts lead and the parent-only one goes last**, decided by arithmetic rather than
+  // by reading the element names. These are three different quantities: the parent's share of
+  // mezzanine, the all-in figure including the redeemable NCI portion, and the redeemable NCI itself.
+  // The identity this row serves is `assets = liabilities + equityALL + mezzanine`, and `equityAll`
+  // already carries NCI inside equity — so the mezzanine term has to be the ALL-IN one. Parent-only
+  // understates it.
+  //
+  // Measured over the 167 columns whose residual is large enough to decide the question: the residual
+  // equals `RedeemableNoncontrolling…` **68** times, the plural `…Interests` **37**, and
+  // `…AttributableToParent` **14**. Every column tagging more than one — Tesla, Deere, NextEra,
+  // Prudential — closes on the two all-in names and does NOT close on parent-only. Parent-only still
+  // wins the filers that tag nothing else, which is what those 14 are.
+  //
+  // **The first version of this fix put the new names LAST** on rule 11's "first hit wins, so nothing
+  // that resolves today can move" reasoning. That was the wrong half of rule 11 and it bought rule
+  // 21's failure instead: Tesla's row read $556m / $643m / **$51m** / $568m — the middle column the
+  // parent's share while its neighbours were the all-in figure, a collapse and recovery that never
+  // happened. Four filers were left in that state, and the "0 values changed" measurement that
+  // cleared the change could not see it, because a row switching CONCEPT between columns shows up as
+  // cells appearing, not as cells changing. `pinByRun` does not fix it either — it reorders the
+  // candidate list and `pickFact` still falls through per column. Ordering by what the balance sheet
+  // says is what fixes it.
   { k: "tempEquity", label: "Mezzanine (redeemable) equity", how: "fetched",
-    tags: ["TemporaryEquityCarryingAmountAttributableToParent", "TemporaryEquityCarryingAmount",
-      "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
-      "RedeemableNoncontrollingInterestEquityCarryingAmount"],
+    tags: ["TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
+      "RedeemableNoncontrollingInterestEquityCarryingAmount", "TemporaryEquityCarryingAmount",
+      "TemporaryEquityCarryingAmountAttributableToParent"],
     note: "Between liabilities and equity — counted in neither total above" },
   { k: "preferred", label: "Preferred stock", how: "fetched", tags: ["PreferredStockValue"] },
   { k: "retained", label: "Retained earnings", how: "fetched", tags: ["RetainedEarningsAccumulatedDeficit"] },

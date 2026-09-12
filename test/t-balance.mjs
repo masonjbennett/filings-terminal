@@ -36,21 +36,60 @@ const tempEquity = SECTIONS.flatMap(s => s.lines).find(l => l.k === "tempEquity"
     "the PLURAL element is asked for — it is the one filers actually tag");
   ok(t.includes("RedeemableNoncontrollingInterestEquityCarryingAmount"),
     "and the other spelling filers use, which was never asked for at all");
-  // Rule 11's discipline: first hit wins, so the new names must sit LAST or they would displace the
-  // parent-only figure on the 16 filers already resolving it. Measured: 207 cells appeared and
-  // 0 changed, which is only true because of this ordering.
-  eq(t[0], "TemporaryEquityCarryingAmountAttributableToParent",
-    "the parent-only concept still leads, so no filer that already resolved can move");
-  const addedAt = Math.min(t.indexOf("TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests"),
-    t.indexOf("RedeemableNoncontrollingInterestEquityCarryingAmount"));
-  ok(addedAt > t.indexOf("TemporaryEquityCarryingAmount"),
-    "and the two new names go last, after every concept that resolved before");
+  // ORDER, and it is the whole finding. These are three different quantities — the parent's share,
+  // the all-in figure including redeemable NCI, and the redeemable NCI itself — and the identity this
+  // row serves (`assets = liabilities + equityAll + mezzanine`) needs the ALL-IN one, because
+  // `equityAll` already carries NCI inside equity. Measured over the 167 columns whose residual is
+  // large enough to decide it: the residual equals RedeemableNoncontrolling 68 times, the plural
+  // 37 times, and parent-only 14. Every column tagging more than one closes on the all-in names and
+  // does not close on parent-only.
+  //
+  // The FIRST version of this fix put the new names last, reasoning from rule 11 that nothing which
+  // already resolves may move. That bought rule 21's failure instead: Tesla read $556m / $643m /
+  // $51m / $568m, the middle column the parent's share between two all-in figures — a collapse and
+  // recovery that never happened. The "0 values changed" measurement could not see it, because a row
+  // switching CONCEPT between columns shows up as cells APPEARING, not as cells changing.
+  // MUTATION: putting parent-only first restores Tesla's $51m and fails here.
+  const parentAt = t.indexOf("TemporaryEquityCarryingAmountAttributableToParent");
+  for (const allIn of ["TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
+    "RedeemableNoncontrollingInterestEquityCarryingAmount"])
+    ok(t.indexOf(allIn) < parentAt,
+      `the all-in concept ${allIn.slice(0, 34)}… outranks the parent-only one — it is what the balance sheet closes on`);
+  eq(t[t.length - 1], "TemporaryEquityCarryingAmountAttributableToParent",
+    "parent-only goes LAST, so it still wins the 14 filers that tag nothing else and never displaces an all-in figure");
   // A tag the template asks for and the proxy drops silently never arrives — the rule api/facts.js
   // states about itself. Asserted here because this row is the one that proved it can happen.
   const keep = readFileSync(join(root, "api", "facts.js"), "utf8");
   for (const tag of t) ok(keep.includes(`"${tag}"`), `KEEP carries ${tag}, or the row asks for something that cannot reach the browser`);
   ok(!keep.includes('"TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterest"'),
     "and the dead singular no longer occupies a KEEP slot pretending to be a safety net");
+}
+
+// ── ...and the Tesla shape itself, so the regression cannot come back quietly ───────────────────
+// A filer tagging the parent's share in ONE year and the all-in figure on either side of it. With
+// parent-only leading, the middle column resolves $51m between $643m and $568m. With the all-in
+// concepts leading it resolves $604m and the row means one thing across the sheet. This is the
+// assertion the first version of the fix needed and did not have.
+// MUTATION: reordering the tag list fails this before it fails anything else.
+{
+  const mk = tags => {
+    const f = {};
+    for (const [tag, byYear] of Object.entries(tags)) {
+      f[tag] = { label: tag, units: { USD: Object.entries(byYear).map(([end, val]) => ({ end, val, fy: +end.slice(0, 4), fp: "FY", filed: `${+end.slice(0, 4) + 1}-02-01`, form: "10-K", accn: `x-${end}` })) } };
+    }
+    return f;
+  };
+  const facts = mk({
+    TemporaryEquityCarryingAmountAttributableToParent: { "2020-12-31": 51e6 },
+    TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests: { "2020-12-31": 604e6, "2021-12-31": 568e6 },
+    RedeemableNoncontrollingInterestEquityCarryingAmount: { "2019-12-31": 643e6 },
+  });
+  const { pickFact } = await import("../src/extract.js");
+  const at = end => { const f = pickFact(facts, tempEquity.tags, { end }, { ccy: "USD" }); return f && f.value; };
+  eq(at("2020-12-31"), 604e6,
+    "the Tesla shape: the year that tags BOTH resolves the all-in $604m, not the parent's $51m between two all-in neighbours");
+  eq(at("2021-12-31"), 568e6, "and the neighbour it has to agree with is unchanged");
+  eq(at("2019-12-31"), 643e6, "as is the year on the other side, under the other spelling of the same quantity");
 }
 
 // ── A derivation must not return the figure it was handed ───────────────────────────────────────

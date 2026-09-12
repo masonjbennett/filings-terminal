@@ -874,10 +874,28 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     against building an instance-reading path for one filer.
 
     Fixed by asking for the plural **and** `RedeemableNoncontrollingInterestEquityCarryingAmount`,
-    the other spelling filers use, both placed **last** — rule 11's discipline, since first hit wins
-    and the 16 filers resolving the parent-only concept must not move. Measured: **207 cells
-    appeared, 0 changed, 0 vanished**, and non-closing filers go **7 → 1**. Prudential tags both new
-    names at the same $2,794m, so there is no near-miss regime between them.
+    the other spelling filers use. **207 cells appeared, 0 vanished**, and non-closing filers go
+    **7 → 1**.
+
+    **The ORDER took two attempts and the first one was wrong, which is the part worth keeping.**
+    The obvious placement is last — rule 11's "first hit wins, so nothing that already resolves can
+    move" — and that bought **rule 21's failure** instead. These are three different quantities: the
+    parent's share of mezzanine, the all-in figure including redeemable NCI, and the redeemable NCI
+    itself. With parent-only leading, **Tesla's row read $556m / $643m / $51m / $568m** — the middle
+    column the parent's share between two all-in figures, a collapse and recovery that never
+    happened, across four filers. **The "0 values changed" measurement that cleared the first version
+    could not see it**, because a row switching CONCEPT between columns shows up as cells APPEARING,
+    not as cells changing. `pinByRun` does not fix it either: it reorders the candidate list and
+    `pickFact` still falls through per column.
+
+    The order is decided by arithmetic. The identity this row serves is
+    `assets = liabilities + equityAll + mezzanine`, and `equityAll` already carries NCI inside equity,
+    so the mezzanine term must be the ALL-IN one. Over the 167 columns whose residual is large enough
+    to decide it, the residual equals `RedeemableNoncontrolling…` **68** times, the plural **37**, and
+    parent-only **14** — and every column tagging more than one closes on the all-in names and fails
+    on parent-only. So the all-in concepts lead and parent-only goes last, where it still wins the 14
+    filers that tag nothing else. The reorder moves **exactly one cell** against the first version:
+    Tesla FY2020, $51m → $604m.
 
 29. **A derivation must never return the figure it was handed.** `fillCol` writes
     `meta[k] = { status: "computed" }` for ANY derivation returning non-null, so a derivation that
