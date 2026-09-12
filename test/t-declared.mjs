@@ -165,8 +165,8 @@ for (const name of Object.keys(EXPORT_EXEMPT)) {
 
 // ── A formula in the template is not an implementation ──────────────────────────────────────────
 // Rule 22, and rule 25 is the same rule arriving again three weeks later. Every `how: "computed"`
-// row renders a ƒ marker whose tooltip IS `line.formula` (src/App.jsx:1397) and whose status is
-// deliberately `null` (src/App.jsx:1391) — so a computed row with no implementation is a BLANK CELL
+// row renders a ƒ marker whose tooltip IS `line.formula` (src/App.jsx:1421) and whose status is
+// deliberately `null` (src/App.jsx:1415) — so a computed row with no implementation is a BLANK CELL
 // ADVERTISING A FORMULA, with nothing on the page saying it was never computed. That is strictly
 // worse than "not tagged", which at least sends the reader somewhere.
 //
@@ -175,6 +175,11 @@ for (const name of Object.keys(EXPORT_EXEMPT)) {
 // src/grid.js's own text — the `mark("…")` calls in applyQuote and the `v.<key> =` facts fillCol
 // writes directly. A hand-maintained list here would be one more declaration nothing enforces.
 const gridSrc = ENGINE["src/grid.js"];
+const implementedBase = new Set([
+  ...Object.keys(DERIVED), ...Object.keys(YOY), ...Object.keys(CAGRS),
+  ...[...gridSrc.matchAll(/\bmark\(\s*"(\w+)"/g)].map(m => m[1]),
+  ...[...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].map(m => m[1]),
+]);
 const implemented = new Set([
   ...Object.keys(DERIVED),
   ...Object.values(DERIVED_BY_INDUSTRY).flatMap(d => Object.keys(d)),
@@ -190,6 +195,15 @@ ok([...gridSrc.matchAll(/\bv\.(\w+)\s*=(?!=)/g)].length >= 6, "fillCol's directl
 const rows = [];
 for (const sec of SECTIONS) for (const line of sec.lines) rows.push({ sec, line, id: `${sec.id}/${line.k}` });
 for (const [ind, secs] of Object.entries(OVERLAY_SECTIONS)) for (const sec of secs) for (const line of sec.lines) rows.push({ sec, line, ind, id: `${ind}/${sec.id}/${line.k}` });
+// The three key universes, declared once and used by every check below. Scope is the half that is
+// easy to get wrong, so they are named rather than rebuilt inline: CORE is what a comps sheet and
+// the cross-column passes can see, core+overlay is what one industry's sheet can see, and the union
+// is only ever correct for something that runs on every sheet.
+const coreK = new Set(SECTIONS.flatMap(s => s.lines.map(l => l.k)));
+const overlayK = Object.fromEntries(Object.entries(OVERLAY_SECTIONS)
+  .map(([ind, secs]) => [ind, new Set(secs.flatMap(s => s.lines.map(l => l.k)))]));
+const allK = new Set(rows.map(r => r.line.k));
+
 
 // Which sections a reader can actually SEE. Taken from src/App.jsx rather than restated, because the
 // whole finding below turns on it: `TABS` lists the sections that get a tab, `FOOTER_SECS` the three
@@ -233,9 +247,14 @@ eq(unimplementedOnATab.join("\n"), Object.keys(UNIMPLEMENTED_ON_A_TAB).sort().jo
 
 // Every OTHER computed row is implemented. Stated as its own assertion so the baseline above can
 // never quietly grow to cover the whole template.
+// Scoped per row, not against the union of all six industry tables: a `life` overlay row implemented
+// only in `DERIVED_PC` is implemented for nobody who renders it. A CORE row keeps the wider scope,
+// because a core row really does render on every industry's sheet and any of those tables may fill it.
+const implementedFor = ind => (ind ? new Set([...implementedBase, ...Object.keys(DERIVED_BY_INDUSTRY[ind])]) : implemented);
 for (const r of rows)
   if (r.line.how === "computed" && !(r.id in UNIMPLEMENTED_ON_A_TAB) && !footerSecs.includes(r.sec.id))
-    ok(implemented.has(r.line.k), `\`${r.id}\` declares how:"computed" and something computes it — formula: ${r.line.formula || "(none declared)"}`);
+    ok(implementedFor(r.ind).has(r.line.k),
+      `\`${r.id}\` declares how:"computed" and something that runs on ${r.ind || "every"} sheet computes it — formula: ${r.line.formula || "(none declared)"}`);
 
 // ── Derivations run in INSERTION ORDER over one shared `v`, and two read a key filled later ─────
 // `fillCol` does `for (const [k, fn] of Object.entries(derivations))` over `{...DERIVED,
@@ -256,13 +275,28 @@ for (const r of rows)
   const KNOWN_FORWARD_READS = {
     "DERIVED.nciDerived → nciBs": "asks whether the FILER tagged it, so it must run before nciBs's own derivation fills the key",
   };
+  // A derivation's body is not the whole story: `bankTopLine(v)` and `pcLosses(v)` are module-private
+  // helpers, and `Function.prototype.toString` shows only the CALL. Extracting `bankTopLine` in the
+  // same change that added this gate hid the exact dependency the gate exists to protect — removing
+  // the reserved `nii` slot left this green. So one level of helper call is resolved, out of the
+  // source text, and the resolution is asserted below rather than assumed.
+  const extractSrc = stripComments(read("src/extract.js"));
+  const helpers = new Map();
+  for (const m of extractSrc.matchAll(/^const (\w+) = (v|\(\.\.\.[^)]*\)|\([^)]*\)) =>[^\n]*/gm)) helpers.set(m[1], m[0]);
+  ok(helpers.has("bankTopLine") && helpers.has("pcLosses"),
+    `the module-private derivation helpers were found in the source — ${helpers.size} matched. If this parse breaks, every helper-wrapped read below becomes invisible again.`);
+  const bodyOf = fn => {
+    let body = stripComments(fn.toString());
+    for (const m of body.matchAll(/\b(\w+)\s*\(\s*v\s*\)/g)) if (helpers.has(m[1])) body += "\n" + helpers.get(m[1]);
+    return body;
+  };
   const forward = [];
   for (const ind of [null, ...Object.keys(DERIVED_BY_INDUSTRY)]) {
     const tbl = ind ? { ...DERIVED, ...DERIVED_BY_INDUSTRY[ind] } : DERIVED;
     const keys = Object.keys(tbl);
     const pos = new Map(keys.map((k, i) => [k, i]));
     keys.forEach((k, i) => {
-      for (const m of stripComments(tbl[k].toString()).matchAll(/\bv\s*\.\s*(\w+)/g)) {
+      for (const m of bodyOf(tbl[k]).matchAll(/\bv\s*\.\s*(\w+)/g)) {
         const j = pos.get(m[1]);
         if (j !== undefined && j > i) forward.push(`${ind && DERIVED_BY_INDUSTRY[ind][k] ? ind : "DERIVED"}.${k} → ${m[1]}`);
       }
@@ -340,6 +374,18 @@ for (const r of rows)
     ok(Array.isArray(r.line.tags) && r.line.tags.length > 0 || r.line.wcAggregate,
       `\`${r.id}\` declares how:"fetched" and has tags to fetch with (or aggregates its own, like chgNwc) — grid.js skips a fetched row with no tags`);
 
+// ── A row that restates another must be blanked wherever the other is ──────────────────────────
+// `netDebtBridge` returns `v.netDebt` — the same quantity on a different tab — and the derivations
+// run BEFORE the industry blanking pass, so it would survive a blanking that removes the row it
+// restates. Today no NOT_APPLICABLE list carries `netDebt`, which is the only reason the pairing is
+// invisible; the day one does (and `NOT_APPLICABLE.bank` has had to gain `ev`, `evRev`, `evFcf` and
+// the whole FCF family already), the Ratios tab would read "Net debt — n/a" while the Valuation tab
+// printed the identical figure. A code comment is not enforcement, so this is the enforcement.
+// MUTATION: adding `netDebt` to any NOT_APPLICABLE list without `netDebtBridge` fails here.
+for (const [ind, list] of Object.entries(NOT_APPLICABLE))
+  eq(list.includes("netDebt"), list.includes("netDebtBridge"),
+    `NOT_APPLICABLE.${ind} blanks \`netDebtBridge\` exactly when it blanks \`netDebt\` — the bridge row restates that figure, and the derivations run before the blanking pass, so it would outlive the row it copies`);
+
 // ── A derivation nothing displays and nothing reads is work thrown away ─────────────────────────
 // The mirror of rule 22: there, a declared formula with no implementation; here, an implementation
 // with no declaration. This suite found one on its first run — `DERIVED_PC.lossesTotal`, which
@@ -353,9 +399,16 @@ for (const r of rows)
 // which is the ratchet working in the direction that matters least often and matters most.
 const rowKeys = new Set(rows.map(r => r.line.k));
 const flagKeys = new Set(rows.flatMap(r => (r.line.flagNote ? Object.keys(r.line.flagNote) : [])));
+// Scoped, for the same reason the name-match sets below are: `DERIVED` runs on every sheet so any
+// row anywhere can display its output, but `DERIVED_BANK.x` only ever runs on a bank, so it must be
+// reachable from CORE ∪ the bank overlay. Against the union, a bank derivation displayed only by a
+// REIT row would look fine and compute into nothing on every bank column.
 const orphans = [];
-for (const [name, tbl] of Object.entries({ DERIVED, ...DERIVED_BY_INDUSTRY }))
-  for (const k of Object.keys(tbl)) if (!rowKeys.has(k) && !flagKeys.has(k)) orphans.push(`${name === "DERIVED" ? "DERIVED" : name}.${k}`);
+for (const [name, tbl] of Object.entries({ DERIVED, ...DERIVED_BY_INDUSTRY })) {
+  const visible = name === "DERIVED" ? rowKeys
+    : new Set([...coreK, ...overlayK[name]]);
+  for (const k of Object.keys(tbl)) if (!visible.has(k) && !flagKeys.has(k)) orphans.push(`${name}.${k}`);
+}
 eq(orphans.sort().join("\n"), "",
   `no derivation computes into \`v\` without a row or a flagNote reading the result${orphans.length ? ` — orphaned: ${orphans.join(", ")}` : ""}`);
 
@@ -371,10 +424,7 @@ eq(orphans.sort().join("\n"), "",
 // pc-only key would then blank nothing on a bank — the Chubb enterprise-value failure, back inside
 // the one list that exists to prevent it. So each set is checked against the keys its READ SITE can
 // actually see, and nothing wider.
-const coreK = new Set(SECTIONS.flatMap(s => s.lines.map(l => l.k)));
-const overlayK = Object.fromEntries(Object.entries(OVERLAY_SECTIONS)
-  .map(([ind, secs]) => [ind, new Set(secs.flatMap(s => s.lines.map(l => l.k)))]));
-const allK = new Set(rows.map(r => r.line.k));
+
 const forIndustry = ind => new Set([...coreK, ...overlayK[ind]]);
 const mustBeRows = (label, names, scope, why) => {
   const bad = [...names].filter(n => !scope.has(n));
@@ -455,16 +505,6 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   ok(settable.has(k), `\`${r.id}\`'s flagNote keys on \`${k}\`, which the engine sets — a note keyed to nothing never fires, and this row's note is what stops a computed figure reading as filed`);
 
 // ── A `formula` on a row that is not computed can never be displayed ────────────────────────────
-// The ƒ marker and its tooltip are the ONLY reader of `formula`, and that read is guarded on
-// `line.how === "computed"` (src/App.jsx:1397). So a formula declared on a market row is consumed by
-// nothing — and the `ev` section, which is where all ten of them live, is not even drawn by the row
-// renderer: it is lifted into `ValuationCard` above the tabs, which draws no ƒ and no tooltip at all.
-// Ten of the template's 103 formula declarations are therefore unreachable twice over.
-//
-// This is the defect class sitting inside the property that defines it, which is why it is a baseline
-// and not a silent pass: the EV bridge's arithmetic is the most worth showing a reader on the page
-// ("market cap + total debt + preferred + NCI − cash − ST investments" is the line a banker checks),
-// and it is written down where nothing can print it.
 // There are TWO renderers of template lines and they draw the ƒ on different rules, which is the
 // whole reason this was invisible. `SectionRows` draws the year grid and guards on
 // `how === "computed"`. `ValuationCard` draws the `ev` section ALONE — that section is lifted out of
@@ -472,9 +512,10 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
 // the right-hand edge — and it now draws a ƒ for ANY row declaring a formula, which is right for a
 // section whose every line is `market` or `computed` and none of which is fetched.
 //
-// So a formula is displayable iff the renderer that draws its section can draw it. The `ev` section's
-// twelve formulas were unreachable until the card was given the marker; a formula on a FOOTER section
-// is unreachable still, and those rows are held in FOOTER_NON_MANUAL below rather than counted twice.
+// So a formula is displayable iff the renderer that draws its section can draw it. A footer section
+// needs no exemption any more: every line there is `manual` now, and a manual row is drawn only as a
+// label, so a formula on one would be caught by the `how !== "computed"` test like any other. The
+// assertion below is therefore unconditional — there is no list of accepted exceptions left.
 // MUTATION: taking the ƒ out of ValuationCard, or declaring a formula on a non-computed row in a
 // tabbed section, fails here.
 {
@@ -495,7 +536,6 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   const notDisplayable = rows.filter(r => {
     if (!r.line.formula) return false;
     if (r.sec.id === "ev") return false;                      // ValuationCard: any formula
-    if (footerSecs.includes(r.sec.id)) return false;          // held in FOOTER_NON_MANUAL instead
     return r.line.how !== "computed";                         // SectionRows' guard
   }).map(r => r.id).sort();
   eq(notDisplayable.join("\n"), "",
@@ -627,7 +667,17 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
   // Words that are prose or arithmetic rather than row names. `or` is the odd one and it is real:
   // the REIT float row's formula reads "(lossReservesNet or lossReserves - reinsRecov) + …", which
   // describes a fallback in English because there is no operator for it.
-  const PROSE = new Set(["sum", "last", "quarters", "or", "price"]);
+  // Words inside a formula that are prose or arithmetic rather than row names. Asserted to be LIVE,
+  // because an allowlist nobody prunes is the defect this file is about: `sum`, `last` and `quarters`
+  // were here for "sum(last 4 quarters)" on two rows that have since been deleted, and `price` was
+  // here before it became a real row key — four dead entries, each one silently accepting a formula
+  // that names a row which does not exist.
+  const PROSE = new Set(["or"]);
+  for (const w of PROSE) {
+    ok(rows.some(r => r.line.formula && new RegExp("\\b" + w + "\\b").test(r.line.formula)),
+      `PROSE exempts \`${w}\` and some formula still contains it — a dead exemption accepts a formula naming a row that does not exist`);
+    ok(!allK.has(w), `and \`${w}\` is not itself a row key, which would make the exemption pointless`);
+  }
   const unresolved = [];
   for (const r of rows) {
     if (!r.line.formula) continue;
@@ -818,7 +868,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 }
 
 // ── The mutation record ─────────────────────────────────────────────────────────────────────────
-// 56 mutations, 54 required to FAIL this suite and 2 required to leave it green, all 56 behaving as
+// 68 mutations, 66 required to FAIL this suite and 2 required to leave it green, all 68 behaving as
 // required. The harness ran against a COPY of the repo in the session scratchpad and has died with
 // it — deliberately not committed, for the reason t-reverse records: a runner that rewrites `src/`
 // leaves a mutated source file on disk if it is interrupted, which is a worse failure than the one it
@@ -830,7 +880,7 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // same failure the rule-28 session hit from the CRLF side, and a harness that cannot tell "survived"
 // from "never mutated anything" is worse than no harness.
 //
-// The 54 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
+// The 66 caught: an unread property declared; `tags` deleted from a fetched row; a fifth `how` value;
 // a duplicated core `k`; rule 29 restored on `nii`; a tagNote keyed to a tag the row does not ask for;
 // an omitFor industry typo; a flagNote keyed to nothing; NOT_APPLICABLE naming a row that does not
 // exist; an unreachable industry key; grid.js ceasing to read `line.instant`, `sec.after` and
@@ -842,7 +892,11 @@ ok(!isInstant({ id: "zzz" }, { k: "zzz" }), "and an unknown section with no flag
 // formula declared on a row that is not computed; a tag added to a row but not to KEEP; a tag removed
 // from KEEP the template still asks for; the dei gate drifting from the template's `dei:` spelling; a
 // PCT key that is not a row; an INSTANT_LINES key that is not a row; dcfApplicable gating on a row that
-// does not exist; an EQUITY_DENOMINATED member reachable on neither surface; and a section prepended
+// does not exist; an EQUITY_DENOMINATED member reachable on neither surface; ValuationCard dropping
+// `formula` or its ƒ, or its grid minimum reverting to 190px; a footer line made non-manual; the TSM
+// gate losing any of its three legs or its in-the-money floor; `bankTopLine` tolerating a missing
+// leg in either direction; the reserved `nii` slot removed; a dead `PROSE` entry; `netDebt` blanked
+// without `netDebtBridge`; a life derivation moved to the pc table; and a section prepended
 // above the income statement, in both its forms — empty, which crashes template.js at import and so
 // cannot ship quietly, and WITH lines, which does not crash and is caught by the positional assertions
 // plus three others independently. Then, from the completeness pass: NOT_APPLICABLE.bank naming a key

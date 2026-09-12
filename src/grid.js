@@ -246,11 +246,14 @@ function applyQuote(c, industry, quote, ccy) {
   // NOT MEASURED: how many filers tag all three. companyfacts carries the undimensioned facts only,
   // and the three award tags are commonly dimensioned by plan — so this may resolve for very few.
   // That is a coverage question, not a correctness one, and it needs the fixture cache to answer.
+  // `Math.max(0, …)` IS the in-the-money floor, stated once rather than as a second ternary whose
+  // null branch nothing could read. `sharesOut` is in the gate although the function already returned
+  // above when it is missing: the row needs it, and a guard that documents its own inputs survives a
+  // change to the early return above it.
   const tsmReady = v.sharesOut != null && v.optionsOut != null && v.optionsStrike != null && v.rsuOut != null;
-  const tsmIncrement = !tsmReady ? null
-    : v.optionsStrike >= quote.price ? 0
-    : v.optionsOut - (v.optionsOut * v.optionsStrike) / quote.price;
-  mark("treasuryMethod", tsmReady ? v.sharesOut + tsmIncrement + v.rsuOut : null);
+  mark("treasuryMethod", tsmReady
+    ? v.sharesOut + Math.max(0, v.optionsOut - (v.optionsOut * v.optionsStrike) / quote.price) + v.rsuOut
+    : null);
 }
 
 // Four windows, because that is what a three-year CAGR spans — the newest LTM column plus the three

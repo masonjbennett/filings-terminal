@@ -1114,7 +1114,15 @@ export const DERIVED = {
 // a real $90bn in the fixture that found it. That is rule 7's partial total, in the register the
 // template's own first comment describes for MetLife — 3% of the top line, with every margin, growth
 // rate and EV/Revenue built on it. Named once so the three cannot drift apart again.
-const bankTopLine = v => (v.nii == null || v.noninterestIncome == null ? null : v.nii + v.noninterestIncome);
+// The two legs are NOT symmetric, and the first version of this helper got that wrong by requiring
+// both. Net interest income is the DEFINITIONAL core of the line — a depository with no fee income at
+// all is an ordinary thrift, and it is also the leg the engine can RECONSTRUCT from gross interest
+// income and expense. Noninterest income is additive and has no reconstruction. So: no `nii`, no top
+// line, because fees alone are not a bank's revenue and printing them as one is what this helper was
+// written to stop ($30bn against a real $90bn). With `nii` present, fees are added when tagged.
+// Requiring both instead blanked the top line — and netMargin, revGrowth, assetTurn and EV/Revenue
+// with it — for any lender that files no fee tag, which is a regression rather than a refusal.
+const bankTopLine = v => (v.nii == null ? null : v.nii + (v.noninterestIncome || 0));
 
 export const DERIVED_BANK = {
   // Returns NULL where the filer tagged it, not the fetched figure. `fillCol` writes

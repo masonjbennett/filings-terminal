@@ -45,7 +45,7 @@ const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfM
   // The CAGRs were missing from here for as long as they existed, and it never showed because they
   // were declared with a formula and never actually computed — a blank cannot be mis-formatted.
   // The moment comps made them real, Nvidia's 100% three-year CAGR rendered as "1".
-  "revCagr3","revCagr5","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield","premium1d",
+  "revCagr3","revCagr5","roic","roe","roa","nwcPctRev","capexPctRev","daPctRev","sbcPctRev","fcfConv","debtCap","fcfYield","divYield",
   "efficiency","niiOnAssets","allowanceToLoans","provisionToLoans","depositsToAssets","equityToAssets",
   // Insurance. A combined ratio printed as "0.89" instead of "88.9%" is the single most likely
   // number on this page to be read out loud, so these matter more than the count suggests.

@@ -151,11 +151,26 @@ const tempEquity = SECTIONS.flatMap(s => s.lines).find(l => l.k === "tempEquity"
   eq(c.v.totalRevenueBank, 90e9, "the bank-overlay row computing the same identity agrees");
   eq(c.v.revenue, c.v.totalRevenueBank, "the two rows cannot disagree by position again, which is the whole point of the reserved slot");
   // Fees and nothing else: no net interest income, none reconstructible. A bank's revenue is not its
-  // fee income, so the row refuses rather than printing a third of the top line.
-  const fees = bank(d("NoninterestIncome", 30e9));
-  eq(fees.v.revenue, null, "fee income alone is NOT a bank's revenue — both legs or nothing");
+  // fee income, so the row refuses rather than printing a third of the top line. `NoninterestExpense`
+  // is tagged here ON PURPOSE — without it `efficiency`'s numerator is null and the assertion below
+  // passes whatever the denominator does, which is how the first version of this block tested nothing
+  // on one of the three rows it claimed to cover.
+  const fees = bank({ ...d("NoninterestIncome", 30e9), ...d("NoninterestExpense", 20e9) });
+  eq(fees.v.noninterestExpense, 20e9, "the efficiency ratio's NUMERATOR is present, so the assertion below is about its denominator");
+  eq(fees.v.revenue, null, "fee income alone is NOT a bank's revenue — no net interest income, no top line");
   eq(fees.v.totalRevenueBank, null, "and the overlay row refuses identically");
   eq(fees.v.efficiency, null, "so does the efficiency ratio, which divides by the same total");
+
+  // The OTHER direction, and the first version of this fix got it wrong by treating the two legs as
+  // symmetric. Net interest income is the definitional core of the line and the leg the engine can
+  // reconstruct; fee income is additive and has no reconstruction. A thrift filing no fee tag at all
+  // must keep its top line — requiring both blanked it, along with netMargin, revGrowth, assetTurn
+  // and EV/Revenue, which is a regression rather than a refusal.
+  // MUTATION: requiring `noninterestIncome` in bankTopLine fails here.
+  const thrift = bank(d("InterestIncomeExpenseNet", 50e9));
+  eq(thrift.v.nii, 50e9, "the lender's net interest income is its own filed figure");
+  eq(thrift.v.revenue, 50e9, "and IS its top line — a bank with no fee income is an ordinary thrift, not a filer to blank");
+  eq(thrift.v.totalRevenueBank, 50e9, "the overlay row agrees");
   // The ordinary case still behaves: a bank that tags its own total keeps it, untouched.
   const tagged = bank({ ...d("Revenues", 182.4e9), ...d("InterestIncomeExpenseNet", 95.4e9), ...d("NoninterestIncome", 87e9) });
   eq(tagged.v.revenue, 182.4e9, "a bank that tags its own revenue keeps the filed figure (the JPMorgan shape)");

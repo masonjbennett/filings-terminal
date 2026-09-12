@@ -164,9 +164,10 @@ for (const [k, label] of Object.entries(INDUSTRY_LABEL))
 
   // Out of the money, which is the one that would print a diluted count BELOW basic without the
   // floor: at a $150 strike the raw formula gives 100 − 150 = −50 shares.
-  eq(build({ ...shares(OPT, 100), ...shares(STRIKE, 150, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod, 1020,
+  const otm = build({ ...shares(OPT, 100), ...shares(STRIKE, 150, "USD/shares"), ...shares(RSU, 20) }, 100);
+  eq(otm.v.treasuryMethod, 1020,
     "out of the money: the increment floors at ZERO, so the count is basic plus RSUs — never below basic");
-  ok(build({ ...shares(OPT, 100), ...shares(STRIKE, 150, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod >= 1000,
+  ok(otm.v.treasuryMethod >= 1000,
     "and stating the invariant directly: a fully diluted count is never below the basic count");
   eq(build({ ...shares(OPT, 100), ...shares(STRIKE, 100, "USD/shares"), ...shares(RSU, 20) }, 100).v.treasuryMethod, 1020,
     "at the money the increment is zero too — the boundary is >=, not >");

@@ -36,16 +36,18 @@ lookup did.
   `revCagr3`/`revCagr5`, `fallback:`, `derivedOnly:`, and rule 25's `chgNwc` and `ufcf`. A suite of
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
-  still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 1,028 assertions, 64 of 64 mutations behaved as required (62 caught, 2 negative controls
-  correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
-  EXACT baselines that are now all empty — every row it found is fixed, and emptying each one required deleting its entry, which is the ratchet biting in the direction that fires least often so that a NEW instance fails and so does fixing an old one
-  without deleting its entry — which is not theoretical: deleting `DERIVED_PC.lossesTotal`, the dead
-  derivation it found, failed the suite until its baseline entry went too. Its scoping is the part
-  worth knowing if you extend it: every name-match is checked against the keys its READ SITE can see,
-  not against the union of core and all six overlays. The union passes a name that exists but can
-  never be reached — `NOT_APPLICABLE.bank` naming a pc-only key would blank nothing on a bank, which
-  is the Chubb enterprise-value failure back inside the one list that exists to prevent it.
+  still on the page three weeks after the tool that would have caught them first ran.
+  Committed Sep 12 2026. Two things are worth knowing before extending it. **Its baselines are exact
+  and now all empty** — every row it found is fixed, and emptying each one required deleting its entry,
+  so the ratchet bites in both directions: a new instance fails, and so does a fix that leaves a stale
+  baseline behind. That is not theoretical; deleting `DERIVED_PC.lossesTotal`, the dead derivation it
+  found, failed the suite until its entry went too. **And every name-match is scoped to what its READ
+  SITE can see**, not to the union of core and all six overlays. The union passes a name that exists
+  but can never be reached: `NOT_APPLICABLE.bank` naming a pc-only key would blank nothing on a bank,
+  which is the Chubb enterprise-value failure back inside the one list that exists to prevent it.
+  Its assertion and mutation counts live at the foot of the file and nowhere else, deliberately: the
+  bullet above this one exists because a number written down twice drifts, and these two drifted
+  within a day of being written.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
 searching normally rewrites the address bar to match, so any lookup can be pasted into an email —
@@ -78,8 +80,8 @@ Two decisions inside it:
   the number ran into the cell next to it at 1440, 1280, 1024 and 768 alike. At 250px it is 0 of 12
   cells overlapping at all five widths measured, and the card is the same height at 1280 and 1440 as
   it was while broken. Letting the value wrap instead was measured and is worse; abbreviating it was
-  not considered, because the sheet prints what the filer filed everywhere else. The EV bridge is lifted out of
-  the year grid into a card above the tabs, and the card is drawn by different code — so the ƒ and
+  not considered, because the sheet prints what the filer filed everywhere else. The EV bridge is
+  lifted out of the year grid into a card above the tabs, drawn by different code — so the ƒ and
   its tooltip, which are the row renderer's, never reached it. Every line of that section declares
   its arithmetic and none of it could be read: twelve formulas written down where no reader could
   see them, `mktCap + totalDebt + preferred + nciBs - cash - sti` among them, which is the one a
