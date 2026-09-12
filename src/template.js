@@ -451,21 +451,43 @@ export const SECTIONS = [
 // The EA build carried a Premia Paid tab off the undisturbed price. Both inputs are market data,
 // not filings — but the announcement 8-K that sets the "undisturbed" date IS findable.
 { id: "premia", title: "Premia Paid", feeds: "Premia Paid · Deal Summary", lines: [
-  { k: "undisturbed", label: "Undisturbed share price", how: "market", note: "Price the day before the leak/announcement" },
+  // `manual`, not `market`. `market` means "needs price", and the price this row needs is the one on
+  // the day before a deal leaked — history the free quote tier does not carry at all, so the status
+  // would have been a promise the tool cannot keep. A human looks it up.
+  { k: "undisturbed", label: "Undisturbed share price", how: "manual", note: "Price the day before the leak/announcement" },
   { k: "offerPrice", label: "Offer price per share", how: "manual", note: "From the merger 8-K / DEFM14A" },
-  { k: "premium1d", label: "Premium to undisturbed", how: "computed", formula: "offerPrice / undisturbed - 1" },
+  // `manual`, and the `formula` is gone with the `how`. It read `offerPrice / undisturbed - 1` —
+  // arithmetic over an offer price that exists in no filing and an undisturbed price the quote tier
+  // has no history for, so BOTH inputs are judgement and the row could never have computed. The
+  // formula string is deleted rather than kept as documentation, because the ƒ tooltip is the only
+  // thing that reads one and it is guarded on `how === "computed"`: keeping it would leave a
+  // declaration nothing can print, which is the defect this whole pass exists to remove.
+  { k: "premium1d", label: "Premium to undisturbed", how: "manual", note: "Offer price over the undisturbed price, less one — both inputs are deal terms, not filings" },
 ]},
+// The footer sections — lbo, pta, premia — are NOT tabs, deliberately: "as a tab with your name on
+// it, four blank fields read as a tool that cannot do LBOs". The page renders them as one line under
+// the heading "Deliberately not computed", built from `lines.filter(l => l.how === "manual")`. So a
+// line here that is not `manual` is shown to nobody at all, and every line here is now `manual`.
+//
+// Three rows were deleted rather than relabelled, Sep 12 2026: `ltmEbitda` and `ltmRevenue`
+// ("sum(last 4 quarters)") and `entryNetDebt` ("netDebt"). All three are things the engine DOES
+// derive — the LTM columns carry revenue and EBITDA for every tab, and net debt is on the credit
+// section and now on the DCF tab too — so calling them "deliberately not computed" would have been
+// false, and leaving them was a shadow copy of a figure the sheet already shows, in a section that
+// renders nothing. What belongs here is only what no filing contains.
 { id: "lbo", title: "LBO Inputs", feeds: "LBO Model", lines: [
-  { k: "ltmEbitda", label: "LTM EBITDA", how: "computed", formula: "sum(last 4 quarters)", note: "Built from 10-Qs — the entry-multiple denominator" },
-  { k: "ltmRevenue", label: "LTM revenue", how: "computed", formula: "sum(last 4 quarters)" },
-  { k: "entryNetDebt", label: "Net debt at entry", how: "computed", formula: "netDebt" },
   { k: "maintCapex", label: "Maintenance capex", how: "manual", note: "Not split from growth capex in any filing" },
   { k: "addBacks", label: "EBITDA add-backs", how: "manual", note: "Judgement — the tool must never invent these" },
   { k: "sourcesUses", label: "Sources & uses", how: "manual", note: "Deal terms, not financials" },
   { k: "debtTranches", label: "Debt tranches & pricing", how: "manual" },
 ]},
 { id: "pta", title: "Precedent Transactions", feeds: "PTA", lines: [
-  { k: "ptaFilings", label: "Related 8-K / DEFM14A", how: "fetched", note: "The tool can FIND merger 8-Ks (Item 1.01/2.01) and merger proxies" },
+  // `manual`, not `fetched`. It declared `how: "fetched"` with no `tags` at all, so `fillCol` skipped
+  // it at the first line of the loop and it could never fetch anything — and being non-manual in a
+  // footer section, it rendered nowhere either. The tool really can FIND the merger 8-K (Item
+  // 1.01/2.01) and the DEFM14A; what it will not do is read a deal value out of them, which is
+  // exactly what this footer exists to say out loud.
+  { k: "ptaFilings", label: "Related 8-K / DEFM14A", how: "manual", note: "The tool can FIND merger 8-Ks (Item 1.01/2.01) and merger proxies" },
   { k: "ptaMultiples", label: "Transaction multiples", how: "manual", note: "Deal values and multiples are not XBRL — PitchBook/CapIQ territory" },
 ]},
 ];

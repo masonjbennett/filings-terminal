@@ -295,10 +295,9 @@ for (const r of rows)
 // MUTATION: declaring a computed formula over a market input on a new row fails here.
 {
   const marketK = new Set(rows.filter(r => r.line.how === "market").map(r => r.line.k));
-  eq(marketK.size, 12, `12 rows are how:"market" — found ${marketK.size}`);
+  eq(marketK.size, 11, `11 rows are how:"market" — found ${marketK.size}`);
   const NEEDS_A_PRICE = {
     "dilution/treasuryMethod": "divides by `price`; sits in the year grid, where a price-dependent row is the thing the EV bridge was moved out to avoid",
-    "premia/premium1d": "divides by `undisturbed`, a market row the free quote tier cannot supply at all — and it sits in a footer section that renders nothing",
   };
   const needsPrice = rows.filter(r => r.line.how === "computed" && r.line.formula &&
     [...r.line.formula.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)].some(m => marketK.has(m[0]))).map(r => r.id).sort();
@@ -308,35 +307,35 @@ for (const r of rows)
     `the ev section and its card — not a DERIVED entry.`);
 }
 
-// ── The footer prints only its manual lines, so a non-manual line there renders NOWHERE ─────────
-// The tighter statement of the same class, and the one that sorts the severity out. src/App.jsx:749
-// builds the "Deliberately not computed" block from `s.lines.filter(l => l.how === "manual")`, and
-// the three footer sections appear in no tab, so they are not exported either. A line in one of them
-// that is not `manual` is therefore a row that claims to be obtainable, is obtained by nothing, and
-// is shown to no one — invisible in a way the two rows above at least are not.
-//
-// Six of them, and the list is exact for the same ratchet reason.
-const FOOTER_NON_MANUAL = {
-  "premia/undisturbed": 'how:"market", and the free quote tier carries no historical price, so an undisturbed price cannot arrive',
-  "premia/premium1d": 'how:"computed" over `offerPrice` (manual) and `undisturbed` (unobtainable above) — it could never have computed',
-  "lbo/ltmEbitda": 'how:"computed" as "sum(last 4 quarters)"; the engine HAS an LTM path (ltmWindows/pickLtm) and this row is not on it',
-  "lbo/ltmRevenue": "same — the LTM column computes both of these, under different keys, for every other tab",
-  "lbo/entryNetDebt": "declared `netDebt`, a row the engine already computes",
-  "pta/ptaFilings": 'how:"fetched" with NO `tags` at all, so fillCol skips it at src/grid.js:72 and it can never fetch anything',
-};
-const footerNonManual = rows.filter(r => footerSecs.includes(r.sec.id) && r.line.how !== "manual").map(r => r.id).sort();
-eq(footerNonManual.join("\n"), Object.keys(FOOTER_NON_MANUAL).sort().join("\n"),
-  `exactly the known non-manual lines sit in a footer section. The footer renders only how:"manual" labels and these sections get no tab, ` +
-  `so each of these is a declared row that computes nothing and displays nowhere. Either it becomes manual (the footer then names it honestly), ` +
-  `or it gets implemented and a tab, or it goes.`);
+// ── Every line in a footer section is `manual`, so the heading over them is true ────────────────
+// `lbo`, `pta` and `premia` are deliberately NOT tabs — "as a tab with your name on it, four blank
+// fields read as a tool that cannot do LBOs" — and the page renders them as one line under the
+// heading "Deliberately not computed", built from `s.lines.filter(l => l.how === "manual")`. So a
+// non-manual line in one of those sections is shown to NOBODY: not on a tab, not in the workbook, not
+// in the clipboard. Six were, when this suite first ran. They are resolved rather than baselined:
+//   · `ltmEbitda`, `ltmRevenue`, `entryNetDebt` — DELETED. All three are figures the engine derives
+//     already, so "deliberately not computed" would have been a false label, and a shadow copy of a
+//     row the sheet shows elsewhere is the very thing this suite exists to find.
+//   · `ptaFilings` — `fetched` with no `tags`, so it could never fetch. Now `manual`.
+//   · `undisturbed` — `market`, but the free quote tier carries no price history at all. Now `manual`.
+//   · `premium1d` — `computed` over two judgement inputs, so it could never compute. Now `manual`.
+// No baseline: the correct number here is zero, and the heading on the page is only honest at zero.
+// MUTATION: making any footer line non-manual, or adding one, fails here.
+for (const r of rows)
+  if (footerSecs.includes(r.sec.id))
+    eq(r.line.how, "manual",
+      `\`${r.id}\` is manual — the footer renders only manual labels and these sections get no tab, so anything else here is declared, computed by nothing, and shown to no one`);
+ok(rows.filter(r => footerSecs.includes(r.sec.id)).length >= 6, "and the footer sections were actually walked");
 
 // ── A fetched row with no tags can never fetch ───────────────────────────────────────────────────
 // `if (line.how !== "fetched" || !line.tags) continue;` — src/grid.js:72. The row is skipped
 // entirely: no value, no meta, and on a rendered tab it would fall through to "not tagged", which
 // points a reader at EDGAR to hunt for something the template never asked for.
-// MUTATION: deleting `tags` from any fetched row on a tab fails here.
+// No exception list any more: `pta/ptaFilings` was the only row in this state and it is `manual` now,
+// so EVERY fetched row in the template must be able to fetch.
+// MUTATION: deleting `tags` from any fetched row fails here.
 for (const r of rows)
-  if (r.line.how === "fetched" && !(r.id in FOOTER_NON_MANUAL))
+  if (r.line.how === "fetched")
     ok(Array.isArray(r.line.tags) && r.line.tags.length > 0 || r.line.wcAggregate,
       `\`${r.id}\` declares how:"fetched" and has tags to fetch with (or aggregates its own, like chgNwc) — grid.js skips a fetched row with no tags`);
 
@@ -485,6 +484,13 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   const cardBody = card.slice(0, card.indexOf("\nfunction "));
   ok(/formula:\s*l\.formula/.test(cardBody), "ValuationCard carries each line's `formula` onto its row object — without it the marker below has nothing to show");
   ok(/r\.formula\s*&&[\s\S]{0,200}title=\{r\.formula\}/.test(cardBody), "and draws the ƒ from it, so the EV bridge's own arithmetic is visible on the card that prints it");
+  // The card's column minimum is a MEASURED value, not a taste one, so it is pinned like the Layout
+  // section's other widths. At 190px the grid gave 211px columns and a 13-digit market cap needed
+  // 224px beside a label that wraps, so the number ran into the cell next to it at every desktop
+  // width — 1 of 12 cells overlapping at 1440, 1280, 1024 and 768. At 250px it is 0 of 12 at all
+  // five widths measured, and the card is the same height at 1280 and 1440 as it was while broken.
+  // MUTATION: reverting it to 190px fails here.
+  ok(/minmax\(250px,1fr\)/.test(cardBody), "the valuation card's grid minimum is 250px — measured, because at 190px a mega-cap's market capitalisation overlapped the cell beside it at every desktop width");
   const notDisplayable = rows.filter(r => {
     if (!r.line.formula) return false;
     if (r.sec.id === "ev") return false;                      // ValuationCard: any formula
@@ -495,7 +501,7 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
     `every declared \`formula\` can be drawn by the renderer that draws its section${notDisplayable.length ? ` — unreachable: ${notDisplayable.join(" ")}` : ""}. ` +
     `SectionRows guards the ƒ on how==="computed"; ValuationCard draws it for any row of the ev section. A formula outside both is ` +
     `documentation the page cannot show.`);
-  eq(rows.filter(r => r.line.formula).length, 103, "103 rows declare a formula — the count is asserted so a new one cannot arrive unexamined");
+  eq(rows.filter(r => r.line.formula).length, 99, "99 rows declare a formula — the count is asserted so a new one cannot arrive unexamined");
 }
 
 // ── A tag the template asks for and the proxy drops never arrives ────────────────────────────────
@@ -632,7 +638,7 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     `every identifier inside a declared \`formula\` names a row reachable on the sheets that formula renders on` +
     `${unresolved.length ? ` — unresolved: ${unresolved.join(", ")}` : ""}. The tooltip prints the formula verbatim, so a stale ` +
     `name is a false sentence under a figure that still has a value — nothing goes blank to give it away.`);
-  ok(rows.filter(r => r.line.formula).length > 100, "and the formulas were actually walked, rather than the loop finding nothing to check");
+  ok(rows.filter(r => r.line.formula).length > 90, "and the formulas were actually walked, rather than the loop finding nothing to check");
 }
 
 // ── A note that is a FUNCTION must produce a sentence, not "NaN%" ───────────────────────────────

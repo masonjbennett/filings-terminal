@@ -1175,7 +1175,19 @@ function ValuationCard({ grid, quote, note, S }) {
         {quote ? `$${quote.price.toFixed(2)} today` : ""} · against FY{c.period.fy} ({c.period.end})
       </span>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: "9px 22px" }}>
+    {/* 250px, not 190px. At 190 the grid gave six 211px columns and a mega-cap did not fit in one:
+        "Market capitalisation" is the only label here long enough to wrap to two lines, and a
+        13-digit market cap is 133px of unbreakable digits, so the row needed 224px and the number ran
+        into "Enterprise value" beside it. Measured, not guessed — every desktop width overlapped, and
+        the ƒ added above cost another 10px on top. Widening the minimum drops it to four columns, and
+        because that row was already two lines tall the card is exactly as tall at 1280 and 1440 as it
+        was while overlapping: 157px either way. "Market capitalisation" is still the one label that
+        wraps; it simply has room for its number now. It costs 17px at 1024 and 49px at 768, which is
+        where the collision was worst. Letting the VALUE wrap instead was measured too and is worse — it clears
+        the overlap but adds height at every width and puts the figure on its own line, in a card whose
+        whole point is four numbers read at a glance. Abbreviating the figure was not considered
+        seriously: the sheet prints what the filer filed, everywhere else. */}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: "9px 22px" }}>
       {/* Every line in this section declares its arithmetic, and until now nothing could print it.
           The ƒ marker and its tooltip are the row renderer's, and this section never reaches the row
           renderer — it is lifted out of the year grid into this card — so twelve `formula` strings

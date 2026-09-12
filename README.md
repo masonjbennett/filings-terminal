@@ -21,7 +21,7 @@ lookup did.
 - `api/quote.js` — share price ONLY. Market cap is computed as price × the company's own cover-page
   share count, so the EV bridge stays traceable to filings with exactly one outside input. Needs
   `FINNHUB_KEY`; without it the valuation block says so.
-- `src/template.js` — 278 line items across 15 core sections plus industry overlays, grounded in standard
+- `src/template.js` — 275 line items across 15 core sections plus industry overlays, grounded in standard
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections). Those two counts are no
   longer prose: `t-declared.mjs` parses them out of this sentence and checks them against `tally()`,
@@ -37,9 +37,9 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 1,021 assertions, 56 of 56 mutations behaved as required (54 caught, 2 negative controls
+  Sep 12 2026: 1,028 assertions, 58 of 58 mutations behaved as required (56 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
-  baseline (items 11-13 under Next) so that a NEW instance fails and so does fixing an old one
+  baseline (items 11-12 under Next) so that a NEW instance fails and so does fixing an old one
   without deleting its entry — which is not theoretical: deleting `DERIVED_PC.lossesTotal`, the dead
   derivation it found, failed the suite until its baseline entry went too. Its scoping is the part
   worth knowing if you extend it: every name-match is checked against the keys its READ SITE can see,
@@ -72,7 +72,13 @@ Two decisions inside it:
 - **Computed lines are deliberately not linked.** EBITDA, free cash flow, the combined ratio and FFO
   exist in no filing, and sending someone to EDGAR to look for one would be the single dishonest
   thing on a page whose whole argument is provenance. They keep the ƒ marker and stay plain text.
-  **The valuation card carries that marker too, since Sep 12 2026.** The EV bridge is lifted out of
+  **The valuation card carries that marker too, since Sep 12 2026,** and its grid minimum went 190px →
+  250px the same day so the marker had room: at 190px the grid gave 211px columns, and a mega-cap's
+  13-digit market capitalisation needed 224px beside the one label on the card long enough to wrap, so
+  the number ran into the cell next to it at 1440, 1280, 1024 and 768 alike. At 250px it is 0 of 12
+  cells overlapping at all five widths measured, and the card is the same height at 1280 and 1440 as
+  it was while broken. Letting the value wrap instead was measured and is worse; abbreviating it was
+  not considered, because the sheet prints what the filer filed everywhere else. The EV bridge is lifted out of
   the year grid into a card above the tabs, and the card is drawn by different code — so the ƒ and
   its tooltip, which are the row renderer's, never reached it. Every line of that section declares
   its arithmetic and none of it could be read: twelve formulas written down where no reader could
@@ -2210,18 +2216,7 @@ development exercises the real code path against real SEC responses.
    derivations run in insertion order over one shared `v`; no `NOT_APPLICABLE` list carries `netDebt`,
    so it makes no claim for any industry the row above does not already make. Verified in a browser
    against a fixture: five of five columns filled, arithmetic matching total debt less cash.
-12. **Six lines in the footer sections compute nothing and render nowhere.** `lbo`, `pta` and `premia`
-   are deliberately not tabs ("as a tab with your name on it, four blank fields read as a tool that
-   cannot do LBOs"), and the footer prints only their `how: "manual"` labels under "Deliberately not
-   computed". So the six lines there that are NOT manual — `premia/undisturbed`, `premia/premium1d`,
-   `lbo/ltmEbitda`, `lbo/ltmRevenue`, `lbo/entryNetDebt` and `pta/ptaFilings` — are declared rows that
-   claim to be obtainable, are obtained by nothing, and are shown to no one. `ptaFilings` is the
-   sharpest: `how: "fetched"` with no `tags` at all, so `fillCol` skips it and it could never fetch.
-   Each wants one of three answers — become `manual` so the footer names it honestly, get implemented
-   and a tab, or go — and that is a judgement about what those sections are FOR, which is why none was
-   taken here. Worth noting `lbo/ltmEbitda` and `lbo/ltmRevenue` are computed for every other tab by
-   the LTM path already.
-13. **A bank's revenue reconstruction may run too early to use its own `nii` reconstruction — NOT
+12. **A bank's revenue reconstruction may run too early to use its own `nii` reconstruction — NOT
    measured.** The derivations run in insertion order over one shared `v`, and `DERIVED.revenue` is a
    no-op that exists purely to reserve slot 0, so `DERIVED_BANK.revenue` lands before every margin
    that divides by revenue. That is deliberate and right. But it means `revenue` reads `v.nii` at
@@ -2231,17 +2226,7 @@ development exercises the real code path against real SEC responses.
    filer is in that intersection is **unmeasured** — it needs the fixture cache, and both halves are
    individually rare. Recorded rather than fixed for that reason; `t-declared` pins this read and the
    one other like it so a third cannot appear unnoticed.
-14. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
-   Measured at a 1280px viewport with the card's `minmax(190px,1fr)` grid giving 211px columns:
-   "Market capitalisation" wraps to two lines at 79px and its value is 133px of digits, so the row
-   needs 224px and the number runs into "Enterprise value" beside it. It is not a fixture artefact —
-   a 13-digit figure is what every mega-cap prints, because full digits are the house style
-   everywhere else and the card is the one place a label wraps. Adding the ƒ above took it to 234px
-   (the marker costs exactly 10px on every label), so this is 10px worse than it was and no OTHER
-   cell overflows at either width — 1 of 12 before, 1 of 12 after. Left alone rather than fixed
-   because the fix is a design decision about the card: fewer, wider columns; an abbreviated figure
-   on this row alone, against a page whose argument is that it shows the filed number; or letting
-   the value shrink. Worth measuring across real filers first, the way the font change was.
+
 
 ## A note on how this got built
 
