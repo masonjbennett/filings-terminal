@@ -351,17 +351,38 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
 // and not a silent pass: the EV bridge's arithmetic is the most worth showing a reader on the page
 // ("market cap + total debt + preferred + NCI − cash − ST investments" is the line a banker checks),
 // and it is written down where nothing can print it.
-const FORMULA_NOT_DISPLAYABLE = {
-  "ev/mktCap": "price * sharesOut", "ev/ev": "the EV bridge itself", "ev/evRev": "ev / revenue",
-  "ev/evEbitda": "ev / ebitda", "ev/evEbit": "ev / ebit", "ev/evFcf": "ev / fcf",
-  "ev/pe": "price / epsDil", "ev/pb": "mktCap / equity", "ev/fcfYield": "fcf / mktCap",
-  "ev/divYield": "dps / price",
-};
-const formulaUnreachable = rows.filter(r => r.line.formula && r.line.how !== "computed").map(r => r.id).sort();
-eq(formulaUnreachable.join("\n"), Object.keys(FORMULA_NOT_DISPLAYABLE).sort().join("\n"),
-  `exactly the known non-computed rows declare a \`formula\`. The ƒ tooltip is formula's only reader and it is guarded on ` +
-  `how==="computed", so a formula anywhere else is documentation the page cannot show. Adding one is the same defect; ` +
-  `giving ValuationCard a ƒ, or deleting them, removes entries from this list.`);
+// There are TWO renderers of template lines and they draw the ƒ on different rules, which is the
+// whole reason this was invisible. `SectionRows` draws the year grid and guards on
+// `how === "computed"`. `ValuationCard` draws the `ev` section ALONE — that section is lifted out of
+// the grid, because there is one price and a table row of seven blanks buried the only real value off
+// the right-hand edge — and it now draws a ƒ for ANY row declaring a formula, which is right for a
+// section whose every line is `market` or `computed` and none of which is fetched.
+//
+// So a formula is displayable iff the renderer that draws its section can draw it. The `ev` section's
+// twelve formulas were unreachable until the card was given the marker; a formula on a FOOTER section
+// is unreachable still, and those rows are held in FOOTER_NON_MANUAL below rather than counted twice.
+// MUTATION: taking the ƒ out of ValuationCard, or declaring a formula on a non-computed row in a
+// tabbed section, fails here.
+{
+  const appSrc = ENGINE["src/App.jsx"];
+  // The card's marker has to be PROVEN present, or this whole check certifies a renderer that stopped
+  // drawing it. Both halves: the row object must carry `formula`, and the ƒ must be keyed off it.
+  const card = appSrc.slice(appSrc.indexOf("function ValuationCard"));
+  const cardBody = card.slice(0, card.indexOf("\nfunction "));
+  ok(/formula:\s*l\.formula/.test(cardBody), "ValuationCard carries each line's `formula` onto its row object — without it the marker below has nothing to show");
+  ok(/r\.formula\s*&&[\s\S]{0,200}title=\{r\.formula\}/.test(cardBody), "and draws the ƒ from it, so the EV bridge's own arithmetic is visible on the card that prints it");
+  const notDisplayable = rows.filter(r => {
+    if (!r.line.formula) return false;
+    if (r.sec.id === "ev") return false;                      // ValuationCard: any formula
+    if (footerSecs.includes(r.sec.id)) return false;          // held in FOOTER_NON_MANUAL instead
+    return r.line.how !== "computed";                         // SectionRows' guard
+  }).map(r => r.id).sort();
+  eq(notDisplayable.join("\n"), "",
+    `every declared \`formula\` can be drawn by the renderer that draws its section${notDisplayable.length ? ` — unreachable: ${notDisplayable.join(" ")}` : ""}. ` +
+    `SectionRows guards the ƒ on how==="computed"; ValuationCard draws it for any row of the ev section. A formula outside both is ` +
+    `documentation the page cannot show.`);
+  eq(rows.filter(r => r.line.formula).length, 103, "103 rows declare a formula — the count is asserted so a new one cannot arrive unexamined");
+}
 
 // ── A tag the template asks for and the proxy drops never arrives ────────────────────────────────
 // `api/facts.js` slims a 10–15MB companyfacts document down to the ~235 concepts the template needs,
@@ -439,24 +460,39 @@ eq(PERIOD_TAGS.corporate[0], SECTIONS[0].lines[0].tags[0], "so PERIOD_TAGS.corpo
   for (const k of lits) ok(allK.has(k), `\`${k}\` is a real template row, or the reverse DCF's gate reads a NOT_APPLICABLE list for a row that cannot be in it`);
 }
 
-// ── A set is only enforced where it is read, and `pb` is read nowhere ───────────────────────────
+// ── A ratio dividing by a near-cancelled residual must say so, on whichever surface it appears ──
 // `EQUITY_DENOMINATED` exists so "the sheet's notes and the comps table cannot drift apart about which
-// figures a near-cancelled equity makes incomparable" — its own comment. It has exactly one read site,
-// `EQUITY_DENOMINATED.has(r.k)` in the COMPS table, where `r` is a comps row. So a member that is not
-// a comps row can never fire there, and on the single-filer sheet the equivalent marking is the
-// per-line `flagNote: { equityThin }`.
+// figures a near-cancelled equity makes incomparable" — its own comment. There are THREE surfaces a
+// member can appear on, and the set is read on only one of them:
+//   · the COMPS table — `EQUITY_DENOMINATED.has(r.k)` softens the cell. The set's one read site.
+//   · the YEAR GRID — the per-line `flagNote: { equityThin }`, which prints the filer's own percentage.
+//   · the VALUATION CARD — `c.v.equityThin` gates a compact line naming P/B and book value per share
+//     by hand, because the card is deliberately four numbers read at a glance and the sheet's
+//     five-line note would cost the thing it is for.
 //
-// Cross-joining the two: `roe` is covered twice, `debtEquity` once, and **`pb` on neither surface** —
-// it is not a comps row and carries no flagNote. Which is the one that most needed it: a book multiple
-// against nearly no book is the member whose own tail text says the figure is a residual.
+// Counting only the first two makes `pb` look uncovered, which is wrong and was written down as a
+// finding before the card was read: `pb` lives in the `ev` section, the card is the ONLY place it
+// appears, and the card names it explicitly. The assertion below therefore checks all three — and
+// checks the card's text really does name them, so the one surface maintained by hand cannot drift
+// from the set the other two are driven by.
+// MUTATION: dropping P/B from the card's note, or adding a member covered by none of the three, fails.
 const compsK = new Set(COMPS_ROWS.flatMap(g => g.rows.map(r => r.k)));
 const flagged = new Set(rows.filter(r => r.line.flagNote && "equityThin" in r.line.flagNote).map(r => r.line.k));
-const UNMARKED_EQUITY = { pb: "not a comps row and no equityThin flagNote, so the near-cancelled-equity note reaches no reader on either surface" };
-const unmarked = [...EQUITY_DENOMINATED].filter(k => !compsK.has(k) && !flagged.has(k)).sort();
-eq(unmarked.join(" "), Object.keys(UNMARKED_EQUITY).sort().join(" "),
-  `exactly the known EQUITY_DENOMINATED members are unreachable on both surfaces. A member added to this list is a ratio ` +
-  `dividing by a residual with nothing saying so; giving \`pb\` an equityThin flagNote, or a comps row, empties it.`);
-for (const k of EQUITY_DENOMINATED) ok(allK.has(k), `EQUITY_DENOMINATED's \`${k}\` is a real template row`);
+const cardNote = (ENGINE["src/App.jsx"].match(/equityThin\s*&&[\s\S]{0,700}?<\/p>/) || [""])[0];
+ok(/near-cancelled residual/.test(cardNote), "the valuation card's near-cancelled-equity note was found — if it moves, teach this check where, rather than letting the members below look covered");
+const namedOnCard = new Set();
+if (/P\/B/.test(cardNote)) namedOnCard.add("pb");
+if (/book value per share/.test(cardNote)) namedOnCard.add("bvps");
+for (const k of EQUITY_DENOMINATED) {
+  ok(allK.has(k), `EQUITY_DENOMINATED's \`${k}\` is a real template row`);
+  const where = [compsK.has(k) && "the comps table", flagged.has(k) && "an equityThin flagNote", namedOnCard.has(k) && "the valuation card's note"].filter(Boolean);
+  ok(where.length > 0,
+    `\`${k}\` divides by equity and SAYS SO somewhere — found on: ${where.join(", ") || "NO SURFACE"}. ` +
+    `A member marked nowhere is a ratio dividing by a residual that reads like any other number beside it.`);
+}
+// The card's note is the only one of the three not driven by the set, so the row it names must still
+// be the row that needs it — `pb` is in the `ev` section, which only the card draws.
+eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, so the valuation card is the only surface that can mark it");
 
 // ── `how` is a closed vocabulary, and `k` is the join key for everything above ──────────────────
 // `how` decides fetching (grid.js:72), the ƒ marker, the status label and whether the row exports.

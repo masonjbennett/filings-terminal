@@ -37,9 +37,9 @@ lookup did.
   this shape was written twice — Aug 17, which caught `derivedOnly` on its first run, and again in the
   Sep 11 audit — and died uncommitted with its session both times, which is why rule 25's two were
   still on the page three weeks after the tool that would have caught them first ran. Committed
-  Sep 12 2026: 932 assertions, 40 of 40 mutations behaved as required (38 caught, 2 negative controls
+  Sep 12 2026: 939 assertions, 44 of 44 mutations behaved as required (42 caught, 2 negative controls
   correctly left green — a comment mentioning a fake property, and a tag reorder), and it carries an EXACT open
-  baseline (items 11-15 under Next) so that a NEW instance fails and so does fixing an old one
+  baseline (items 11-13 under Next) so that a NEW instance fails and so does fixing an old one
   without deleting its entry.
 
 **Every sheet is a URL.** `filings.masonjbennett.com/?t=CB` opens Chubb before anyone types, and
@@ -67,6 +67,13 @@ Two decisions inside it:
 - **Computed lines are deliberately not linked.** EBITDA, free cash flow, the combined ratio and FFO
   exist in no filing, and sending someone to EDGAR to look for one would be the single dishonest
   thing on a page whose whole argument is provenance. They keep the ƒ marker and stay plain text.
+  **The valuation card carries that marker too, since Sep 12 2026.** The EV bridge is lifted out of
+  the year grid into a card above the tabs, and the card is drawn by different code — so the ƒ and
+  its tooltip, which are the row renderer's, never reached it. Every line of that section declares
+  its arithmetic and none of it could be read: twelve formulas written down where no reader could
+  see them, `mktCap + totalDebt + preferred + nciBs - cash - sti` among them, which is the one a
+  reader most wants on a page arguing provenance. Found by `t-declared`, which now asserts both
+  halves — that the card carries each line's formula and that it draws the marker from it.
 
 ## Rules in the extraction engine
 
@@ -2204,22 +2211,17 @@ development exercises the real code path against real SEC responses.
    declaration. No row displays it and no `flagNote` keys off it — every other pc derivation calls the
    `pcLosses` helper directly. Deleting it is almost certainly right; it is listed rather than removed
    because this session changed no engine behaviour at all.
-14. **The EV bridge's arithmetic is written down where nothing can print it.** All ten rows of the `ev`
-   section declare a `formula`, and `formula` has exactly one reader — the ƒ tooltip at
-   `src/App.jsx:1397`, which is guarded on `how === "computed"`. Every `ev` row is `how: "market"`, so
-   the guard can never see them; and the `ev` section is not drawn by the row renderer at all but
-   lifted into `ValuationCard` above the tabs, which draws no ƒ and no tooltip. Ten of the template's
-   103 formula declarations are unreachable twice over. It is worth fixing in the other direction:
-   `mktCap + totalDebt + preferred + nciBs − cash − sti` is exactly the line a reader checks on a page
-   whose argument is provenance, and the card is the one place an EV bridge should show its work.
-15. **`pb` carries the near-cancelled-equity warning on neither surface.** `EQUITY_DENOMINATED` exists
-   so "the sheet's notes and the comps table cannot drift apart about which figures a near-cancelled
-   equity makes incomparable", and it has one read site — `EQUITY_DENOMINATED.has(r.k)` in the comps
-   table, where `r` is a comps row. Cross-joining that against the per-line `flagNote: { equityThin }`
-   that marks the single-filer sheet: `roe` is covered twice, `debtEquity` once, and **`pb` zero
-   times** — it is not a comps row and has no flagNote. That is the member that most needed it, since
-   a book multiple against nearly no book is the case the note's own tail text describes. One
-   `flagNote` closes it.
+14. **A mega-cap's market capitalisation overflows its cell on the valuation card, and always has.**
+   Measured at a 1280px viewport with the card's `minmax(190px,1fr)` grid giving 211px columns:
+   "Market capitalisation" wraps to two lines at 79px and its value is 133px of digits, so the row
+   needs 224px and the number runs into "Enterprise value" beside it. It is not a fixture artefact —
+   a 13-digit figure is what every mega-cap prints, because full digits are the house style
+   everywhere else and the card is the one place a label wraps. Adding the ƒ above took it to 234px
+   (the marker costs exactly 10px on every label), so this is 10px worse than it was and no OTHER
+   cell overflows at either width — 1 of 12 before, 1 of 12 after. Left alone rather than fixed
+   because the fix is a design decision about the card: fewer, wider columns; an abbreviated figure
+   on this row alone, against a page whose argument is that it shows the filed number; or letting
+   the value shrink. Worth measuring across real filers first, the way the font change was.
 
 ## A note on how this got built
 

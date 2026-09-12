@@ -1163,7 +1163,7 @@ function SegmentTables({ segs, S }) {
 function ValuationCard({ grid, quote, note, S }) {
   const sec = SECTIONS.find(s => s.id === "ev");
   const c = grid.cols[grid.cols.length - 1];
-  const rows = sec.lines.map(l => ({ k: l.k, label: l.label, v: c.v[l.k] })).filter(r => r.v != null);
+  const rows = sec.lines.map(l => ({ k: l.k, label: l.label, v: c.v[l.k], formula: l.formula })).filter(r => r.v != null);
   if (!rows.length) return <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, background: C.card, padding: "14px 18px", marginBottom: 16 }}>
     <span style={{ ...S.label, color: C.teal }}>Current Valuation</span>
     <p style={{ fontSize: 12, color: C.bronze, margin: "8px 0 0", fontFamily: MONO }}>{note || "no price available, so nothing to divide with"}</p>
@@ -1176,8 +1176,20 @@ function ValuationCard({ grid, quote, note, S }) {
       </span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: "9px 22px" }}>
+      {/* Every line in this section declares its arithmetic, and until now nothing could print it.
+          The ƒ marker and its tooltip are the row renderer's, and this section never reaches the row
+          renderer — it is lifted out of the year grid into this card — so twelve `formula` strings
+          were written down where no reader could see them, including the EV bridge itself. That is
+          the one most worth showing: `mktCap + totalDebt + preferred + nciBs - cash - sti` is the
+          line a reader checks on a page whose whole argument is provenance, and a computed figure
+          that does not say how it was computed is the Exxon collapsed-table obligation again. Same
+          glyph, same navy, same tooltip-only treatment as the sheet, so the two read as one system.
+          Found by `t-declared`, which asserts the absence can't come back. */}
       {rows.map(r => <div key={r.k} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: `1px solid ${C.hair2}`, paddingBottom: 5 }}>
-        <span style={{ fontSize: 12, color: C.mute }}>{r.label}</span>
+        <span style={{ fontSize: 12, color: C.mute }}>
+          {r.label}
+          {r.formula && <span style={{ fontSize: 8, fontFamily: MONO, color: C.navy, marginLeft: 5 }} title={r.formula}>ƒ</span>}
+        </span>
         <span style={{ fontSize: 13, fontFamily: MONO, color: C.ink2, fontWeight: 600 }}>{display(r.k, r.v)}</span>
       </div>)}
     </div>
