@@ -972,6 +972,45 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     may return `v.<sameKey>` — rather than only fixing the one line. After: **64 of 64 linked**, same
     figures.
 
+30. **A debt total smaller than the current maturities beside it is not the total.** American Tower's
+    FY2019 total debt read **$1.9m against a filed $24,055m** — an audit finding that had sat
+    unverified for two days. It was real, and the mechanism is companyfacts' own: the FY2020 10-K tags
+    a footnote figure under `LongTermDebt` for 31 December 2019, once inside a member and once without,
+    and only the undimensioned copy reaches the API — where rule 2, newest filing wins, hands it the row
+    over the $21,127m the FY2019 10-K filed under the non-current tag two candidates further down. Net
+    debt printed **minus $1.5bn**, debt/equity 0.00x, net debt/EBITDA −0.34x, on a tower REIT; and the
+    REIT override took the same stray as the filer's all-in total, so the sum's own guard (a total at
+    least as large as the long-term debt inside it) held trivially, both sides being one fact.
+
+    The tag list cannot fix it (rule 11: reordering moves eight filers) and rule 21 cannot see it (one
+    stray year is not a run). What can is an identity the row itself supplies, in rule 7's and rule 24's
+    shape — *a fact on the row is not always the row's concept*: a figure that **includes** the current
+    maturities cannot be smaller than the current maturities. The three debt-total rows declare
+    `notBelow: "ltdCur"`; a candidate below it is set aside and the list falls through to the next
+    concept the filer tagged, and the row says what it set aside, because the filer did tag something
+    and "not tagged" would send a reader to look for it.
+
+    **It is confined to the inclusive concepts, and the counter-population is why.** A non-current
+    balance genuinely can be the smaller figure: Air Industries carries $1.5m of long-term debt against
+    $23.7m due within a year (a revolver classified current), iHeartMedia's non-current debt is literally
+    0 in Chapter 11 against $46m current — rule 24's own witness — and Fluent, Hycroft and Old Dominion
+    are the same shape. **31 columns on 9 filers** have the resolved long-term figure below the current
+    portion, and only American Tower's is an inclusive tag. A second floor inside the all-in helper was
+    written, could not be reached once the rows had theirs, survived its own mutation, and was removed:
+    a guard nothing can exercise is dead code.
+
+    **`debtScope` had a defect of its own that the same filer exposed.** A year in which the current
+    portion sits inside the 0.5% tolerance satisfies *both* identities — *T* = Noncurrent and
+    *T* = Noncurrent + Current — and was being counted as evidence for each side, so American Tower's
+    eight informative years were vetoed by two uninformative ones. Such a year now decides nothing.
+    Three verdicts change to `includes` (American Tower, NGL, UPS) and Cigna loses an `excludes` whose
+    only evidence was such a year — which moves nothing, since excluding is the sum's default.
+    `scripts/full-diff.mjs` across the 180 cached filers: **2 filers moved** — AMT FY2019
+    $1.9m → $24,055.4m, the balance sheet's own figure, with every ratio built on it; NGL FY2021 −$2.2m
+    of double-counted current maturities; UPS gains the "already inside" note on three columns with no
+    total moving, because its all-in tag already carried the sum. **0 values changed** anywhere else.
+    `test/t-debt.mjs`, 22 assertions, 4 of 4 mutations caught.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
@@ -1031,6 +1070,28 @@ mislabels the other company. Only **uniqueness** is enforced — the earlier of 
 year, cascading newest-to-oldest so a fix cannot create the next collision — and the exact period end
 stays printed underneath, which is what actually disambiguates. On J&J and Kenvue the cascade lands
 on each company's own naming.
+
+**Two more things the calendar had to learn, both from the Next list rather than a frame.** "Deepest
+without a hole" (rule 6) had an upper bound on the gap between periods and no lower one, so a gap of
+minus 273 days counted as adjacent. Amazon files `NetIncomeLoss` for the trailing twelve months to
+*every* quarter end, in every 10-Q — 74 annual-length periods overlapping by nine months — and that
+ladder scored 74 against the ten calendar years its revenue tag reaches. The sheet rendered **eight
+June-to-June columns with a blank income statement in all of them**, on the most-typed ticker on the
+site, and the overlap rule then kept one period in four. A day's slack either side is now the rule; an
+overlap is what a rolling ladder *is*. Measured over the 180 cached filers: one calendar changes,
+Amazon's, to December years, gaining four LTM windows; 0 values changed on any other filer.
+
+And **a 53-week year now says so.** A 52/53-week filer adds a week every five or six years and files
+it as one fiscal year, so the column is a genuine year and 1.9% longer than its neighbours. **30 of
+1,258 cached columns are 370 days; 52 revenue-growth cells have one on a leg, and on five the extra
+week is the whole sign** — Kroger's FY2024 revenue grew 1.20% as printed and shrank 0.71% per week,
+Lowe's +0.84% / −1.06%, J&J +0.64% / −1.26%, General Mills and Target the same shape; 57 CAGR cells
+end on one and move by about 0.6 points. Nothing is adjusted and nothing is blanked, because both years
+are real and the filer's own 10-K reports the rate with the extra week in it. The column is marked under
+its header, the five growth rows carry one note, a comps column says "53-week window", and the period
+row of both workbooks and the TSV carries "(53 weeks)". Measured column lengths are 363, 364, 365 and
+370 days and nothing else (LTM windows 364–366 and 371), so 369 is a boundary with nothing near it on
+either side, not a judgement. `test/t-calendar.mjs`, 18 assertions, 4 of 4 mutations caught.
 
 ## Layout
 
@@ -1242,6 +1303,17 @@ and the Excel check flagged them as text in a numeric column, which is the same 
 make about a real defect. Verified the same way as the single sheet — captured from the shipping click
 path and opened in real Excel with `CorruptLoad = xlNormalLoad`, three sets including a carrier set and
 a reported-FY set, with the two deliberately broken negative controls still rejected.
+
+**The workbook carries what the page says, since Sep 13 2026.** A mixed-currency set marked the
+odd-one-out cell on the page and named the filer under the table, and the workbook — where a comps set
+actually gets used — carried none of it; its basis line said every column was "stitched from each
+company's most recent 10-Q", false for a column carried from its fiscal year and false for a 20-F filer
+that has never filed one (nine of the 180 cached filers). Two header rows, each only when it says
+something: **Basis**, per column, on the LTM basis (stitched · reported FY, nothing filed since ·
+reported FY, no quarterly report on file), and **Currency**, per column, when the set is mixed. The
+freeze is counted from the rows rather than written down, which is the single sheet's lesson. The page
+makes the same distinction: a carried ASML column used to read "nothing filed since", which promises a
+10-Q that will never come.
 
 **A column opens its own sheet.** Clicking a ticker loads that company and leaves a *← Back to the set*
 button above it; the set stays in state rather than being torn down, because "show me this column's
@@ -2176,16 +2248,19 @@ node scripts/build-fixtures.mjs --tickers AAPL,JPM # → one or two
 FILINGS_FIXTURES=/path/to/cache npm test           # → point the suites at a copy
 ```
 
-**Measured, now that it has been built: 160 filers, 167 MB, about two minutes.** That is far too
+**Measured, now that it has been built: 180 filers, 197 MB, about two and a half minutes.** That is far too
 large to commit to a public repo, so `fixtures/` stays gitignored and the cache lives wherever it is
 built. The practical consequence is worth stating plainly: **a cloud session cannot use a cache that
 sits on a laptop.** Either work locally, where it already exists, or allow `data.sec.gov` on the
 cloud environment's network access and let each session spend the two minutes rebuilding it.
 
-`scripts/fixture-tickers.json` is the filer list: 160 names recovered from the filers this README and
+`scripts/fixture-tickers.json` is the filer list: 180 names recovered from the filers this README and
 the working notes actually measured rules against, so the cache is a regression set rather than an
 arbitrary sample — Chubb, Tronox, AIRI, ATEX, Instacart, AMTD, Paramount, CBL and the rest are all in
-it. `test/_fixtures.mjs` loads it and lets a suite skip cleanly when it is absent, which is the point:
+it. The twenty added on Sep 13 2026 (KR, LOW, JNJ, NFLX, SHOP, CSX, DIS, HD, QCOM, MU, GIS, DE, MMM,
+TMUS, ALL, AVGO, ORCL, CVS, SBUX, NKE) are the filers the 53-week mark and the split rule were measured
+on, and the ones the Sep 11 audit named for the split, D&A and debt-stack findings, so those claims can
+be re-run rather than re-fetched. `test/_fixtures.mjs` loads it and lets a suite skip cleanly when it is absent, which is the point:
 **write the suite now, run it when the cache exists.** The cache has been built twice and died twice,
 both times because it lived only in a session scratchpad.
 
