@@ -20,7 +20,7 @@
 // submissions list).
 import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const arg = n => { const i = process.argv.indexOf(n); return i < 0 ? null : process.argv[i + 1]; };
@@ -32,7 +32,11 @@ const cikOf = new Map(tickers.map(([cik, t]) => [t, String(cik).padStart(10, "0"
 const want = (arg("--tickers") || "").split(",").filter(Boolean).map(t => t.toUpperCase());
 const list = want.length ? want : JSON.parse(readFileSync(join(root, "scripts", "fixture-tickers.json"), "utf8"));
 
-const handler = (await import(join(root, "api", "facts.js"))).default;
+// `pathToFileURL`, not the bare path. On Windows `join` yields `C:\\...\\api\\facts.js`, and Node's ESM
+// loader reads the drive letter as a URL scheme — `ERR_UNSUPPORTED_ESM_URL_SCHEME ... protocol 'c:'`.
+// It is invisible on Linux, where the path already looks like a valid URL path, and the working
+// copies of this repo are on Windows.
+const handler = (await import(pathToFileURL(join(root, "api", "facts.js")).href)).default;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 mkdirSync(outDir, { recursive: true });
