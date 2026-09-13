@@ -327,9 +327,21 @@ Each was learned by probing real filings, and each fails **silently** if broken:
 
     Its boundary is the lease component. Where the ambiguous tag also carries finance leases — the
     `…AndCapitalLeaseObligations…` family does — `T` equals neither Noncurrent nor Noncurrent + Current
-    and no verdict is reached, which is correct behaviour and does cost Tronox a $39m double count. A
-    lease-aware variant of the identity was considered and is not available: Tronox's lease residual
-    is not tagged at all, so there is nothing to add back.
+    and no verdict is reached, which is correct behaviour and does cost Tronox a double count. A
+    lease-aware variant of the identity was considered and is not available from companyfacts: the
+    residual is not tagged under any concept the payload carries.
+
+    **The residual has a name now, read out of Tronox's FY2025 XBRL instance (Sep 13 2026), and it is
+    not a lease.** `T` − non-current − current is $33m, and `DeferredFinanceCostsNet` is $33m; at FY2024
+    the pair is $32m and $32m. Tronox's inclusive tag is the *gross* principal — $3,132m net non-current
+    + $39m current + $33m of unamortised issuance costs = $3,204m, to the dollar — so it does include
+    the current maturities, and the sheet's $3,294m overstates the balance sheet's $3,222m by **$72m,
+    not $39m**: the current portion counted twice and the issuance costs counted once. A third witness
+    would settle the verdict (companyfacts carries `DeferredFinanceCostsNet`; the payload does not) but
+    would still leave the sum gross of costs; the exact figure needs the *net* non-current tag to
+    outrank the gross one for this filer, which is rule 11's trap exactly. Left as filed, 2.2% high,
+    and recorded here rather than on the Next list, because what would fix it is known and is the
+    thing the list says not to do.
 
     Measured across all 167: **12 filers are exposed** (the long-term row filled from a tag that could
     contain current maturities, with a non-zero current portion beside it). Of those, 5 EXCLUDE and
