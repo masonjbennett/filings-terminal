@@ -265,7 +265,10 @@ export default function App() {
           const qj = await qr.json();
           if (qr.ok) quote = qj;
         } catch {}
-        entry = { ticker: t, title: d.name || row[2], grid: buildGrid(d, quote), quote };
+        // Whether this filer files quarterly reports at all decides what a carried LTM column can
+        // honestly say about itself: "nothing filed since the year end" promises a 10-Q that a 20-F
+        // filer will never file. Nine of the 180 cached filers have never filed one.
+        entry = { ticker: t, title: d.name || row[2], grid: buildGrid(d, quote), quote, interim: (d.filings || []).some(f => /^10-Q/.test(f.form)) };
       }
     } catch { entry = { ticker: t, title: row[2], err: "couldn't reach the filing desk" }; }
     setComps(cs => cs.map(c => (c.ticker === t ? entry : c)));
@@ -896,7 +899,11 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         // Excel check that opens these files flagged it as text in a numeric column — which is the
         // same complaint it would make about a real defect.
         [{ v: cols.map(c => c.title || c.ticker).join(" · "), s: XF.MUTED }],
-        [{ v: `${basis === "ltm" ? "Trailing twelve months, stitched from each company's most recent 10-Q" : "Each company's most recent reported fiscal year"} · generated ${new Date().toISOString().slice(0, 10)} · filings.masonjbennett.com/?c=${cols.map(c => c.ticker).join(",")}`, s: XF.MUTED }],
+        // The basis sentence used to say every column was "stitched from each company's most recent
+        // 10-Q", which was false for a column carried from its fiscal year and for a 20-F filer that
+        // has never filed a 10-Q. The sentence states the method; the per-column row below states
+        // which columns it applied to.
+        [{ v: `${basis === "ltm" ? "Trailing twelve months: each company's last full year plus its latest year-to-date, less the prior year to the same date; a column marked 'reported FY' has nothing to stitch" : "Each company's most recent reported fiscal year"} · generated ${new Date().toISOString().slice(0, 10)} · filings.masonjbennett.com/?c=${cols.map(c => c.ticker).join(",")}`, s: XF.MUTED }],
         [],
         [{ v: "Metric", s: XF.BOLD }, ...cols.map(c => ({ v: c.ticker, s: XF.BOLD })), { v: "Median", s: XF.BOLD }],
         // The period end goes in a row of its own and not into the ticker header, because the columns
@@ -904,7 +911,18 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         // filters this file must still be able to see which twelve months each column covers.
         [{ v: basis === "ltm" ? "Twelve months ended" : "Fiscal year ended", s: XF.MUTED },
           ...cols.map(c => ({ v: colOf(c).period.end + (colOf(c).period.weeks53 ? " (53 weeks)" : ""), s: XF.MUTED }))],
+        // What each column IS, on the LTM basis, since the columns do not share one: stitched, or the
+        // fiscal year carried because nothing has been filed since, or carried because the filer never
+        // files a quarterly report. The page says this under each ticker; the workbook leaves the page.
+        ...(basis === "ltm" ? [[{ v: "Basis", s: XF.MUTED }, ...cols.map(c => ({ v: c.grid.ltmStitched ? "stitched" : c.interim ? `reported FY${colOf(c).period.fy}, nothing filed since` : `reported FY${colOf(c).period.fy}, no quarterly report on file`, s: XF.MUTED }))]] : []),
+        // A set is the one place two currencies sit side by side, and the single sheet's "All figures
+        // in EUR" line has no equivalent here because the figures are not all in anything. Per column,
+        // and only when the set is mixed — one currency throughout needs no marking, as on the page.
+        ...(mixedCcy ? [[{ v: "Currency", s: XF.MUTED }, ...cols.map(c => ({ v: (c.grid.ccy || "USD") + (c.grid.ccy && c.grid.ccy !== "USD" ? ", as filed — not converted" : ""), s: XF.MUTED }))]] : []),
       ];
+      // Counted, not written down — the single sheet's lesson: two conditional rows above and a
+      // hardcoded `y: 6` cannot both be right, and the Excel check flags text inside the data area.
+      const headerRows = rows.length;
       for (const g of groups) {
         rows.push([]);
         rows.push([{ v: g.group, s: XF.BOLD }]);
@@ -916,7 +934,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
             { v: med, s: styleFor(XF, r.k, med) }]);
         }
       }
-      downloadXlsx([{ name: "Comps", rows, widths: [30, ...cols.map(() => 16), 16], freeze: { x: 1, y: 6 } }],
+      downloadXlsx([{ name: "Comps", rows, widths: [30, ...cols.map(() => 16), 16], freeze: { x: 1, y: headerRows } }],
         `comps-${cols.map(c => c.ticker).join("-").slice(0, 60) || "set"}.xlsx`);
       setSaved("Workbook downloaded");
     } catch (e) { setSaved("Export failed — " + String((e && e.message) || e).slice(0, 60)); }
@@ -974,7 +992,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                   closed has nothing to stitch, so its LTM IS that fiscal year — true, and a different
                   statement from the eight companies beside it. */}
               {col && basis === "ltm" && !c.grid.ltmStitched &&
-                <div style={{ color: C.bronze }}>= FY{col.period.fy}, nothing filed since</div>}
+                <div style={{ color: C.bronze }}>= FY{col.period.fy}, {c.interim ? "nothing filed since" : "no quarterly report on file"}</div>}
               {/* Same mark the single sheet's header carries, on the one column a set compares. A
                   53-week window is 1.9% longer than the ones beside it, and a growth rate built on
                   it is not like-for-like with the next column's. */}
@@ -1052,7 +1070,8 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
       </span>}
       {basis === "ltm" && <><br />An LTM line is the last full year plus this year to date less last year to the same date,
       all three from the same tag the annual column used, with the balance sheet read at the quarter end rather than summed.
-      {carried.length > 0 && ` ${carried.map(c => c.ticker).join(", ")} ${carried.length > 1 ? "have" : "has"} nothing filed since the year end, so the fiscal year is the trailing twelve months.`}
+      {carried.some(c => c.interim) && ` ${carried.filter(c => c.interim).map(c => c.ticker).join(", ")} ${carried.filter(c => c.interim).length > 1 ? "have" : "has"} nothing filed since the year end, so the fiscal year is the trailing twelve months.`}
+      {carried.some(c => !c.interim) && ` ${carried.filter(c => !c.interim).map(c => c.ticker).join(", ")} ${carried.filter(c => !c.interim).length > 1 ? "file" : "files"} no quarterly report, so the fiscal year is the only twelve months on file.`}
       {Object.entries(gaps).map(([st, byTicker]) => <span key={st} style={{ color: C.bronze }}>
         {" "}{Object.entries(byTicker).map(([tic, labels]) => GAP[st](tic, labels.join(" and ").toLowerCase())).join("; ")} — open the sheet for the reported year.
       </span>)}</>}
