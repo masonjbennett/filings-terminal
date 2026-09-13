@@ -395,7 +395,17 @@ export function annualPeriods(facts, tags, limit = 8) {
   const contiguous = m => {
     const ps = [...m.values()].sort((a, b) => b.end.localeCompare(a.end));
     let n = 1;
-    while (n < ps.length && ps[n - 1].start && days(ps[n].end, ps[n - 1].start) <= 1) n++;
+    // "Adjacent" has a lower bound as well as an upper one, and it did not. `<= 1` accepts a gap of a
+    // day (filers differ on whether the next year starts on the previous end date or the day after)
+    // and it also accepted a gap of MINUS 273 days — an overlap — so a ladder of rolling twelve-month
+    // periods counted as one unbroken run. Amazon files `NetIncomeLoss` for the trailing twelve months
+    // to every quarter end in every 10-Q, 74 annual-length periods overlapping by nine months each,
+    // and that scored 74 against the ten calendar years its revenue tag reaches. The sheet rendered
+    // eight columns ending 30 June with a blank income statement in all of them, because the periods
+    // exist only for net income and `nonOverlapping` then kept one in four. A day either side is the
+    // slack; anything past it is an overlap, and an overlap is what a rolling ladder IS. Measured over
+    // the 180 cached filers: exactly one calendar changes, Amazon's, to its December years.
+    while (n < ps.length && ps[n - 1].start && Math.abs(days(ps[n].end, ps[n - 1].start)) <= 1) n++;
     return n;
   };
   const best = current.reduce((a, b) => {

@@ -131,8 +131,14 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
 // Growth lines need the PRIOR column, which sits to the LEFT. Getting this index backwards would
 // invert every growth rate silently — the number would still look plausible.
 function crossColumn(cols) {
+  // A 53-week year anywhere on the sheet is a fact about every growth rate on it — the rates into and
+  // out of that year carry the extra week, and a CAGR ending on it carries a slice of it. Set on every
+  // column so the growth rows' note fires once for the sheet; the column itself is marked in the
+  // header from `period.weeks53`. Nothing is blanked and nothing is adjusted: both years are real.
+  const anyWeeks53 = cols.some(x => x.period && x.period.weeks53);
   cols.forEach((c, i) => {
     const prev = cols[i - 1];
+    c.v.week53Sheet = anyWeeks53;
     // A growth rate across a break in the calendar is not a growth rate — see `gapBefore`. Refused
     // rather than printed, which is rule 7's "a partial total is worse than no total" applied to a
     // comparison: the number would look exactly like the ones beside it and mean something else.
@@ -213,6 +219,8 @@ function applyQuote(c, industry, quote, ccy) {
 // Four windows, because that is what a three-year CAGR spans — the newest LTM column plus the three
 // behind it. Deeper would cost a rung per year for rows nothing displays.
 const LTM_DEPTH = 4;
+// The shortest period that is a 53-week year rather than a 52-week or calendar one — see `weeks53`.
+export const WEEKS53_MIN_DAYS = 369;
 
 export function buildGrid(data, quote, limit = 8) {
   if (!data) return null;
@@ -244,6 +252,17 @@ export function buildGrid(data, quote, limit = 8) {
   periods.forEach((p, i) => {
     const prev = periods[i - 1];
     p.gapBefore = prev && p.start && dayGap(prev.end, p.start) > 1 ? dayGap(prev.end, p.start) : 0;
+    // ── A 53-week year ───────────────────────────────────────────────────────────────────────────
+    // A 52/53-week filer adds a week every five or six years and files it as one fiscal year, so the
+    // column is a genuine fiscal year and 1.9% longer than the ones beside it. Nothing here adjusts
+    // for that — the filer's own 10-K reports the growth rate with the extra week in it — but the
+    // sheet has to SAY it, because the rate a reader sees is not the rate they think they see:
+    // across the 180 cached filers 30 columns are 370 days, 52 revenue-growth cells have one on a
+    // leg, and on five of those the extra week is the whole sign — Kroger's FY2024 revenue grew
+    // 1.20% as printed and shrank 0.71% per week, Lowe's +0.84% / −1.06%, J&J +0.64% / −1.26%.
+    // Measured column lengths are 363, 364, 365 and 370 days and nothing else (LTM windows 364–366
+    // and 371), so 369 is a boundary with nothing near it on either side, not a judgement.
+    p.weeks53 = !!(p.start && dayGap(p.start, p.end) >= WEEKS53_MIN_DAYS);
   });
 
   // The verdict is a property of the FILER, not of a column, so it is read once from the whole facts
@@ -302,7 +321,7 @@ export function buildGrid(data, quote, limit = 8) {
   // rather than as of a year-end that may be eleven months old.
   const wins = ltmWindows(facts, periodTags, desc, LTM_DEPTH);
   const ltmCols = wins.slice().reverse().map(w => ({
-    period: { end: w.end, fy: Number(w.end.slice(0, 4)), ltm: true, through: w.end, fyEnd: w.fy.end,
+    period: { end: w.end, fy: Number(w.end.slice(0, 4)), ltm: true, through: w.end, fyEnd: w.fy.end, weeks53: w.days >= WEEKS53_MIN_DAYS,
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickLtm(facts, [t], w, ccy), w.end)

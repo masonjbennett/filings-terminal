@@ -19,6 +19,10 @@
 //                      between columns (rule 21, rule 28's first version); this can.
 //   calendar changed — a filer whose column set (period ends) differs. Nothing per-cell is
 //                      comparable for that filer, so it is reported once and its cells are skipped.
+//   flags changed    — a BOOLEAN cell (`equityThin`, `stDebtIsLtdCur`, `week53Sheet`…) whose
+//                      truth changed. A flag is a verdict, not a figure: a new one appearing on
+//                      every column is not 1,800 cells appearing, and the counts above must not say
+//                      it is, or the headline stops meaning what the README quotes it as.
 // Drives the SHIPPING grid: run it at the commit before the change and again after, on the same
 // cache, and diff. A snapshot is ~30MB for 180 filers; keep them in the scratchpad, not the repo.
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
@@ -67,7 +71,7 @@ const same = (a, b) => (a == null && b == null) || (typeof a === "number" && typ
 function diff() {
   const [A, B] = [argv[1], argv[2]].map(p => JSON.parse(readFileSync(p, "utf8")));
   const show = Number(arg("--show") || 40);
-  const r = { calendarChanged: [], valuesChanged: [], appeared: [], vanished: [], sourceMoved: [], statusChanged: [], conceptSwitches: { gained: [], lost: [] }, filersMoved: new Set(), keysTouched: {} };
+  const r = { calendarChanged: [], valuesChanged: [], appeared: [], vanished: [], sourceMoved: [], statusChanged: [], flagsChanged: [], conceptSwitches: { gained: [], lost: [] }, filersMoved: new Set(), keysTouched: {} };
   const touch = (k, bucket) => { (r.keysTouched[k] = r.keysTouched[k] || {})[bucket] = ((r.keysTouched[k] || {})[bucket] || 0) + 1; };
   const switches = fl => {
     // Per row, the adjacent-column pairs where the resolved tag differs — rule 21's failure shape.
@@ -91,6 +95,10 @@ function diff() {
         for (const k of new Set([...Object.keys(colA.cells), ...Object.keys(colB.cells)])) {
           const x = colA.cells[k] || [null, null, null, null, null], y = colB.cells[k] || [null, null, null, null, null];
           const where = { t, col: which === "ltm" ? `LTM ${colA.end}` : colA.end, k };
+          if (typeof x[0] === "boolean" || typeof y[0] === "boolean") {
+            if (!!x[0] !== !!y[0]) { r.flagsChanged.push({ ...where, before: !!x[0], after: !!y[0] }); touch(k, "flag"); }
+            continue;
+          }
           if (!same(x[0], y[0])) {
             r.filersMoved.add(t);
             if (x[0] == null) { r.appeared.push({ ...where, after: y[0], tag: y[2] }); touch(k, "appeared"); }
@@ -113,12 +121,13 @@ function diff() {
   vanished:          ${n(r.vanished)}
   source moved:      ${n(r.sourceMoved)}
   status changed:    ${n(r.statusChanged)}
+  flags changed:     ${n(r.flagsChanged)}
   concept switches:  +${n(r.conceptSwitches.gained)} / -${n(r.conceptSwitches.lost)}
   calendar changed:  ${n(r.calendarChanged)}`);
   const keys = Object.entries(r.keysTouched).sort((x, y) => Object.values(y[1]).reduce((s, v) => s + v, 0) - Object.values(x[1]).reduce((s, v) => s + v, 0));
   if (keys.length) console.log("\n  by row: " + keys.slice(0, 25).map(([k, c]) => `${k} ${Object.entries(c).map(([b, v]) => `${b} ${v}`).join(", ")}`).join("\n          "));
   const fmt = x => typeof x === "number" ? (Math.abs(x) >= 1e5 ? x.toLocaleString("en-US") : String(x)) : String(x);
-  for (const [name, xs] of [["calendar changed", r.calendarChanged], ["values changed", r.valuesChanged], ["vanished", r.vanished], ["appeared", r.appeared], ["source moved", r.sourceMoved], ["status changed", r.statusChanged]]) {
+  for (const [name, xs] of [["calendar changed", r.calendarChanged], ["values changed", r.valuesChanged], ["vanished", r.vanished], ["appeared", r.appeared], ["source moved", r.sourceMoved], ["status changed", r.statusChanged], ["flags changed", r.flagsChanged]]) {
     if (!xs.length) continue;
     console.log(`\n  ${name} (first ${Math.min(show, xs.length)} of ${xs.length}):`);
     for (const x of xs.slice(0, show)) console.log("    " + (x.k ? `${x.t} ${x.col} ${x.k}: ${fmt(x.before)} → ${fmt(x.after)}${x.tagBefore && x.tagAfter && x.tagBefore !== x.tagAfter ? ` (${x.tagBefore} → ${x.tagAfter})` : x.tag ? ` (${x.tag})` : ""}${x.status ? ` [${x.status}]` : ""}` : JSON.stringify(x)));

@@ -441,7 +441,9 @@ export default function App() {
             ? [[{ v: `All figures in ${grid.ccy}, as filed — not converted to USD`, s: XF.MUTED }]] : []),
           [],
           [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
-          [{ v: "Period end", s: XF.MUTED }, ...grid.cols.map(c => ({ v: c.period.end, s: XF.MUTED }))],
+          // A 53-week year travels with the file, on the row that names the period, because the
+          // workbook is where a growth rate gets used and it has no column header to mark.
+          [{ v: "Period end", s: XF.MUTED }, ...grid.cols.map(c => ({ v: c.period.end + (c.period.weeks53 ? " (53 weeks)" : ""), s: XF.MUTED }))],
         ];
         // The freeze has to be COUNTED, not written down. It was `y: 6` — correct for the six header
         // rows that existed when it was written, and wrong the moment the currency row above made the
@@ -508,7 +510,7 @@ export default function App() {
     }
     if (!grid || !grid.cols) return;
     const secs = activeSections.filter(s => (TABS.find(t => t.id === tab).secs).includes(s.id) || s.tab === tab);
-    const out = [["Line item", ...grid.cols.map(c => c.period.end)].join("\t")];
+    const out = [["Line item", ...grid.cols.map(c => c.period.end + (c.period.weeks53 ? " (53 weeks)" : ""))].join("\t")];
     for (const sec of secs) {
       out.push(sec.title);
       for (const line of sec.lines) {
@@ -724,6 +726,15 @@ export default function App() {
                   style={{ fontSize: 9, fontWeight: 400, letterSpacing: .2, color: C.bronze, marginTop: 3 }}>
                   {Math.round(c.period.gapBefore / 30.4)} mo not covered
                 </div>}
+                {/* The other thing a column header can say once for every row beneath it. A 52/53-week
+                    filer's long year is a genuine fiscal year and 1.9% longer than its neighbours, so
+                    every growth rate into and out of it carries the extra week; the growth rows say
+                    what that does, and this says which column it is. Shown as reported, never
+                    adjusted — see `weeks53` in grid.js for the measurement. */}
+                {c.period.weeks53 && <div title="This fiscal year ran 53 weeks (370 days): the extra week a 52/53-week calendar adds every five or six years, filed as one fiscal year. Growth into it carries about 1.9 points more than a like-for-like year and growth out of it about 1.9 points less. Both are genuine fiscal years, so the rates are shown as reported, not adjusted."
+                  style={{ fontSize: 9, fontWeight: 400, letterSpacing: .2, color: C.bronze, marginTop: 3 }}>
+                  53-week year
+                </div>}
               </th>)}
             </tr></thead>
             <tbody>
@@ -892,7 +903,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         // do not share a window and a workbook has no subtitle to say so. A reader who sorts or
         // filters this file must still be able to see which twelve months each column covers.
         [{ v: basis === "ltm" ? "Twelve months ended" : "Fiscal year ended", s: XF.MUTED },
-          ...cols.map(c => ({ v: colOf(c).period.end, s: XF.MUTED }))],
+          ...cols.map(c => ({ v: colOf(c).period.end + (colOf(c).period.weeks53 ? " (53 weeks)" : ""), s: XF.MUTED }))],
       ];
       for (const g of groups) {
         rows.push([]);
@@ -964,6 +975,11 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                   statement from the eight companies beside it. */}
               {col && basis === "ltm" && !c.grid.ltmStitched &&
                 <div style={{ color: C.bronze }}>= FY{col.period.fy}, nothing filed since</div>}
+              {/* Same mark the single sheet's header carries, on the one column a set compares. A
+                  53-week window is 1.9% longer than the ones beside it, and a growth rate built on
+                  it is not like-for-like with the next column's. */}
+              {col && col.period.weeks53 &&
+                <div style={{ color: C.bronze }}>{basis === "fy" ? "53-week year" : "53-week window"}</div>}
               {/* Currency belongs on the COLUMN here, not once at the top as it is on a single sheet:
                   a set is the one place two currencies legitimately sit side by side, and ASML's
                   €32.67bn of revenue beside a US filer's dollars is the Costco blank wearing a

@@ -34,6 +34,11 @@ export const EQUITY_DENOMINATED = new Set(["roe", "debtEquity", "pb"]);
 // them outright for a filer whose statements are not in the price's currency.
 export const CURRENCY_DENOMINATED = new Set(["revenue", "ebitda", "netIncome", "netDebt"]);
 
+// The 53-week note, shared by the growth and CAGR rows. Static text on purpose: the column that IS
+// the 53-week year is marked in its own header, and a growth row's job is to say what the extra week
+// does to a rate, which is the same sentence whichever year it was.
+const WEEKS53_NOTE = "A 53-week fiscal year is on this sheet, marked under its column header. Growth into that year carries an extra week of trading, about +1.9 points, and growth out of it the reverse; a CAGR ending on it moves by about 0.6 points. Both years are genuine fiscal years, so the rates are shown as reported, not adjusted.";
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
@@ -327,11 +332,16 @@ export const SECTIONS = [
   { k: "ebitMargin", label: "EBIT margin", how: "computed", formula: "ebit / revenue" },
   { k: "netMargin", label: "Net margin", how: "computed", formula: "netIncome / revenue" },
   { k: "fcfMargin", label: "FCF margin", how: "computed", formula: "fcf / revenue" },
-  { k: "revGrowth", label: "Revenue growth, YoY", how: "computed", formula: "revenue / revenue[-1] - 1" },
-  { k: "ebitdaGrowth", label: "EBITDA growth, YoY", how: "computed", formula: "ebitda / ebitda[-1] - 1" },
-  { k: "epsGrowth", label: "EPS growth, YoY", how: "computed", formula: "epsDil / epsDil[-1] - 1" },
-  { k: "revCagr3", label: "Revenue CAGR, 3yr", how: "computed", formula: "(revenue / revenue[-3])^(1/3) - 1" },
-  { k: "revCagr5", label: "Revenue CAGR, 5yr", how: "computed", formula: "(revenue / revenue[-5])^(1/5) - 1" },
+  // A 53-week year is on this sheet (the column header marks which). The rates are shown as the
+  // filer reports them — both years are genuine fiscal years and nothing is adjusted — but a reader
+  // comparing a 370-day year with a 363-day one is owed the size of the effect, because on a filer
+  // growing slowly it is the whole sign: Kroger's FY2024 revenue grew 1.20% as printed and shrank
+  // 0.71% per week. One note, keyed to the sheet rather than the column, on the five rows it reaches.
+  { k: "revGrowth", label: "Revenue growth, YoY", how: "computed", formula: "revenue / revenue[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
+  { k: "ebitdaGrowth", label: "EBITDA growth, YoY", how: "computed", formula: "ebitda / ebitda[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
+  { k: "epsGrowth", label: "EPS growth, YoY", how: "computed", formula: "epsDil / epsDil[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
+  { k: "revCagr3", label: "Revenue CAGR, 3yr", how: "computed", formula: "(revenue / revenue[-3])^(1/3) - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
+  { k: "revCagr5", label: "Revenue CAGR, 5yr", how: "computed", formula: "(revenue / revenue[-5])^(1/5) - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
   { k: "taxRate", label: "Effective tax rate", how: "computed", formula: "tax / pretax" },
 ]},
 { id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", lines: [
