@@ -2176,7 +2176,13 @@ node scripts/build-fixtures.mjs --tickers AAPL,JPM # → one or two
 FILINGS_FIXTURES=/path/to/cache npm test           # → point the suites at a copy
 ```
 
-`scripts/fixture-tickers.json` is the filer list: 161 names recovered from the filers this README and
+**Measured, now that it has been built: 160 filers, 167 MB, about two minutes.** That is far too
+large to commit to a public repo, so `fixtures/` stays gitignored and the cache lives wherever it is
+built. The practical consequence is worth stating plainly: **a cloud session cannot use a cache that
+sits on a laptop.** Either work locally, where it already exists, or allow `data.sec.gov` on the
+cloud environment's network access and let each session spend the two minutes rebuilding it.
+
+`scripts/fixture-tickers.json` is the filer list: 160 names recovered from the filers this README and
 the working notes actually measured rules against, so the cache is a regression set rather than an
 arbitrary sample — Chubb, Tronox, AIRI, ATEX, Instacart, AMTD, Paramount, CBL and the rest are all in
 it. `test/_fixtures.mjs` loads it and lets a suite skip cleanly when it is absent, which is the point:
