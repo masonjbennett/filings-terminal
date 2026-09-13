@@ -777,8 +777,16 @@ export function debtScope(facts, tag) {
     const n = nc.get(end);
     if (!n) continue;
     const c = cu.get(end);
-    if (nearly(t.val, n.val)) seen.add("excludes");
-    else if (c && nearly(t.val, n.val + c.val)) seen.add("includes");
+    // A year in which the current portion is inside the tolerance satisfies BOTH identities and
+    // decides nothing, and counting it as evidence for each side made the whole verdict conflicting.
+    // American Tower tags both for ten years; in eight of them T = Noncurrent + Current by billions,
+    // and in 2013 and 2015 its current portion was small enough that T = Noncurrent also held within
+    // 0.5%. Two uninformative years were vetoing eight informative ones. Skipping them changes three
+    // verdicts to `includes` (American Tower, NGL, UPS) and un-decides Cigna, whose only evidence year
+    // was of this kind — and `excludes` is the sum's default, so nothing moves there.
+    const ex = nearly(t.val, n.val), inc = !!c && nearly(t.val, n.val + c.val);
+    if (ex && inc) continue;
+    if (ex) seen.add("excludes"); else if (inc) seen.add("includes");
   }
   return seen.size === 1 ? [...seen][0] : null;      // conflicting or absent evidence decides nothing
 }
@@ -794,7 +802,35 @@ export function debtScope(facts, tag) {
 // Falling back rather than taking the larger of the two: the corporate sum is a defined quantity
 // (short-term + current maturities + long-term), and "whichever number is bigger" is how a
 // tax-inclusive or gross-of-eliminations tag wins an argument it should lose.
+// The REIT override took American Tower's $1.9m as the filer's all-in total as well, and the test
+// above held trivially because both sides were the same stray fact. That is closed on the ROWS
+// (`reitDebt` and `debtAllIn` declare rule 30's floor below), not here: a second floor inside this
+// helper could never fire once the rows have theirs, and a guard nothing can reach is dead code.
 const allIn = (total, v) => (total != null && (v.ltDebt == null || total >= v.ltDebt) ? total : null);
+
+// ── Rule 30: a debt total smaller than the current maturities beside it is not the total ──────────
+// American Tower's FY2019 total debt read $1.9m against a filed $24,055m. The FY2020 10-K tags a
+// footnote figure under `LongTermDebt` for 31 Dec 2019, once with a member and once without, and only
+// the undimensioned copy reaches companyfacts — where rule 2 (newest filing wins) hands it the row over
+// the $21,127m the FY2019 10-K filed under the non-current tag two candidates further down. Every
+// figure built on it was then ordinary-looking and wrong: net debt MINUS $1.5bn, debt/equity 0.00x,
+// net debt/EBITDA -0.34x, on a tower REIT.
+//
+// The tag list cannot fix it (rule 11: reordering moves eight filers) and rule 21's run length cannot
+// see it (one stray year). What CAN is the same shape as rule 7 and rule 24 — a fact on the row is not
+// always the row's concept — decided by an identity the row itself supplies: a figure that INCLUDES the
+// current maturities cannot be smaller than the current maturities. So a candidate below `ltdCur` at
+// the same date is set aside and the list falls through to the next one, on the rows that declare
+// `notBelow`. The row still says what happened, because the filer did tag something.
+//
+// It is confined to the concepts that carry current maturities inside them, and the counter-population
+// is why: a NON-CURRENT balance genuinely can be smaller than the current portion. Air Industries
+// carries $1.5m of long-term debt against $23.7m due within a year (a revolver classified current),
+// iHeartMedia's non-current debt is literally 0 in Chapter 11 against $46m current — rule 24's own
+// witness — and Fluent, Hycroft and Old Dominion are the same shape. 31 columns on 9 filers have the
+// resolved long-term figure below the current portion, and only American Tower's is an inclusive
+// concept. Everything else is left exactly as filed.
+export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]);
 
 // ── The change in working capital, as the FILER reported it ─────────────────────────────────────
 //

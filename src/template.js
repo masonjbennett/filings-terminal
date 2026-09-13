@@ -199,7 +199,7 @@ export const SECTIONS = [
   // the $69.5bn its long-term tag alone reports; and Goldman Sachs files $356bn here and nothing at
   // all in the three tags below it. Confining this to the carrier overlays left every broker-dealer
   // unable to reach it.
-  { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"] },
+  { k: "debtAllIn", label: "Debt outstanding, long + short", how: "fetched", tags: ["DebtLongtermAndShorttermCombinedAmount"], notBelow: "ltdCur" },
   // `LongTermDebtAndCapitalLeaseObligations` is the corporate sweep's addition, and WHERE it sits
   // matters more than that it is here. Without it Southern reported $722m of total debt — its
   // short-term borrowings alone — against $66bn, the Capital One failure in a utility; Sempra read
@@ -212,7 +212,19 @@ export const SECTIONS = [
   // is exactly the population that was broken. It carries finance leases inside it, which the sheet
   // also lists separately as debt-like items; a filer that reaches it is one presenting debt and
   // leases as a single balance, so counting it as debt is what its own balance sheet does.
-  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations","LongTermDebtAndCapitalLeaseObligations","ConvertibleDebtNoncurrent"] },
+  // Rule 30: a candidate that INCLUDES current maturities and is smaller than them is not this row —
+  // American Tower's FY2019 `LongTermDebt` of $1.9m, a footnote figure that companyfacts carries
+  // without its member, sat between $18.4bn and $29.3bn and made total debt $1.9m against a filed
+  // $24,055m. Set aside, and the list falls through to the next concept the filer tagged. The note
+  // prints what was set aside, because the filer did tag it and the cell links to a filing that shows it.
+  { k: "ltDebt", label: "Long-term debt", how: "fetched", tags: ["LongTermDebtNoncurrent","LongTermDebt","LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities","DebtAndCapitalLeaseObligations","LongTermDebtAndCapitalLeaseObligations","ConvertibleDebtNoncurrent"],
+    notBelow: "ltdCur",
+    flagNote: { ltDebtRejected: col => {
+      const r = (col.meta && col.meta.ltDebt || {}).rejected, m = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : (x / 1e6).toFixed(1) + "m");
+      if (!r) return "";                    // the key is set from `rejected`, so this cannot render — but it must not throw either
+      return `A ${m(r.value)} figure filed under ${r.tag} for ${col.period.end} was set aside: it is below the ${m(col.v.ltdCur)} of current maturities beside it, so it cannot be the long-term balance. `
+        + (col.v.ltDebt != null ? `The row shows the next concept this filer tagged for that date.` : `Nothing else this filer tagged reaches that date, so the row is blank rather than wrong.`);
+    } } },
   { k: "olNon", label: "Operating lease liability, non-current", how: "fetched", tags: ["OperatingLeaseLiabilityNoncurrent"] },
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },
@@ -939,7 +951,7 @@ export const OVERLAY_SECTIONS = {
       // Same story as the carriers: REITs file one debt total under names the corporate three-way
       // sum has never heard of. Realty Income puts all $25.1bn under `NotesPayable` and reported
       // $517m without this; Essex and Digital Realty reported nothing at all.
-      { k: "reitDebt", label: "Debt outstanding, as disclosed", how: "fetched", tags: ["NotesPayable", "LongTermDebt", "DebtLongtermAndShorttermCombinedAmount"] },
+      { k: "reitDebt", label: "Debt outstanding, as disclosed", how: "fetched", tags: ["NotesPayable", "LongTermDebt", "DebtLongtermAndShorttermCombinedAmount"], notBelow: "ltdCur" },
       { k: "numProperties", label: "Properties owned", how: "fetched", tags: ["NumberOfRealEstateProperties"], note: "A count, not a dollar figure" },
     ]},
     { id: "reit_ratios", title: "REIT Ratios", feeds: "Historicals · Diligence", tab: "ratios", lines: [

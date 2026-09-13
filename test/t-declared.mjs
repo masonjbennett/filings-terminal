@@ -88,11 +88,11 @@ for (const sec of SECTIONS) { declare(sec, "section"); for (const line of sec.li
 for (const secs of Object.values(OVERLAY_SECTIONS)) for (const sec of secs) { declare(sec, "overlay section"); for (const line of sec.lines) declare(line, "overlay line"); }
 for (const grp of COMPS_ROWS) { declare(grp, "comps group"); for (const r of grp.rows) declare(r, "comps row"); }
 
-// 27 today. Asserted so that ADDING a property to the template cannot slip through on a green run
+// 28 today (`notBelow` arrived with rule 30). Asserted so that ADDING a property to the template cannot slip through on a green run
 // without someone looking at this file — the count moving is the prompt to check the new one is
 // wired, which is the conversation `derivedOnly` never triggered.
 // MUTATION: declaring any new property on any line fails here first.
-eq(declared.size, 27, `the template declares 27 distinct properties — found ${declared.size}: ${[...declared.keys()].sort().join(" ")}`);
+eq(declared.size, 28, `the template declares 28 distinct properties — found ${declared.size}: ${[...declared.keys()].sort().join(" ")}`);
 
 // A property reached through a VARIABLE key is invisible to the matcher above and must be named here
 // WITH A REASON. Empty today, and that is worth stating: every one of the 27 is statically visible.
@@ -741,9 +741,13 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
 // a blank: `EQUITY_THIN_NOTE` reads `col.v.equity` and `col.v.totalAssets`, and renaming either
 // prints "Shareholders' equity is NaN% of total assets" on two rows. A blank cannot be mis-computed;
 // this can.
+// Rule 30's note is the third, and it reads `meta` as well as `v`: the figure it set aside travels
+// on the cell, not in a row. The probe column carries both, and each note gets its own expectation —
+// a generic "returns a string" would pass a note that printed the wrong filer's number.
 // MUTATION: renaming `equity` or `totalAssets`, or breaking the note's arithmetic, fails here.
 {
-  const col = { v: { equity: -1.2e8, totalAssets: 3.7e10 }, period: { end: "2024-12-31" } };
+  const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10 }, period: { end: "2024-12-31" },
+    meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } } } };
   let fns = 0;
   for (const r of rows) if (r.line.flagNote) for (const [k, text] of Object.entries(r.line.flagNote)) {
     if (typeof text !== "function") { ok(typeof text === "string" && text.length > 0, `\`${r.id}\`'s flagNote for ${k} is a non-empty string or a function`); continue; }
@@ -753,12 +757,14 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     ok(!/NaN|undefined|Infinity/.test(out), `and it reads as a sentence rather than "${(out.match(/NaN|undefined|Infinity/) || [])[0]}" — ${r.id}/${k} prints the filer's own figure, so a renamed input produces a FALSE sentence under a figure that still has a value`);
     // The percentage it prints is the one the reader is asked to believe, so the arithmetic is
     // checked rather than assumed: 1.2e8 / 3.7e10 is 0.32%.
-    ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
+    if (k === "equityThin") ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
+    else if (k === "ltDebtRejected") ok(/1\.9m/.test(out) && /LongTermDebt\b/.test(out) && /2\.93bn/.test(out), `and it names the figure it set aside, the tag it came from and the current portion it fell below — ${r.id}/${k}: ${out.slice(0, 90)}`);
+    else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 2, `both function-valued flagNotes were exercised — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 3, `all three function-valued flagNotes were exercised — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

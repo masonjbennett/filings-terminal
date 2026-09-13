@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -81,13 +81,28 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
     // column, because a line cannot mean one concept in 2021 and another in 2022. See `tagsByRun`.
     if (pinned && pinned[line.k]) line2 = { ...line2, tags: pinned[line.k] };
     if (line.preferNonZero) line2 = { ...line2, preferNonZero: true };
-    const got = get(line2, isInstant(sec, line));
+    let got = get(line2, isInstant(sec, line));
+    // Rule 30. A row may declare that a candidate below another row's figure is not this row's
+    // concept — a debt total cannot sit below the current maturities inside it — and the list falls
+    // through past it. Only inclusive concepts are tested; a non-current balance can legitimately be
+    // the smaller figure (see NONCURRENT_DEBT). The figure set aside travels in `meta.rejected`, so
+    // the row can say so: the filer did tag something, and "not tagged" would send a reader to look.
+    if (line.notBelow && v[line.notBelow] != null) {
+      let tags = line2.tags;
+      while (got.value != null && !NONCURRENT_DEBT.has(got.tag) && got.value < v[line.notBelow]) {
+        const rejected = { tag: got.tag, value: got.value, form: got.form, filed: got.filed, accn: got.accn, unit: got.unit };
+        tags = tags.slice(tags.indexOf(got.tag) + 1);
+        got = { ...(tags.length ? get({ ...line2, tags }, isInstant(sec, line)) : { value: null, status: "untagged-this-period" }), rejected };
+      }
+    }
     v[line.k] = got.value; meta[line.k] = got;
   }
   // Which long-term debt tag this column actually resolved decides whether the current portion is
   // already inside it — see `debtScope`. Not a displayed line: it is a fact about the tag, so it goes
   // in `v` where the debt derivation can read it and nowhere else. Per column, because a filer can
   // reach a different tag in different years.
+  // Rule 30's note is keyed here: a figure the long-term row set aside as impossible.
+  v.ltDebtRejected = !!(meta.ltDebt || {}).rejected;
   v.ltdCurInLtDebt = scopeOf ? scopeOf((meta.ltDebt || {}).tag) === "includes" : false;
   // Rule 16's companion, and unlike the one above it is decided from THIS column alone: the two
   // current-debt rows filed at the same non-zero value are one line the filer tagged twice, so the
