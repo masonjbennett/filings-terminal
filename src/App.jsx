@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
+import { describeSplits } from "./extract.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
@@ -458,6 +459,9 @@ export default function App() {
         for (const sec of secs) {
           rows.push([]);
           rows.push([{ v: sec.title, s: XF.BOLD }]);
+          // Rule 31: a share-basis change travels with the file, on the section it applies to. The
+          // workbook has no cell marker and no tooltip, so the sentence goes in column A above the rows.
+          if (sec.id === "sh" && grid.splits && grid.splits.length) rows.push([{ v: `Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`, s: XF.MUTED }]);
           // Said on its own row, because a spreadsheet has no tooltip and no card header to carry it:
           // these are today's price against the newest year, not a time series. In column A, not
           // beside the title — a year column has to stay numeric all the way down, or the first
@@ -521,6 +525,8 @@ export default function App() {
         out.push([line.label, ...grid.cols.map(c => { const v = c.v[line.k]; return v == null ? "" : (PCT.has(line.k) || MULT.has(line.k) ? v : Math.round(v * 100) / 100); })].join("\t"));
       }
     }
+    // Rule 31 travels with the paste too: a trailing line, since a TSV has no cell marker either.
+    if (grid.splits && grid.splits.length) out.push(`Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`);
     navigator.clipboard.writeText(out.join("\n")).then(() => { setCopied("Copied — paste into Excel"); setTimeout(() => setCopied(""), 3000); })
       .catch(() => setCopied("Clipboard blocked by the browser"));
   };
@@ -769,6 +775,7 @@ export default function App() {
 
         <div style={{ marginTop: 16, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 10, fontFamily: MONO, color: C.faint }}>
           <span><b style={{ color: C.ink2 }}>reported</b> — filed value</span>
+          <span><b style={{ color: C.bronze }}>÷K · ×K</b> — a filed figure carried to today's share basis after a split; the link opens the filing that shows it as reported</span>
           <span><b style={{ color: C.navy }}>computed</b> — derived here</span>
           <span><b style={{ color: C.bronze }}>not tagged</b> — disclosed but untagged; use the section link</span>
           <span><b style={{ color: C.faint }}>n/a</b> — this filer has never reported it</span>
@@ -1501,10 +1508,14 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           // provenance. Those keep the ƒ marker and stay plain text.
           const url = shown != null && x.m.accn ? secFilingUrl(cik, x.m.accn) : null;
           return <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
-            title={x.m.tag ? `${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
+            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
               : (shown || "—")}
+            {/* Rule 31: a figure carried to today's share basis is marked ON THE CELL, not only in the
+                tooltip, because a phone has no hover and the header says every figure is as filed. The
+                marker is what was done to this number; the row's note says why and names the split. */}
+            {x.m.status === "split-adjusted" && <span style={{ fontSize: 8, fontFamily: MONO, color: C.bronze, marginLeft: 4, letterSpacing: .3 }}>{x.m.splitMark}</span>}
           </td>;
         })}
       </tr>;

@@ -39,6 +39,18 @@ export const CURRENCY_DENOMINATED = new Set(["revenue", "ebitda", "netIncome", "
 // does to a rate, which is the same sentence whichever year it was.
 const WEEKS53_NOTE = "A 53-week fiscal year is on this sheet, marked under its column header. Growth into that year carries an extra week of trading, about +1.9 points, and growth out of it the reverse; a CAGR ending on it moves by about 0.6 points. Both years are genuine fiscal years, so the rates are shown as reported, not adjusted.";
 
+// Rule 31's note, shared by the five rows a split can rebase. A function of the column, so it names
+// the filer's own factor and the filing that first carried the new basis; it reads the meta of
+// whichever of the five was rebased, because the note does not know which row it sits on.
+const SPLIT_NOTE = col => {
+  const m = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"].map(k => (col.meta || {})[k]).find(x => x && x.status === "split-adjusted");
+  if (!m) return "";
+  const fmt = k => (Number.isInteger(k) ? String(k) : String(+k.toFixed(2)));
+  const names = (m.splits || []).map(e => (e.forward ? `${fmt(e.K)}-for-1 split first reported ${e.newFrom}` : `1-for-${fmt(e.K)} reverse split first reported ${e.newFrom}`)).join(" and the ");
+  return `Per-share figures and share counts filed before the ${names} are shown on today's share basis (this column ${m.splitMark}), because a 10-K restates only two prior years and the older years keep the pre-split figures in their own filings. `
+    + `The factor is the filer's own — the same period filed on both bases, with net income unchanged — and each cell links to the filing that carries the figure as reported (${m.filedValue} here).`;
+};
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
@@ -323,10 +335,14 @@ export const SECTIONS = [
 ]},
 // ─────────────────────────────────────────────────────────────── SHARES
 { id: "sh", title: "Share Data", feeds: "Historicals · CCA · EV Bridge", lines: [
-  { k: "epsBasic", label: "EPS, basic", how: "fetched", tags: ["EarningsPerShareBasic"] },
-  { k: "epsDil", label: "EPS, diluted", how: "fetched", tags: ["EarningsPerShareDiluted"] },
-  { k: "wasoBasic", label: "Weighted avg shares, basic", how: "fetched", tags: ["WeightedAverageNumberOfSharesOutstandingBasic"] },
-  { k: "wasoDil", label: "Weighted avg shares, diluted", how: "fetched", tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"] },
+  // Rule 31: after a split these five rows sit on two share bases unless the older years are carried
+  // back to today's, which the engine does at the fact level; the note says so on whichever row it
+  // fired. The tag lists here are read by `splitEvents` too — SPLIT_PER_SHARE / SPLIT_COUNTS in
+  // extract.js name the same concepts, and `t-splits` asserts they cannot drift apart.
+  { k: "epsBasic", label: "EPS, basic", how: "fetched", tags: ["EarningsPerShareBasic"], flagNote: { splitAdjusted: SPLIT_NOTE } },
+  { k: "epsDil", label: "EPS, diluted", how: "fetched", tags: ["EarningsPerShareDiluted"], flagNote: { splitAdjusted: SPLIT_NOTE } },
+  { k: "wasoBasic", label: "Weighted avg shares, basic", how: "fetched", tags: ["WeightedAverageNumberOfSharesOutstandingBasic"], flagNote: { splitAdjusted: SPLIT_NOTE } },
+  { k: "wasoDil", label: "Weighted avg shares, diluted", how: "fetched", tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"], flagNote: { splitAdjusted: SPLIT_NOTE } },
   // `latest` because the cover-page count is dated the day the filing went out, not the fiscal
   // year end — it matches no period and must be taken as the most recent value instead.
   // `mustBeCurrent`: companyfacts carries only the UNDIMENSIONED dei fact, so a filer that moved to a
@@ -335,7 +351,7 @@ export const SECTIONS = [
   // `latestFact`; the population separates cleanly and the README gives the measurement.
   { k: "sharesOut", label: "Shares outstanding (cover)", how: "fetched", latest: true, mustBeCurrent: true, tags: ["dei:EntityCommonStockSharesOutstanding"], note: "Cover page of the most recent filing — the count market cap is built on",
     blankNote: "SEC's company-facts API carries this count only for filers that report it as a single undimensioned figure. This filer's most recent one is too old to price against — it is on the cover of its latest filing, but not in the data this page is built from." },
-  { k: "dps", label: "Dividends per share", how: "fetched", tags: ["CommonStockDividendsPerShareDeclared"] },
+  { k: "dps", label: "Dividends per share", how: "fetched", tags: ["CommonStockDividendsPerShareDeclared"], flagNote: { splitAdjusted: SPLIT_NOTE } },
 ]},
 // ─────────────────────────────────────────────────────────────── DERIVED
 { id: "margins", title: "Margins & Growth", feeds: "Historicals · CCA", lines: [

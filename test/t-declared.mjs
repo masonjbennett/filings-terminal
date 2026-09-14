@@ -747,7 +747,8 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
 // MUTATION: renaming `equity` or `totalAssets`, or breaking the note's arithmetic, fails here.
 {
   const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10 }, period: { end: "2024-12-31" },
-    meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } } } };
+    meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } },
+      epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] } } };
   let fns = 0;
   for (const r of rows) if (r.line.flagNote) for (const [k, text] of Object.entries(r.line.flagNote)) {
     if (typeof text !== "function") { ok(typeof text === "string" && text.length > 0, `\`${r.id}\`'s flagNote for ${k} is a non-empty string or a function`); continue; }
@@ -759,12 +760,13 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     // checked rather than assumed: 1.2e8 / 3.7e10 is 0.32%.
     if (k === "equityThin") ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
     else if (k === "ltDebtRejected") ok(/1\.9m/.test(out) && /LongTermDebt\b/.test(out) && /2\.93bn/.test(out), `and it names the figure it set aside, the tag it came from and the current portion it fell below — ${r.id}/${k}: ${out.slice(0, 90)}`);
+    else if (k === "splitAdjusted") ok(/4-for-1 split first reported 2021-08-20/.test(out) && /10-for-1 split first reported 2024-08-28/.test(out) && /÷40/.test(out) && /6\.63/.test(out), `and it names both splits, the factor and the figure as filed — ${r.id}/${k}: ${out.slice(0, 90)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 3, `all three function-valued flagNotes were exercised — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 8, `all eight function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

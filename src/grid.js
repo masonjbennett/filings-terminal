@@ -9,7 +9,10 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+
+// The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
+const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
 
 // Balance-sheet style lines are INSTANTS (a value at a date); income and cash-flow lines are
 // DURATIONS (a value over a span). Getting this wrong is how a full-year balance sheet ends up
@@ -103,6 +106,8 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
   // reach a different tag in different years.
   // Rule 30's note is keyed here: a figure the long-term row set aside as impossible.
   v.ltDebtRejected = !!(meta.ltDebt || {}).rejected;
+  // Rule 31's: any per-share or share-count cell in this column shown on today's share basis.
+  v.splitAdjusted = SPLIT_ROWS.some(k => (meta[k] || {}).status === "split-adjusted");
   v.ltdCurInLtDebt = scopeOf ? scopeOf((meta.ltDebt || {}).tag) === "includes" : false;
   // Rule 16's companion, and unlike the one above it is decided from THIS column alone: the two
   // current-debt rows filed at the same non-zero value are one line the filer tagged twice, so the
@@ -241,7 +246,11 @@ export function buildGrid(data, quote, limit = 8) {
   if (!data) return null;
   const industry = INDUSTRY(data.sicCode);
   const sections = sectionsFor(industry);
-  const facts = data.facts || {};
+  // Rule 31 runs on the raw payload and everything below reads the rebased copy — annual columns,
+  // LTM legs, the debt-scope and run-length passes alike see one share basis. A filer with no split
+  // gets the payload's own object back.
+  const splits = splitEvents(data.facts || {});
+  const facts = applySplits(data.facts || {}, splits);
   const periodTags = [...(PERIOD_TAGS[industry] || PERIOD_TAGS.corporate), ...PERIOD_TAGS_FALLBACK];
   // annualPeriods returns newest-first because "the most recent 8 years" is the natural way to take
   // a slice. Models read the other way — oldest on the left, this year on the right, so a growth row
@@ -384,5 +393,5 @@ export function buildGrid(data, quote, limit = 8) {
   const newestLtm = ltmCols.length ? ltmCols[ltmCols.length - 1]
     : carry ? { period: { ...last.period, ltm: true, through: last.period.end, fyEnd: last.period.end }, v: { ...last.v }, meta: { ...last.meta } }
     : null;
-  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, ccy };
+  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, ccy, splits };
 }

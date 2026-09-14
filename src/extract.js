@@ -174,7 +174,9 @@ export function pickFact(facts, tags, period, opts = {}) {
     // a 10-K and the 10-Q that restated it, which is exactly what it should decide.
     matches.sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form));
     const f = descaled(matches, matches[0]);
-    const hit = { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported" };
+    const hit = { value: f.val, unit: f.unit, tag, accn: f.accn, form: f.form, filed: f.filed, end: f.end, start: f.start, status: "reported",
+      // Rule 31: a fact rebased for a split says so, and carries what the filing actually shows.
+      ...(f.splitFactor ? { status: "split-adjusted", filedValue: f.filedVal, splitFactor: f.splitFactor, splitMark: f.splitMark, splits: f.splits } : {}) };
     // ── Rule 24: a ZERO is a fact, and on some rows it is not evidence of absence ─────────────────
     // `pickFact` takes the first candidate with a fact for the period, and a fact of 0 is a fact — the
     // mechanism behind rule 7's Progressive case, which tagged `LongTermDebtCurrent` as literally 0
@@ -514,6 +516,152 @@ export function latestFact(facts, tags, opts = {}) {
   return { value: best.val, unit: best.unit, tag: best.tag, accn: best.accn, form: best.form, filed: best.filed, end: best.end, status: "reported" };
 }
 
+// ── Rule 31: a stock split restates only the years the newest filing reaches ────────────────────
+// `epsBasic`, `epsDil`, `dps` and the two share counts are fetched per period, and rule 2 takes each
+// period from the NEWEST filing carrying it. A 10-K restates two prior years as comparatives, so after
+// a split the years inside the newest filings are on the new share basis and older years keep the
+// pre-split figures from their own filings. Every cell is correct and the SERIES is a fabrication:
+// NVIDIA read 6.63 | 1.13 | 1.73 | 3.85 | 0.17 | 1.19 | 2.94 | 4.90 with EPS growth of −83.0% and
+// −95.6% at its two split boundaries; Alphabet 49.16 → 2.93; Netflix's LTM column −6.80 for a company
+// that has never lost money, because its three legs sat on two bases.
+//
+// The data to fix it is in the payload. A split is the one restatement that moves EPS and the share
+// count by the SAME ratio in OPPOSITE directions and leaves net income where it was — and companyfacts
+// carries every period as filed by every filing, so where two filings state one period on two bases
+// the ratio between them IS the split factor. The evidence is asked for three ways, measured over the
+// 830 double-filed per-share and count observations across 180 cached filers:
+//   · the share count moved by a clean ratio, to 0.5% (real splits sit within 0.46%; the nearest
+//     refused record is 0.86% off, and it is not a split), and a per-share row moved by its inverse
+//     inside the rounding of two 2dp figures — BOTH, or nothing. Alphabet is the one exception: its
+//     counts are filed per class, so companyfacts carries none, and there two per-share rows over two
+//     periods are accepted where the counts are silent and the ratio is not a power of ten (Brown &
+//     Brown files a quarter's EPS at the wrong decimal, ×100, with no count moving);
+//   · net income for that period is unchanged between the two filings where both carry it — every
+//     real split has it, every restatement moves it (AIG 2021 ×1.10, Caterpillar 2015 ×1.19, Allstate
+//     2017 ×1.12 are one-witness clean-looking ratios that this test refuses);
+//   · the new basis PERSISTS in every later filing of that period — a quarter re-filed once and then
+//     re-filed back is noise, not a basis.
+// Admissible ratios are whole numbers and 3-for-2 and 5-for-4 (Old Dominion, Raymond James, W. R.
+// Berkley, Essential Utilities); 4/3, 6/5, 9/8, 11/10 and 7/2 are every one a restatement in the
+// census and never qualify, and a count moving by a thousand (units against thousands) is not on the
+// list either, so a scale shift can never read as a split. Applied over the cache this finds 33 filers and 47 events, every
+// one checked against the filer's own split history; Tulip's 1-for-7 is the one real split it
+// declines, because Tulip restated the same years afterwards and the new basis does not persist.
+//
+// WHAT IS DONE WITH IT is a carry-back, not an adjustment of the newest figures: a per-share fact
+// filed before the first post-split filing is divided by the factor and a count multiplied, cumulative
+// across events (NVIDIA's FY2019 EPS is ÷40: 4-for-1 in 2021, 10-for-1 in 2024). That is rule 2's own
+// principle — the figure the company stands behind today, restatements included — reaching the years
+// the newest filing does not, using the factor the filer itself established. It is applied to the
+// FACTS, once, before anything reads them, so annual columns, LTM legs and comps all inherit one basis.
+// The cell keeps its tag, accession and filing date — the link opens the filing that shows the figure
+// as reported — and gains a status, the filed value and the factor, so every surface can say what was
+// done: the cell carries a marker, the row a note, the workbook a line. The header's promise that
+// every figure is the value the company filed is kept by saying, wherever this fires, that this one is
+// the value the company filed on another share basis.
+export const SPLIT_PER_SHARE = ["EarningsPerShareBasic", "EarningsPerShareDiluted", "CommonStockDividendsPerShareDeclared"];
+export const SPLIT_COUNTS = ["WeightedAverageNumberOfSharesOutstandingBasic", "WeightedAverageNumberOfDilutedSharesOutstanding"];
+const SPLIT_NI = ["NetIncomeLoss", "ProfitLoss"];
+const SPLIT_KS = [...Array.from({ length: 99 }, (_, i) => i + 2), 1.5, 1.25];
+const pow10 = k => { const e = Math.log10(k); return Math.abs(e - Math.round(e)) < 1e-9; };
+// Every filing of one tag for one period, oldest filing first, periodic reports only.
+function splitObs(facts, tag) {
+  const def = facts[tag], m = new Map();
+  if (!def) return m;
+  for (const [unit, arr] of Object.entries(def.units || {})) for (const f of arr) {
+    if (!periodic(f.form) || f.val == null) continue;
+    const key = `${f.start || ""}|${f.end}`;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push({ val: f.val, filed: f.filed || "", accn: f.accn, unit });
+  }
+  for (const arr of m.values()) arr.sort((a, b) => a.filed.localeCompare(b.filed) || String(a.accn).localeCompare(String(b.accn)));
+  return m;
+}
+const nearestSplitK = r => { let best = null; for (const k of SPLIT_KS) for (const K of [k, 1 / k]) { const dev = Math.abs(r / K - 1); if (!best || dev < best.dev) best = { K: k, dev }; } return best; };
+// The admissible ratios inside the rounding interval of two 2dp figures — a $0.05 EPS that became
+// $0.45 is ×9 to the digit and ×10 within rounding, and the count decides which.
+const splitKSet = (a, b) => { const lo = (Math.abs(a) - 0.005) / (Math.abs(b) + 0.005), hi = (Math.abs(a) + 0.005) / Math.max(Math.abs(b) - 0.005, 0.0001); const out = new Set(); for (const k of SPLIT_KS) for (const K of [k, 1 / k]) if (K >= lo * 0.995 && K <= hi * 1.005) out.add(k); return [...out]; };
+function splitSteps(facts, tag, isCount) {
+  const out = [];
+  for (const [key, arr] of splitObs(facts, tag)) for (let i = 1; i < arr.length; i++) {
+    const a = arr[i - 1], b = arr[i];
+    if (a.val === b.val || !a.val || !b.val || Math.sign(a.val) !== Math.sign(b.val)) continue;
+    const r = Math.abs(a.val / b.val);
+    const n = nearestSplitK(r);
+    const ks = isCount ? (n.dev <= 0.005 ? [n.K] : []) : splitKSet(a.val, b.val);
+    if (!ks.length) continue;
+    const near = (x, y) => Math.abs(x - y) <= Math.abs(y) * 0.005 + (isCount ? 0 : 0.005);
+    const persists = arr.slice(i + 1).every(x => near(x.val, b.val));
+    // ...and a value the period was filed at BEFORE is a correction back, not a new basis: a quarter
+    // filed at 1.00, re-filed at 0.50 and filed at 1.00 again is noise in both directions.
+    const reverts = arr.slice(0, i).some(x => near(x.val, b.val));
+    if (!persists || reverts) continue;
+    out.push({ key, tag, K: ks.length === 1 ? ks[0] : n.K, ks, forward: isCount ? r < 1 : r > 1, from: a, to: b });
+  }
+  return out;
+}
+function splitNiSame(facts, key, accnA, accnB) {
+  for (const tag of SPLIT_NI) {
+    const m = splitObs(facts, tag).get(key); if (!m) continue;
+    const a = m.find(x => x.accn === accnA), b = m.find(x => x.accn === accnB);
+    if (a && b) return Math.abs(a.val - b.val) <= Math.abs(a.val) * 0.001;
+  }
+  return null;
+}
+export function splitEvents(facts) {
+  const counts = SPLIT_COUNTS.flatMap(t => splitSteps(facts, t, true));
+  const shares = SPLIT_PER_SHARE.flatMap(t => splitSteps(facts, t, false));
+  if (!counts.length && !shares.length) return [];
+  const byFiled = (a, b) => a.to.filed.localeCompare(b.to.filed);
+  const fits = (c, x) => x.forward === c.forward && c.from.filed < x.newFrom && c.to.filed > x.oldUntil
+    && Math.abs(Date.parse(c.to.filed) - Date.parse(x.newFrom)) < 400 * 86400000;
+  const clusters = [];
+  // Count steps seed the clusters, because a count is exact; a per-share step joins the cluster whose
+  // ratio its rounding interval admits, and seeds one only when that interval admits exactly one.
+  for (const c of [...counts.sort(byFiled), ...shares.sort(byFiled)]) {
+    const isCount = SPLIT_COUNTS.includes(c.tag);
+    const ni = splitNiSame(facts, c.key, c.from.accn, c.to.accn);
+    if (ni === false) continue;
+    let cl = clusters.find(x => (isCount ? x.K === c.K : c.ks.includes(x.K)) && fits(c, x));
+    if (!cl && !isCount && c.ks.length !== 1) continue;
+    if (!cl) { cl = { K: c.K, forward: c.forward, oldUntil: c.from.filed, newFrom: c.to.filed, count: 0, perShare: 0, rows: new Set(), periods: new Set(), niSame: 0 }; clusters.push(cl); }
+    if (c.from.filed > cl.oldUntil) cl.oldUntil = c.from.filed;
+    if (c.to.filed < cl.newFrom) cl.newFrom = c.to.filed;
+    if (isCount) cl.count++; else { cl.perShare++; cl.rows.add(c.tag); }
+    cl.periods.add(c.key); if (ni === true) cl.niSame++;
+  }
+  const countSilent = cl => !counts.some(st => st.from.filed < cl.newFrom && st.to.filed > cl.oldUntil && st.K !== cl.K);
+  return clusters.filter(cl => cl.oldUntil < cl.newFrom && (
+    (cl.count > 0 && cl.perShare > 0) ||
+    (cl.count === 0 && countSilent(cl) && cl.rows.size >= 2 && cl.periods.size >= 2 && cl.niSame >= 2 && !pow10(cl.K))))
+    .map(cl => ({ K: cl.K, forward: cl.forward, oldUntil: cl.oldUntil, newFrom: cl.newFrom, count: cl.count, perShare: cl.perShare, periods: cl.periods.size }))
+    .sort((a, b) => a.newFrom.localeCompare(b.newFrom));
+}
+const fmtK = k => (Number.isInteger(k) ? String(k) : String(+k.toFixed(2)));
+// One sentence naming the events, for the row note, the workbook and the TSV.
+export const describeSplits = events => events.map(e => `${e.forward ? `${fmtK(e.K)}-for-1 split` : `1-for-${fmtK(e.K)} reverse split`} (first reported ${e.newFrom})`).join(", ");
+// Rebase the five tags' facts filed before each event's first post-split filing. Returns a NEW facts
+// object; the payload is never mutated, and a filer with no event gets the same object back.
+export function applySplits(facts, events) {
+  if (!events || !events.length) return facts;
+  const out = { ...facts };
+  for (const tag of [...SPLIT_PER_SHARE, ...SPLIT_COUNTS]) {
+    const def = facts[tag]; if (!def) continue;
+    const perShare = SPLIT_PER_SHARE.includes(tag);
+    const units = {};
+    for (const [unit, arr] of Object.entries(def.units || {})) units[unit] = arr.map(f => {
+      let factor = 1; const applied = [];
+      for (const e of events) if (f.filed && f.filed < e.newFrom) { factor *= e.forward ? e.K : 1 / e.K; applied.push(e); }
+      if (factor === 1) return f;
+      const up = factor >= 1;
+      return { ...f, val: perShare ? f.val / factor : f.val * factor, filedVal: f.val, splitFactor: factor, splits: applied,
+        splitMark: `${perShare === up ? "÷" : "×"}${fmtK(up ? factor : 1 / factor)}` };
+    });
+    out[tag] = { ...def, units };
+  }
+  return out;
+}
+
 // ── Trailing twelve months ─────────────────────────────────────────────────────────────────────
 // A comps set built on each company's OWN fiscal year is comparing different twelve-month windows.
 // Across the 97-filer corporate sample the fiscal-year ends spread over ELEVEN months — Intuit's
@@ -659,9 +807,10 @@ export function pickLtm(facts, tags, win, ccy) {
   if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit)
     return { value: null, status: "no-interim", tag: fy.tag };
   if (!basisAgrees(facts, fy.tag, win, fy)) return { value: null, status: "restated-basis", tag: fy.tag };
-  return { value: fy.value + cur.value - pri.value, unit: fy.unit, tag: fy.tag, status: "ltm",
+  const hit = { value: fy.value + cur.value - pri.value, unit: fy.unit, tag: fy.tag, status: "ltm",
     end: win.end, start: shift(win.end, -364), accn: fy.accn, form: fy.form, filed: fy.filed,
     basis: `FY to ${win.fy.end} + ${win.cur.start}→${win.cur.end} − ${win.prior.start}→${win.prior.end}` };
+  return hit;
 }
 
 // ── Derived lines ──────────────────────────────────────────────────────────────────────────────
