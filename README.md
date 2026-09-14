@@ -2712,12 +2712,28 @@ rejected, leaving the REIT capex row. What is left is below, with what would set
    finance-lease amortisation, the sum closes **without** the lease term 61 times and with it 19 — the
    lease amortisation is usually already inside `Depreciation` (Verizon, Micron, Equinix, HCA, Philip
    Morris, Disney), so adding it would double count three times as often as it completed a total.
-   Two remain. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets` (59 cells) and
-   `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity from plant
-   capex; whether free cash flow for a REIT should deduct development, acquisitions, or only capital
-   improvements is the question, and FFO is already on the overlay. (e) shipped as rule 37: the
-   `restated-basis` refusals were 442 cells, not 19, and 361 of them had the annual leg filed after the
-   re-presentation; 79 remain and are right.
+   (e) shipped as rule 37: the `restated-basis` refusals were 442 cells, not 19, and 361 of them had
+   the annual leg filed after the re-presentation; 79 remain and are right. (b) **The REIT capex row is
+   measured, and the answer is a decision rather than a row — Mason's call.** Seven REITs' cash-flow
+   investing sections and MD&A capex tables were read from their FY2025 10-Ks (AvalonBay, Prologis,
+   Welltower, Essex, Digital Realty, Alexandria, Simon; the private notes' `measure/audit3/reit/`). No
+   concept carries recurring capex across them, and the same us-gaap concept means different things at
+   different filers: `PaymentsToDevelopRealEstateAssets` is pure development at AvalonBay, Prologis and
+   Essex, development plus recurring capex plus capitalised overhead at Digital Realty, and all
+   construction at Alexandria; `PaymentsForCapitalImprovements` is every dollar on existing assets at
+   AvalonBay and **64% value-add redevelopment at Welltower**, whose own recurring figure ($374m) has
+   no XBRL element at all. Two of seven put their operating-property capex on a filer-custom element,
+   Essex's named for the opposite of what it holds. No filer publishes AFFO in the 10-K: all seven stop
+   at Nareit FFO, five with a Core or adjusted FFO, none deducting any capex. So a REIT free cash flow
+   deducting any of these would deduct between 11% recurring (Digital Realty) and everything (Simon) and
+   switch definition filer to filer. The two honest choices: leave the capex and FCF rows blank for REITs
+   where no plant-capex concept resolves and let FFO carry the load (today's state), or go further and
+   blank the FCF family for REITs even where a concept matches — Simon's `PaymentsToAcquireProductiveAssets`
+   and the five REITs rule 35's `PaymentsForCapitalImprovements` now fills show a "free cash flow" the
+   other REITs cannot have, which is rule 27's Chubb shape. The second is a `NOT_APPLICABLE.reit` change
+   with rule 27's keep assertion flipped and its paragraph rewritten, and it wants Mason's answer before
+   anyone writes it. A gross real-estate investment row (development + acquisitions + improvements,
+   labelled as such and never as capex) is the one number the filings would support.
 
 
 ## A note on how this got built
