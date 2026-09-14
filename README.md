@@ -21,7 +21,7 @@ lookup did.
 - `api/quote.js` — share price ONLY. Market cap is computed as price × the company's own cover-page
   share count, so the EV bridge stays traceable to filings with exactly one outside input. Needs
   `FINNHUB_KEY`; without it the valuation block says so.
-- `src/template.js` — 276 line items across 15 core sections plus industry overlays, grounded in standard
+- `src/template.js` — 278 line items across 15 core sections plus industry overlays, grounded in standard
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections). Those two counts are no
   longer prose: `t-declared.mjs` parses them out of this sentence and checks them against `tally()`,
@@ -1267,6 +1267,40 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     either note keyed to its input instead of its figure, Verizon's tag ahead of the two originals, and
     the row unpinned. `test/t-declared.mjs` gained the two function-valued notes and the amortisation
     row's tag.
+
+36. **The cash tax rate is what the filer paid, and the proxy it used to compute is a different number
+    under its own name.** The row was declared `(tax − deferredTax) / pretax` — current tax expense over
+    pre-tax income — and rule 35 had just blanked it on 156 cells where the deferred line is untagged
+    rather than let it print the effective rate. The figure the row is NAMED for is in the filings: the
+    supplemental cash-flow disclosure of income taxes paid, `IncomeTaxesPaidNet` or `IncomeTaxesPaid`.
+    Measured over the cache with the wide companyfacts beside it: of **945 columns with positive pre-tax
+    income, 901 carry a taxes-paid figure against 831 with the proxy** — 141 filers against 132 — so the
+    direct measure fills 84 of the blanks and loses 14, and the 30 filers that tag no paid concept are
+    small caps and the REITs that pay little tax. The two are not the same quantity. Where both can be
+    computed (817 columns) they differ by a median 0.3 points **and by ten points at the 10th and 90th
+    percentiles**: Apple's FY2018 current expense carried the repatriation tax it would pay over eight
+    years, 63% against 14% paid; Intel's 2023 cash rate was 344% of a $1.1bn current expense; Disney's
+    2019 67% against 7%. A row that meant one on some sheets and the other on the rest would be rule 21's
+    failure under a single label, so there is no fallback between them: the cash tax rate is
+    `taxesPaid / pretax`, blank where nothing paid is tagged, and the proxy keeps its formula as
+    **Current tax rate** on the row beneath it, still refusing a missing deferred line.
+
+    **Net leads and gross is a fallback, not a second quantity.** Where a filer tags both concepts for one
+    period (208 columns) the net figure equals the gross from the 25th to the 90th percentile, with a
+    refund tail below; 90 of the 180 filers tag both somewhere in their history and eight tag only the
+    gross (Costco, Disney, Merck, Eaton), so the paid row is pinned by run (rule 21) and a spelling change
+    never reads as a movement. Both concepts went into KEEP and the cache was rebuilt; the data refresh
+    was isolated at zero cells before the code moved.
+
+    `scripts/full-diff.mjs` over the rebuilt cache, annual columns: **the cash tax rate changes on 915
+    cells** (every one from the proxy to the paid figure — Apple FY2018 63.0% → 14.3%), appears on 118
+    and vanishes on 18; the taxes-paid row appears on 1,109 cells across 155 filers and the current-rate
+    row on every cell the old formula reached. On the LTM columns the paid rate appears on 154 and
+    vanishes on 105 — a 10-Q's supplemental disclosure is tagged less often than a 10-K's, and the
+    stitch refuses a leg it cannot find. Thirty-one sheets switch spelling at FY2023, where the net
+    concept took over from the gross one under the 2023 taxonomy, and the figure does not move across the
+    switch. `test/t-tax.mjs`, 29 assertions, **3 of 3 mutations caught** — the proxy as a fallback, gross
+    ahead of net, the row unpinned — and rule 35's refusal assertions moved to the current-expense row.
 
 ### A number that is correct and reads as broken
 
@@ -2633,11 +2667,8 @@ measurements they left open are the last items. What is left is below, with what
    than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
    the residual count means less than it should.
 
-6. **What rules 33–35 left open, each with its measurement named.** (a) The cash tax rate is blank on
-   156 annual cells now rather than wrong, and the direct measure exists: `IncomeTaxesPaidNet` is the
-   cash the filer actually paid, so `taxesPaid / pretax` would fill the row from a filed figure instead
-   of an accrual less a deferral — measure how many of the 88 filers tag it, and how far it sits from
-   `tax − deferredTax` where both can be computed. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets`
+6. **What rules 33–36 left open, each with its measurement named.** (a) shipped as rule 36, the cash
+   tax rate from taxes paid. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets`
    (59 cells) and `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity
    from plant capex; whether free cash flow for a REIT should deduct development, acquisitions, or only
    capital improvements is the question, and FFO is already on the overlay. (c) EBITDA ex-SBC is blank on
