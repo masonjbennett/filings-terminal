@@ -2667,19 +2667,29 @@ measurements they left open are the last items. What is left is below, with what
    than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
    the residual count means less than it should.
 
-6. **What rules 33–36 left open, each with its measurement named.** (a) shipped as rule 36, the cash
-   tax rate from taxes paid. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets`
-   (59 cells) and `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity
-   from plant capex; whether free cash flow for a REIT should deduct development, acquisitions, or only
-   capital improvements is the question, and FFO is already on the overlay. (c) EBITDA ex-SBC is blank on
-   32 filers that tag stock compensation under neither `ShareBasedCompensation` nor
-   `AllocatedShareBasedCompensationExpense` — Walmart, Verizon, Amgen, Altria among them — so a third
-   spelling is out there and unmeasured. (d) Rule 34's sum is a floor: the other amortisation concepts
-   (capitalised software, finance-lease assets, deferred costs) that would make it the total are named
-   and unmeasured, and the 216 protocol disagreements are the population to measure them on. (e) The
-   sibling-leg LTM stitch (rule 33) is admitted on equality of the annual figure; whether a looser
-   basis test would recover the 19 JBTM/Iridium-shaped `restated-basis` refusals without readmitting a
-   slice is a measurement, not a preference.
+6. **What rules 33–36 left open.** (a) shipped as rule 36, the cash tax rate from taxes paid. (c) and
+   (d) were measured the same day and REJECTED, and the numbers are why. (c) EBITDA ex-SBC is blank on
+   157 annual cells of 33 filers, and with every stock-compensation concept in companyfacts fetched wide,
+   **23 of the 33 file nothing under any of them** — Chubb, Altria, Philip Morris, PNC, Simon, Digital
+   Realty, Erie. The three concepts the other ten file are not spellings of the line: where a filer
+   files them beside `ShareBasedCompensation` for one period, `EmployeeBenefitsAndShareBasedCompensation`
+   is LARGER 25 times in 40 (it is benefits plus stock compensation, rule 7 backwards),
+   `RestrictedStockExpense` smaller 32 in 39 and `StockOptionPlanExpense` smaller 24 in 32 (components).
+   A blank is the answer. (d) Rule 34's floor stays a floor. Of the 216 columns where the two parts fall
+   short of a filed total, one other concept closes 27 (capitalised-software amortisation 15,
+   finance-lease amortisation 12) and a pair closes 4; **185 stay open**, the gap 4.5% of the total at
+   the median and 32% at the 90th percentile, a long tail rather than a missing term. And the one
+   concept worth adding fails the double-count test: where a filer tags the total, both parts AND
+   finance-lease amortisation, the sum closes **without** the lease term 61 times and with it 19 — the
+   lease amortisation is usually already inside `Depreciation` (Verizon, Micron, Equinix, HCA, Philip
+   Morris, Disney), so adding it would double count three times as often as it completed a total.
+   Two remain. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets` (59 cells) and
+   `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity from plant
+   capex; whether free cash flow for a REIT should deduct development, acquisitions, or only capital
+   improvements is the question, and FFO is already on the overlay. (e) The sibling-leg LTM stitch
+   (rule 33) is admitted on equality of the annual figure; whether a looser basis test would recover the
+   19 JBTM/Iridium-shaped `restated-basis` refusals without readmitting a slice is a measurement, not a
+   preference.
 
 
 ## A note on how this got built
