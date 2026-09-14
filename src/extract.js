@@ -311,16 +311,20 @@ const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ?
 // Scored across the sheet rather than per column, because rule 21's claim is that a row means one
 // concept for the whole page. A filer tagging no subtotal scores every candidate zero and falls
 // through to the run-length ranking unchanged, which is every filer but two.
-export function tagsByIdentity(facts, tags, periods, minusTags, equalsTags) {
+// The revenue row (rule 33) uses the same identity from the other end: the candidate is the MINUEND,
+// so `plusTags` names the row to add back — revenue = grossProfit + cogs — and `minusTags` is unused.
+// Capstone Energy Plus is why: its `Revenues` closes gross profit to the dollar in every year while the
+// ASC 606 tag it also files is a product-only slice, and run length alone would have picked the slice.
+export function tagsByIdentity(facts, tags, periods, minusTags, equalsTags, plusTags) {
   if (!tags || tags.length < 2) return null;
   const score = new Map(tags.map(t => [t, 0]));
   let evidence = 0;
   for (const p of periods) {
-    const whole = pickFact(facts, minusTags, p, {});
+    const whole = pickFact(facts, plusTags || minusTags, p, {});
     const part = pickFact(facts, equalsTags, p, {});
     if (whole.value == null || part.value == null) continue;
-    const want = whole.value - part.value;
-    const tol = Math.max(Math.abs(whole.value) * 1e-4, 1000);
+    const want = plusTags ? part.value + whole.value : whole.value - part.value;
+    const tol = Math.max(Math.abs(want) * 1e-4, 1000);
     for (const t of tags) {
       const got = pickFact(facts, [t], p, {});
       if (got.value == null) continue;
@@ -349,9 +353,16 @@ export function tagsByRun(facts, tags, ends) {
     return best;
   };
   const runs = new Map(tags.map(t => [t, runOf(t)]));
+  // Rule 33: a concept that does not reach the NEWEST column ranks below every one that does, whatever
+  // its run — rule 6's "recent first, then deep", on the pin. Alphabet's ASC 606 tag runs seven years
+  // and stops before FY2025 while `Revenues` reaches it; pinned by run alone, the newest column fell
+  // through to `Revenues` regardless, and the LTM stitch, which reads only the concept the annual
+  // column chose, found no interim facts under the 606 tag and went blank.
+  const newest = ends[ends.length - 1];
+  const reaches = new Map(tags.map(t => [t, (factsFor(facts, t) || []).some(f => isDuration(f) && periodic(f.form) && f.end === newest && days(f.start, f.end) >= ANNUAL_MIN && days(f.start, f.end) <= ANNUAL_MAX) ? 1 : 0]));
   // Only reorders where a LONGER run exists further down the list; a tag nothing reaches keeps its
   // place, so a filer that files one concept resolves exactly as it did before.
-  return [...tags].sort((a, b) => runs.get(b) - runs.get(a) || order.get(a) - order.get(b));
+  return [...tags].sort((a, b) => reaches.get(b) - reaches.get(a) || runs.get(b) - runs.get(a) || order.get(a) - order.get(b));
 }
 
 export function annualPeriods(facts, tags, limit = 8) {
@@ -804,15 +815,36 @@ function basisAgrees(facts, tag, win, fy) {
   return !!(inFy && prev.length > 1 && moved(prev[0].val, inFy.val));
 }
 
+// Rule 33's companion. "Only the tag the annual column chose" is rule 9's guard against stitching a
+// total onto a slice, and it is kept — but a filer whose 10-K tags one revenue concept and whose 10-Qs
+// tag the other, with the SAME figure under both, has legs on one basis and was getting a blank for it.
+// Comcast and RTX file `Revenues` in their 2023 10-Qs and the ASC 606 tag in their 10-Ks; Oracle the
+// other way round. So a sibling concept may supply the interim legs when its OWN annual figure equals
+// the column's to one part in ten thousand: equality is what a slice can never satisfy (MetLife's 606
+// revenue is 3% of its total), and it is the same test rule 23 uses for the filer's own arithmetic.
+// The cell carries which concept the legs came from.
+const sameFigure = (a, b) => a != null && b != null && Math.abs(a - b) <= Math.max(Math.abs(a), 1) * 1e-4;
 export function pickLtm(facts, tags, win, ccy) {
   const fy = pickFact(facts, tags, win.fy, { ccy });
   if (fy.value == null) return { value: null, status: fy.status };
-  const cur = pickSpan(facts, [fy.tag], win.cur, ccy), pri = pickSpan(facts, [fy.tag], win.prior, ccy);
-  if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit)
-    return { value: null, status: "no-interim", tag: fy.tag };
-  if (!basisAgrees(facts, fy.tag, win, fy)) return { value: null, status: "restated-basis", tag: fy.tag };
+  let legTag = fy.tag;
+  let cur = pickSpan(facts, [fy.tag], win.cur, ccy), pri = pickSpan(facts, [fy.tag], win.prior, ccy);
+  if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit) {
+    for (const t of tags || []) {
+      if (t === fy.tag) continue;
+      const alt = pickFact(facts, [t], win.fy, { ccy });
+      if (!sameFigure(alt.value, fy.value) || alt.unit !== fy.unit) continue;
+      const c2 = pickSpan(facts, [t], win.cur, ccy), p2 = pickSpan(facts, [t], win.prior, ccy);
+      if (c2.value == null || p2.value == null || c2.unit !== fy.unit || p2.unit !== fy.unit) continue;
+      cur = c2; pri = p2; legTag = t; break;
+    }
+    if (cur.value == null || pri.value == null || cur.unit !== fy.unit || pri.unit !== fy.unit)
+      return { value: null, status: "no-interim", tag: fy.tag };
+  }
+  if (!basisAgrees(facts, legTag, win, fy)) return { value: null, status: "restated-basis", tag: fy.tag };
   const hit = { value: fy.value + cur.value - pri.value, unit: fy.unit, tag: fy.tag, status: "ltm",
     end: win.end, start: shift(win.end, -364), accn: fy.accn, form: fy.form, filed: fy.filed,
+    ...(legTag !== fy.tag ? { legTag } : {}),
     basis: `FY to ${win.fy.end} + ${win.cur.start}→${win.cur.end} − ${win.prior.start}→${win.prior.end}` };
   return hit;
 }
@@ -984,6 +1016,35 @@ const allIn = (total, v) => (total != null && (v.ltDebt == null || total >= v.lt
 // resolved long-term figure below the current portion, and only American Tower's is an inclusive
 // concept. Everything else is left exactly as filed.
 export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]);
+
+// ── Rule 35: a derivation that subtracts a blank input prints the row it was meant to adjust ─────
+// Seven derivations were written `x − (y || 0)`, and each one, when y is untagged, prints x under
+// y's label: `fcf` printed cash from operations as free cash flow on 241 cells of the 180-filer cache
+// (Verizon $37.1bn against a real $20.1bn, Dominion +$5.4bn against −$7.3bn — a sign flip); `fccr`
+// printed EBITDA over interest as fixed-charge coverage; `ufcf` carried the same `(v.capex || 0)` on
+// the row rule 25 had just repaired; `cashTaxRate` printed the effective rate on 156 cells;
+// `ebitdaSbc` duplicated the EBITDA row above it on 94; `quickRatio` the current ratio on 267;
+// `tbvps` book value per share on 393. Six of the seven sit directly beside the row they duplicate.
+// Rule 7 exactly, and the fix is rule 25's: the row's own formula refusing a missing input.
+//
+// Two of the seven keep their figure and gain a note instead, because their counter-population is a
+// filer that genuinely has nothing to deduct — a software company carries no inventory, and its
+// quick ratio IS its current ratio; a company with no goodwill has a tangible book equal to book —
+// and companyfacts cannot tell "none" from "untagged". A blank there would delete a correct figure
+// on most of the population to fix a wrong one on a few, so the note says what was and was not
+// deducted and the reader decides. `ebitda = ebit + (da || 0)` is a recorded decision (a missing D&A
+// understates rather than fabricates) and is not touched; `ufcf`'s `(v.da || 0)` is the same decision.
+//
+// And ONE industry keeps free cash flow with capex untagged, by measurement rather than preference.
+// Rule 27 kept the FCF family for the carriers because an insurer's operating cash flow is an
+// operating flow; none of them tags capital expenditure under any concept (Chubb, Travelers, MetLife,
+// Prudential file nothing capex-like at all), and at the P&C carriers that do tag it, capex is 3.8% of
+// operating cash flow at the median and 8.2% at the 90th percentile (30 columns, five filers; AIG's
+// 2020 at 34% is one year of depressed cash flow). So for `pc` and `life` a blank capex is waived, the
+// row prints cash from operations, and the note says so. Not for health plans — Cigna and
+// UnitedHealth run 11–18% where they tag it, and Cigna tags nothing after 2019 — and not for REITs,
+// whose real spending is development and acquisition under concepts the capex row does not ask for.
+export const CAPEX_IMMATERIAL_INDUSTRIES = new Set(["pc", "life"]);
 
 // ── Rule 32: a balance sheet whose legs do not close is re-drawn from ONE filing ─────────────────
 // `pickFact` resolves every row on its own under rule 2, so nothing makes assets, liabilities and
@@ -1307,8 +1368,24 @@ export const DERIVED = {
   // residual can contain besides NCI.
   nciBs: v => (v.nciBs == null && v.equityIsParent && v.equityAll != null && v.equity != null
     && v.equityAll !== v.equity ? v.equityAll - v.equity : null),
+  // ── Rule 34: depreciation plus separately tagged amortisation, where the filer tags no total ────
+  // The row's last candidate, `Depreciation`, EXCLUDES amortisation by definition, and 188 cells on the
+  // cache resolve it — 110 of them on filers that tag `AmortizationOfIntangibleAssets` for the same
+  // period and no D&A total under any concept. AbbVie's D&A read $471m against $1.29bn of amortisation
+  // beside it in 2018 and $762m against $7.38bn in 2025, its EBITDA 31.8% low; AMD 35.3%, Broadcom
+  // 23.6%, Thermo Fisher, Oracle, Intel, Microsoft. Where the two are tagged in place of a total, the
+  // row is their sum and says so (`daSummed`, read by the row's note). It is a FLOOR, not the total:
+  // where filers tag a total AND both parts, the parts reproduce it 184 times in 400 and fall 2–5%
+  // short in most of the rest — capitalised software, finance-lease assets and other amortisation sit
+  // in neither concept — which is why a filed total, under any of the three names above it, still wins
+  // outright and this never displaces one. `AdjustmentForAmortization` was measured as a second
+  // amortisation concept and rejected: equal to intangible amortisation in 51 of 130 periods, 3.5x it at
+  // Allstate and negative at AMD, it is not one quantity. The flag precedes the sum so the note can see
+  // it, and `v.daDepreciationOnly` is set by fillCol from the resolved tag before any derivation runs.
+  daSummed: v => (v.daDepreciationOnly && v.amort ? true : null),
+  da: v => (v.daDepreciationOnly && v.amort ? v.amort + v.da : null),
   ebitda: v => (v.ebit == null ? null : v.ebit + (v.da || 0)),
-  ebitdaSbc: v => (v.ebitda == null ? null : v.ebitda - (v.sbc || 0)),
+  ebitdaSbc: v => (v.ebitda == null || v.sbc == null ? null : v.ebitda - v.sbc),
   // ── Gross profit, where the filer reports the two lines above it and not the subtotal ──────────
   // The template has declared `fallback: "revenue - cogs"` on this row since the first version and
   // NOTHING EVER IMPLEMENTED IT — the same defect as `revCagr3`/`revCagr5`, which were also written
@@ -1337,7 +1414,8 @@ export const DERIVED = {
   ebitdaMargin: v => div(v.ebitda, v.revenue),
   ebitMargin: v => div(v.ebit, v.revenue),
   netMargin: v => div(v.netIncome, v.revenue),
-  fcf: v => (v.cfo == null ? null : v.cfo - (v.capex || 0)),
+  // Rule 35: capex is required, except where fillCol has waived it for a carrier (`capexWaived`).
+  fcf: v => (v.cfo == null || (v.capex == null && !v.capexWaived) ? null : v.cfo - (v.capex || 0)),
   fcfMargin: v => div(v.fcf, v.revenue),
   fcfConv: v => div(v.fcf, v.netIncome),
   taxRate: v => div(v.tax, v.pretax),
@@ -1364,7 +1442,7 @@ export const DERIVED = {
   netLev: v => div(v.netDebt, v.ebitda),
   grossLev: v => div(v.totalDebt, v.ebitda),
   intCover: v => div(v.ebitda, v.intExp),
-  fccr: v => (v.ebitda == null ? null : div(v.ebitda - (v.capex || 0), v.intExp)),
+  fccr: v => (v.ebitda == null || v.capex == null ? null : div(v.ebitda - v.capex, v.intExp)),
   debtEquity: v => div(v.totalDebt, v.equity),
   debtCap: v => div(v.totalDebt, sum(v.totalDebt, v.equity)),
   currentRatio: v => div(v.curAssets, v.curLiab),
@@ -1392,8 +1470,8 @@ export const DERIVED = {
   // it is not unlevered free cash flow, and shipping it under that label put a figure on the
   // Valuation tab that the plate beside it described as something else. Where ΔWC is unavailable the
   // row blanks and the reverse DCF falls back to cash from operations less capex, saying so.
-  ufcf: v => (v.nopat == null || v.chgNwc == null ? null : v.nopat + (v.da || 0) - (v.capex || 0) - v.chgNwc),
-  cashTaxRate: v => (v.tax == null ? null : div(v.tax - (v.deferredTax || 0), v.pretax)),
+  ufcf: v => (v.nopat == null || v.chgNwc == null || v.capex == null ? null : v.nopat + (v.da || 0) - v.capex - v.chgNwc),
+  cashTaxRate: v => (v.tax == null || v.deferredTax == null ? null : div(v.tax - v.deferredTax, v.pretax)),
 };
 
 // Bank-only derivations. Kept separate so they only run for a depository — computing an efficiency

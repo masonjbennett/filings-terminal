@@ -491,7 +491,7 @@ mustBeRows("CAGRS sources", Object.values(CAGRS).map(c => c[0]), coreK, "same");
 // so a target outside that filer's scope degrades silently to `tagsByRun` with nothing blank to notice.
 for (const r of rows.filter(r => r.line.pinIdentity)) {
   const scope = r.ind ? forIndustry(r.ind) : coreK;
-  for (const target of [r.line.pinIdentity.minus, r.line.pinIdentity.equals]) {
+  for (const target of [r.line.pinIdentity.minus || r.line.pinIdentity.plus, r.line.pinIdentity.equals]) {
     ok(scope.has(target), `\`${r.id}\`'s pinIdentity target \`${target}\` is reachable on the sheets this row renders on — otherwise rule 23 degrades to rule 21's proxy with nothing to show for it`);
     const t = rows.find(x => x.line.k === target);
     ok(t && Array.isArray(t.line.tags) && t.line.tags.length, `and \`${target}\` carries tags, which is what tagsByIdentity is handed`);
@@ -599,7 +599,7 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   const keep = new Set([...keepSrc.matchAll(/"([A-Za-z][A-Za-z0-9:]*)"/g)].map(m => m[1]));
   ok(keep.size > 300, `api/facts.js's KEEP was parsed — ${keep.size} string literals, or every tag below would look dropped`);
   const tplTags = [...new Set(rows.flatMap(r => r.line.tags || []))];
-  eq(tplTags.length, 248, `the template asks for 248 distinct tags — found ${tplTags.length}`);
+  eq(tplTags.length, 252, `the template asks for 252 distinct tags — found ${tplTags.length}`);
   // The `dei` taxonomy is reached by a different door: facts.js loops us-gaap and dei, and its dei
   // branch admits exactly one element BY NAME rather than through KEEP. So the template's `dei:` tag
   // is checked against that gate instead, and the two spellings must agree — the template writes the
@@ -746,7 +746,10 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
 // a generic "returns a string" would pass a note that printed the wrong filer's number.
 // MUTATION: renaming `equity` or `totalAssets`, or breaking the note's arithmetic, fails here.
 {
-  const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10 }, period: { end: "2024-12-31" },
+  const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10,
+      // Rules 34 and 35: AbbVie's 2018 D&A summed from $471m of depreciation and $1.29bn of amortisation,
+      // and a tangible book that could not deduct goodwill.
+      da: 1.765e9, amort: 1.294e9, goodwill: null, intangibles: 2.1e9 }, period: { end: "2024-12-31" },
     meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } },
       epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] },
       // Rule 32's probe: Allstate's FY2020, the legs read from the 10-K filed 2022-02-18 and the equity
@@ -765,13 +768,15 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     if (k === "equityThin") ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
     else if (k === "ltDebtRejected") ok(/1\.9m/.test(out) && /LongTermDebt\b/.test(out) && /2\.93bn/.test(out), `and it names the figure it set aside, the tag it came from and the current portion it fell below — ${r.id}/${k}: ${out.slice(0, 90)}`);
     else if (k === "splitAdjusted") ok(/4-for-1 split first reported 2021-08-20/.test(out) && /10-for-1 split first reported 2024-08-28/.test(out) && /÷40/.test(out) && /6\.63/.test(out), `and it names both splits, the factor and the figure as filed — ${r.id}/${k}: ${out.slice(0, 90)}`);
+    else if (k === "daSummed") ok(/depreciation 471\.0m plus amortisation of intangibles 1\.29bn/.test(out), `and it names both parts with the filer's own figures — ${r.id}/${k}: ${out.slice(0, 100)}`);
+    else if (k === "tbvpsPartial") ok(/tags no goodwill at 2024-12-31/.test(out) && /deducts only intangibles/.test(out) && !/no goodwill and no intangibles/.test(out), `and it names the leg that was not deducted and only that leg — ${r.id}/${k}: ${out.slice(0, 100)}`);
     else if (k === "bsAligned") ok(/read from the 10-K filed 2022-02-18/.test(out) && /total equity incl\. NCI −298\.0m in the 10-K filed 2024-02-21 against 30\.22bn here/.test(out) && /2024-12-31/.test(out) && !/total assets/.test(out), `and it names the filing the legs were read from, the leg that moved with the figure its own newest filing carried, and the date — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 13, `all thirteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 15, `all fifteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32, one rule 34, one rule 35) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, BS_LEGS, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -100,6 +100,24 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
     }
     v[line.k] = got.value; meta[line.k] = got;
   }
+  // Rule 33, per column. The sheet-wide pin (rules 21 and 23) says which concept a row means across
+  // the page; where the filer tags BOTH legs of the row's identity for THIS column — gross profit and
+  // cost of revenue, for revenue — the filer's own arithmetic settles the column outright, and the
+  // pin covers only the columns it cannot test. Capstone Energy Plus is why this is per column: its
+  // ASC 606 tag closes gross profit in the five years it WAS the total and `Revenues` in the three
+  // after, when the 606 tag became a product-only slice. The concept that is the total changed, the
+  // filing says so in every column, and a sheet-wide choice is wrong in three columns either way.
+  for (const sec of sections) for (const line of sec.lines) {
+    const id = line.pinIdentity; if (!id || !id.plus || !line.tags) continue;
+    const part = v[id.equals], whole = v[id.plus]; if (part == null || whole == null) continue;
+    const want = part + whole, tol = Math.max(Math.abs(want) * 1e-4, 1000);
+    if (v[line.k] != null && Math.abs(v[line.k] - want) <= tol) continue;
+    const tags = line.omitFor && line.omitFor[industry] ? line.tags.filter(t => !line.omitFor[industry].includes(t)) : line.tags;
+    for (const tag of tags) {
+      const got = get({ ...line, tags: [tag] }, isInstant(sec, line));
+      if (got.value != null && Math.abs(got.value - want) <= tol) { v[line.k] = got.value; meta[line.k] = { ...got, identity: { equals: id.equals, plus: id.plus } }; break; }
+    }
+  }
   // Rule 32. The five balance-sheet legs were each fetched from their own newest filing above; if
   // they do not close and the newest filing presenting the whole balance sheet does, every leg is
   // re-read from that one filing. Before the flags and derivations, because `equityThin`,
@@ -130,6 +148,12 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   // fallback, and there the difference from `equityAll` is zero by construction — deriving from it
   // would print a confident 0 for a company that has a real minority interest.
   v.equityIsParent = (meta.equity || {}).tag === "StockholdersEquity";
+  // Rule 34: which D&A concept filled the row. Only `Depreciation` excludes amortisation by definition,
+  // so only a row resolved from it may be summed with the amortisation tagged beside it.
+  v.daDepreciationOnly = (meta.da || {}).tag === "Depreciation";
+  // Rule 35: a carrier's untagged capex is waived — measured immaterial, see CAPEX_IMMATERIAL_INDUSTRIES
+  // — so its free cash flow prints as cash from operations and the row's note says so.
+  v.capexWaived = v.capex == null && v.cfo != null && CAPEX_IMMATERIAL_INDUSTRIES.has(industry);
   // Rule 25. A working-capital sum refused for a missing leg gets one reconsideration, now that the
   // leg's BALANCE and the cash flow it would adjust are both on the column. Runs before the
   // derivations, because `ufcf` reads the result.
@@ -152,6 +176,12 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   // it is — the balance-sheet delta and the cash flow statement's line are different numbers. Set
   // after the blanking pass so an industry whose sheet has no unlevered FCF cannot claim one.
   v.ufcfFromCashFlow = v.ufcf != null && v.chgNwc != null;
+  // Rule 35's two notes-instead-of-blanks, set AFTER the blanking pass and keyed to the FIGURE, for
+  // rule 22's reason: a bank whose quick ratio is n/a must not be left explaining a figure it does not
+  // show, and neither may a filer with no current liabilities or no share count. (`capexWaived` needs
+  // no trim: it already requires cash from operations, which is the whole of the waived figure.)
+  v.quickNoInventory = v.quickRatio != null && v.inventory == null;
+  v.tbvpsPartial = v.tbvps != null && (v.goodwill == null || v.intangibles == null);
   return { v, meta };
 }
 
@@ -318,15 +348,21 @@ export function buildGrid(data, quote, limit = 8) {
   for (const sec of sections) for (const line of sec.lines) lineByKey[line.k] = line;
   for (const sec of sections) for (const line of sec.lines) {
     if (!line.pinByRun || !line.tags) continue;
+    // The candidates are the row's tags AFTER the industry omission — the same list `fillCol` fetches
+    // from — or the pin would hand a bank's revenue row the gross interest income `omitFor` exists to
+    // keep off it (US Bancorp: eight years of `InterestAndDividendIncomeOperating` against five of
+    // `Revenues`). The pinned list REPLACES the row's tags in fillCol, so the omission has to happen here.
+    const tags = line.omitFor && line.omitFor[industry] ? line.tags.filter(t => !line.omitFor[industry].includes(t)) : line.tags;
     // Rule 23 first, because it is the filer's own arithmetic rather than a proxy for it — and it
     // returns null for the filers that tag no subtotal, which is nearly all of them.
     let order = null;
     if (line.pinIdentity) {
       const minus = (lineByKey[line.pinIdentity.minus] || {}).tags;
+      const plus = (lineByKey[line.pinIdentity.plus] || {}).tags;
       const equals = (lineByKey[line.pinIdentity.equals] || {}).tags;
-      if (minus && equals) order = tagsByIdentity(facts, line.tags, periods, minus, equals);
+      if ((minus || plus) && equals) order = tagsByIdentity(facts, tags, periods, minus, equals, plus);
     }
-    pinned[line.k] = order || tagsByRun(facts, line.tags, calEnds);
+    pinned[line.k] = order || tagsByRun(facts, tags, calEnds);
   }
 
   // Rule 32 reads the five leg rows by their own tag lists, so a tag added to a row reaches the

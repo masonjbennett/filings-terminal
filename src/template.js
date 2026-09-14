@@ -72,6 +72,20 @@ const BS_ALIGN_NOTE = col => {
     + `A later filing restates an opening balance, or carries another registrant's history under the same CIK, and only the balance sheet presented whole is on one basis. Each cell links to the filing it was read from.`;
 };
 
+// Rule 34's note: the two tagged lines the row was summed from, and what the sum cannot see.
+const DA_SUMMED_NOTE = col => {
+  const money = x => (x == null ? "nothing" : Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : (x / 1e6).toFixed(1) + "m");
+  return `D&A in this column is depreciation ${money(col.v.da - col.v.amort)} plus amortisation of intangibles ${money(col.v.amort)}, two lines this filer tags in place of a D&A total. `
+    + `It is a floor rather than the total — capitalised software, finance-lease assets and other amortisation sit in neither line, and where filers tag all three the two parts fall 2–5% short of the total about half the time — but it is the figure the depreciation line alone was understating by the whole of the amortisation.`;
+};
+// Rule 35's note on tangible book, naming what was not deducted, so the reader can tell "none" from
+// "untagged" for themselves — the filing data cannot.
+const TBVPS_NOTE = col => {
+  const missing = [col.v.goodwill == null && "goodwill", col.v.intangibles == null && "intangibles"].filter(Boolean);
+  return `This filer tags no ${missing.join(" and no ")} at ${col.period.end}, so tangible book per share deducts ${missing.length === 2 ? "nothing and equals book value per share" : `only ${missing[0] === "goodwill" ? "intangibles" : "goodwill"}`}. `
+    + `A company carrying none has nothing to deduct; one that tags it under another concept would read the same, and the two cannot be told apart from the filing.`;
+};
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
@@ -120,7 +134,16 @@ export const SECTIONS = [
     // the sweep moved to gross interest income and none of them looked broken: Hawthorn's FY2019
     // read $64m against a real $58m of net revenue, with every margin under it quietly rebased.
     // Caught by diffing all 167 filers, not by any assertion.
-    omitFor: { bank: ["InterestAndDividendIncomeOperating"] } },
+    omitFor: { bank: ["InterestAndDividendIncomeOperating"] },
+    // Rule 33: the row is a SERIES (rule 21), and the filer's own arithmetic settles which concept
+    // carries it (rule 23) before run length does. General Mills files `Revenues` undimensioned at
+    // about a tenth of its top line for six years — $2.0bn beside the ASC 606 tag's $19.9bn — and the
+    // row switched concept at FY2025, so six of eight columns were 10x too small and the sweep read
+    // EBITDA above revenue. The identity runs the other way round from the cost row's: revenue is the
+    // minuend, so the candidate that equals gross profit PLUS cost of revenue is the line. It is what
+    // keeps Capstone's `Revenues` over its product-only 606 slice, and it leaves MetLife (rule 9)
+    // exactly where it was, because a carrier tags no gross profit and `Revenues` has the longer run.
+    pinByRun: true, pinIdentity: { plus: "cogs", equals: "grossProfit" } },
   { k: "cogs", label: "Cost of revenue", how: "fetched", tags: ["CostOfGoodsAndServicesSold","CostOfRevenue","CostOfServices"], pinByRun: true,
     // Rule 23: where the filer tags gross profit, revenue - cost = gross profit settles which
     // candidate is the cost line, and the filer's own arithmetic outranks rule 21's run-length proxy.
@@ -149,7 +172,15 @@ export const SECTIONS = [
   // Net debt/EBITDA and EV/EBITDA with it, so the row that starts the chain should say why.
   { k: "ebit", label: "Operating income (EBIT)", how: "fetched", tags: ["OperatingIncomeLoss"],
     blankNote: "This filer's recent statements present no operating income subtotal. Deriving one from pre-tax income was tested against 422 filer-years and missed by up to 350%, so the row is left blank rather than estimated." },
-  { k: "da", label: "Depreciation & amortisation", how: "fetched", tags: ["DepreciationDepletionAndAmortization","DepreciationAmortizationAndAccretionNet","DepreciationAndAmortization","Depreciation"] },
+  // Rule 34: `Depreciation` is last because it EXCLUDES amortisation by definition; where it is what
+  // resolves and the filer tags intangible amortisation beside it with no total, the engine sums the
+  // two and the note below says so. See `DERIVED.da`.
+  { k: "da", label: "Depreciation & amortisation", how: "fetched", tags: ["DepreciationDepletionAndAmortization","DepreciationAmortizationAndAccretionNet","DepreciationAndAmortization","Depreciation"],
+    flagNote: { daSummed: DA_SUMMED_NOTE } },
+  // The line rule 34 adds back. A real filed figure — AbbVie's $7.4bn, Broadcom's $8.1bn — shown on its
+  // own row because the reader who checks EBITDA wants to see it, and because a row the engine sums
+  // from has to be on the page.
+  { k: "amort", label: "Amortisation of intangibles", how: "fetched", tags: ["AmortizationOfIntangibleAssets"] },
   { k: "ebitda", label: "EBITDA", how: "computed", formula: "ebit + da", note: "Not a GAAP concept — always computed, never tagged" },
   { k: "sbc", label: "Stock-based compensation", how: "fetched", tags: ["ShareBasedCompensation","AllocatedShareBasedCompensationExpense"] },
   { k: "ebitdaSbc", label: "EBITDA ex-SBC", how: "computed", formula: "ebitda - sbc", note: "The number a credit committee argues about" },
@@ -342,7 +373,17 @@ export const SECTIONS = [
   { k: "chgInv", label: "Change in inventory", how: "fetched", tags: ["IncreaseDecreaseInInventories"] },
   { k: "chgAp", label: "Change in payables", how: "fetched", tags: ["IncreaseDecreaseInAccountsPayable"] },
   { k: "cfo", label: "Cash from operations", how: "fetched", tags: ["NetCashProvidedByUsedInOperatingActivities","NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"] },
-  { k: "capex", label: "Capital expenditures", how: "fetched", tags: ["PaymentsToAcquirePropertyPlantAndEquipment","PaymentsToAcquireProductiveAssets"] },
+  // Rule 35's other half: three more spellings, each measured before it went in (rule 22's protocol
+  // against filers that tag the existing candidates and the new one for the same period).
+  // `PaymentsToAcquireOtherPropertyPlantAndEquipment` equals the existing figure 12 times in 12 and
+  // fills Lilly and EA; `PaymentsForCapitalImprovements` equals it at the corporates that file both
+  // (Regal Beloit, Ventas) and fills Gallagher; `PaymentsToAcquireOtherProductiveAssets` is LAST and
+  // is not an alias — it is Chevron's "other" at a rounding of zero and Verizon's whole capex line
+  // ($17.0bn) — so it is reached only where nothing above it resolves, which is Verizon from 2019.
+  // ...and pinned by run (rule 21), because AvalonBay files `PaymentsToAcquireProductiveAssets` at a
+  // twenty-fifth of its `PaymentsForCapitalImprovements` in the two years it files both, and the
+  // per-column fallthrough handed the row the small figure there and the large one everywhere else.
+  { k: "capex", label: "Capital expenditures", how: "fetched", tags: ["PaymentsToAcquirePropertyPlantAndEquipment","PaymentsToAcquireProductiveAssets","PaymentsToAcquireOtherPropertyPlantAndEquipment","PaymentsForCapitalImprovements","PaymentsToAcquireOtherProductiveAssets"], pinByRun: true },
   { k: "capSoftware", label: "Capitalised software", how: "fetched", tags: ["PaymentsToDevelopSoftware","PaymentsForSoftware"] },
   { k: "acquisitions", label: "Acquisitions, net of cash", how: "fetched", tags: ["PaymentsToAcquireBusinessesNetOfCashAcquired"] },
   { k: "divestitures", label: "Divestitures", how: "fetched", tags: ["ProceedsFromDivestitureOfBusinesses"] },
@@ -354,7 +395,9 @@ export const SECTIONS = [
   // use, and without it the FFO payout ratio (the number a REIT is bought for) has no numerator.
   { k: "dividends", label: "Dividends paid", how: "fetched", tags: ["PaymentsOfDividendsCommonStock","PaymentsOfDividends","PaymentsOfOrdinaryDividends","DividendsCommonStockCash"] },
   { k: "cff", label: "Cash from financing", how: "fetched", tags: ["NetCashProvidedByUsedInFinancingActivities"] },
-  { k: "fcf", label: "Free cash flow", how: "computed", formula: "cfo - capex" },
+  { k: "fcf", label: "Free cash flow", how: "computed", formula: "cfo - capex",
+    // Rule 35: blank without capex, except the carriers, where an untagged capex is waived by measurement.
+    flagNote: { capexWaived: "This filer tags no capital expenditure, and for a carrier that is immaterial: at the P&C carriers that do tag it, capex is 3.8% of operating cash flow at the median and 8.2% at the 90th percentile. Free cash flow here is cash from operations with nothing deducted." } },
   { k: "fcfConv", label: "FCF conversion", how: "computed", formula: "fcf / netIncome" },
 ]},
 // ─────────────────────────────────────────────────────────────── SHARES
@@ -413,7 +456,9 @@ export const SECTIONS = [
   // 1.0 rather than exploding — Colgate reads 0.99x. The mark belongs where the instability is.
   { k: "debtCap", label: "Debt / total capital", how: "computed", formula: "totalDebt / (totalDebt + equity)" },
   { k: "currentRatio", label: "Current ratio", how: "computed", formula: "curAssets / curLiab" },
-  { k: "quickRatio", label: "Quick ratio", how: "computed", formula: "(curAssets - inventory) / curLiab" },
+  { k: "quickRatio", label: "Quick ratio", how: "computed", formula: "(curAssets - inventory) / curLiab",
+    // Rule 35: a note rather than a blank, because a filer with no inventory has none to deduct.
+    flagNote: { quickNoInventory: "This filer tags no inventory, so the quick ratio equals the current ratio above it. A company carrying none has nothing to deduct; one that tags it under another concept would read the same, and the two cannot be told apart from the filing." } },
 ]},
 // "Total debt AND DEBT-LIKE ITEMS" is Goldman's own phrase in the EA fairness opinion, and it is
 // not the same as total debt. Getting the EV bridge right means picking these up — every one is
@@ -477,7 +522,8 @@ export const SECTIONS = [
   { k: "fcfYield", label: "FCF yield", how: "market", formula: "fcf / mktCap" },
   { k: "divYield", label: "Dividend yield", how: "market", formula: "dps / price" },
   { k: "bvps", label: "Book value per share", how: "computed", formula: "equity / sharesOut" },
-  { k: "tbvps", label: "Tangible book per share", how: "computed", formula: "(equity - goodwill - intangibles) / sharesOut" },
+  { k: "tbvps", label: "Tangible book per share", how: "computed", formula: "(equity - goodwill - intangibles) / sharesOut",
+    flagNote: { tbvpsPartial: TBVPS_NOTE } },
   // The treasury stock method, and `market` rather than `computed` because it needs the price — which
   // is what put it in this section. Gated on ALL of its inputs being tagged, not just some: a "fully
   // diluted" count built from options while the filer's RSUs are untagged is a partial total wearing
