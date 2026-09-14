@@ -21,7 +21,7 @@ lookup did.
 - `api/quote.js` — share price ONLY. Market cap is computed as price × the company's own cover-page
   share count, so the EV bridge stays traceable to filings with exactly one outside input. Needs
   `FINNHUB_KEY`; without it the valuation block says so.
-- `src/template.js` — 275 line items across 15 core sections plus industry overlays, grounded in standard
+- `src/template.js` — 276 line items across 15 core sections plus industry overlays, grounded in standard
   IB/PE model structure and in Goldman Sachs' own disclosed methodology from the EA merger proxy
   (DEFM14A, Nov 2025 — worth reading if you touch the valuation sections). Those two counts are no
   longer prose: `t-declared.mjs` parses them out of this sentence and checks them against `tally()`,
@@ -255,8 +255,10 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     The same stitch has a second rule, which is rule 9 wearing different clothes: **all three legs
     come from the tag the ANNUAL column chose, and only that tag.** A filer tagging `Revenues` in its
     10-K and only the ASC 606 slice in its 10-Qs would otherwise have a total stitched onto the
-    change in a component of itself. Costco is exactly that and its LTM revenue is **blank**, which
-    is the honest answer and is marked as one on the page.
+    change in a component of itself. Costco was read as exactly that and its LTM revenue was **blank**
+    for a year — wrongly, it turned out: its two annual concepts are equal to the dollar in every year,
+    so the 606 tag's interim legs were on the annual column's basis all along. Rule 33 admits a sibling
+    concept's legs on exactly that test, equality of the annual figure, and Costco's LTM stitches.
 
 13. **Only the periodic reports are the financial statements, and rule 2 was handing the sheet to
     everything else.** A 10-K or 10-Q *is* the statements. An 8-K exhibit is a press release, a
@@ -1146,6 +1148,125 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     from a presentation that does not close, preferring the oldest, leaving the mezzanine where it was, a
     5% tolerance, and `pickFact` ignoring the accession — and the cache pins assert the exact list of 17
     columns, so a change that widens or narrows the population changes a list rather than a count.
+
+33. **The revenue row is a series, the filer's own arithmetic says which concept carries it — column by
+    column where it can — and an LTM stitch may take its legs from a sibling concept that is the same
+    figure.** General Mills files `Revenues` undimensioned at about a tenth of its top line for six years
+    — **$2,044m beside the ASC 606 tag's $16,865m in FY2019** — and stops at FY2024, so the row switched
+    concept at FY2025 and six of eight columns were 10x too small, with the sweep reading EBITDA above
+    revenue and gross profit at minus $9bn. Rule 21's cure is the obvious one and it was measured against
+    the two filers rule 9 exists to protect and one it did not know about. MetLife keeps `Revenues`: both
+    concepts run the sheet, both reach the newest column, and a tie keeps the list's order. US Bancorp
+    would have LOST it: `InterestAndDividendIncomeOperating` spans all eight years against five for
+    `Revenues`, and the pin was computed from the row's raw tag list — so it now comes from the list
+    AFTER the industry omission, which is the list `fillCol` fetches from; the first version pinned a
+    bank's revenue to its gross interest income. And **Capstone Energy Plus is why the identity runs per
+    column**: through FY2023 only its 606 tag is filed and it closes gross profit; from FY2024 `Revenues`
+    closes it and the 606 tag is a product-only slice 13–16% below. Run length pins the slice (eight years
+    against three); a sheet-wide identity scores it 5 to 4. The concept that IS the total changed, and the
+    filing proves it in every column, so where the filer tags both legs of revenue = gross profit + cost
+    for a column, the candidate that closes them is the line there, and the pin covers only the columns
+    the identity cannot test. It is rule 23 from the other end — the row is the minuend, so
+    `pinIdentity: { plus, equals }` — and rule 23 over rule 21, per column.
+
+    **The pin ranks reaching the newest column ahead of run length**, which is rule 6 applied to it.
+    Alphabet's 606 tag runs seven years and stops before FY2025 while `Revenues`, with a hole at FY2022,
+    reaches it; pinned by run, the newest column fell through to `Revenues` regardless and the LTM
+    stitch — which reads only the concept the annual column chose — found no interim under the 606 tag
+    and went blank. Comcast and RTX then lost a 2023 LTM the same way from the other side: their 2023
+    10-Qs carry `Revenues` and their 10-Ks the 606 tag. That is a blind spot older than the pin. "Only the
+    tag the annual column chose" is rule 9's guard against stitching a total onto a slice, and it stays;
+    but a sibling concept whose OWN annual figure equals the column's to one part in ten thousand is on
+    the column's basis — equality is what a slice can never satisfy (MetLife's 606 revenue is 3% of its
+    total, and the suite asserts it is refused) — so its interim legs may complete the stitch, and the
+    cell records which concept they came from. **Costco's blank LTM revenue, recorded in rule 12 as the
+    honest answer, was this guard firing on a filer it never applied to**: its two annual concepts are
+    equal to the dollar in every year since 2016. The relaxation is general, so every multi-concept row
+    gains from it: D&A, interest expense, pre-tax income, net income, capex, cash from operations.
+
+    `scripts/full-diff.mjs` over the cache: **11 annual revenue cells change** — General Mills' six,
+    Interactive Brokers' two oldest years from gross to net (the concept the rest of its sheet already
+    carried), Paramount's pre-merger FY2017 to the recast $26.5bn the following columns are on,
+    Hycroft's zero, Ridgeline — **406 LTM cells appear and none vanish** (17 revenue, the rest the legs
+    other rows now find), 34 revenue sources move with the same figure, and the row's mid-sheet concept
+    switches go **25 → 6**. `test/t-revenue.mjs`, 44 assertions, **7 of 7 mutations caught**: no per-column
+    identity, the identity as gross profit MINUS cost, reach ignored, the pin from the unomitted list, any
+    sibling admitted, the old only-that-tag rule restored, the row unpinned.
+
+34. **Where the D&A row resolves `Depreciation` alone and the filer tags intangible amortisation beside
+    it with no total, the row is their sum and says so.** `Depreciation` is the row's last candidate and
+    EXCLUDES amortisation by definition. On the cache it resolves 188 cells, and **110 of them, on 21
+    filers, sit beside `AmortizationOfIntangibleAssets` for the same period with no D&A total under any
+    concept** — read from the full companyfacts documents, because the fixture cache is KEEP-slimmed and
+    could not see the amortisation at all. AbbVie's D&A read **$762m against $7,377m of amortisation** in
+    FY2025 and its EBITDA $15.8bn where operating income plus both is $23.2bn, 31.8% low; AMD 35.3%,
+    Broadcom 23.6%, Thermo Fisher, Oracle, Intel, Microsoft, Tesla, Merck. Rule 22's protocol was run
+    before anything moved: where filers tag a total AND both parts, **the parts reproduce the total 184
+    times in 400 and fall 2–5% short in most of the rest** (Amgen 0.98x, American Tower 0.97x, ASML
+    0.97x; Amazon 0.65x, whose total carries finance-lease and other amortisation) — so the sum is a
+    FLOOR, not the total, which decides two things. A filed total under any of the three names above it
+    still wins outright and is never summed over. And the summed cell is marked computed, with a note on
+    the row naming both parts and saying what the sum cannot see, rather than linking to a filing that
+    shows a different number. `AdjustmentForAmortization`, the other candidate, was measured and
+    rejected: equal to intangible amortisation in 51 of 130 periods, 3.5x it at Allstate and negative at
+    AMD, it is not one quantity. The amortisation is a row of its own, because a figure the engine sums
+    from has to be on the page, and AbbVie's $7.4bn is a line a reader checking EBITDA wants to see.
+
+    Over the cache: **110 annual D&A cells change on 21 filers** (142 with LTM), EBITDA and everything
+    under it with them — margins, leverage, interest cover, EV/EBITDA — and the amortisation row
+    appears on 994 cells across 124 filers. `test/t-da.mjs`, 28 assertions, **3 of 3 mutations
+    caught**: summing whenever amortisation is tagged (which would have put $9.5bn on Amgen over its
+    filed $5.2bn), not summing, and the flag never set.
+
+35. **A derivation that subtracts a blank input prints the row it was meant to adjust.** Seven were
+    written `x − (y || 0)`, and each one, when y is untagged, prints x under y's label — six of them
+    directly beside the row they duplicate. `fcf = cfo − (capex || 0)` printed cash from operations as
+    free cash flow on **241 annual cells of 43 filers** — Verizon **$37.1bn against a real $20.1bn**,
+    Dominion +$5.4bn against −$7.3bn; `fccr` EBITDA over interest as fixed-charge coverage on 92;
+    `ufcf` carried the same `(v.capex || 0)` on the row rule 25 had just repaired; `cashTaxRate` the
+    effective rate on 156; `ebitdaSbc` EBITDA on 94; `quickRatio` the current ratio on 267; `tbvps`
+    book value on 393. Rule 7 exactly, and rule 25's fix: the row's own formula refusing a missing
+    input, on five of the seven. **The other two keep their figure and gain a note**, because their
+    counter-population is a filer that genuinely has nothing to deduct — a software company carries no
+    inventory and its quick ratio IS its current ratio; a company with no goodwill has a tangible book
+    equal to book — and companyfacts cannot tell "none" from "untagged". A blank there would delete a
+    correct figure on most of the population to fix a wrong one on a few, so the note says what was and
+    was not deducted, keyed to the figure rather than the input so a row that did not render is not
+    explained. `ebitda = ebit + (da || 0)` is a recorded decision and is not touched.
+
+    **One industry keeps free cash flow with capex untagged, by measurement.** Rule 27 kept the FCF
+    family for the carriers because an insurer's operating cash flow is an operating flow, and none of
+    them tags capital expenditure under any concept — Chubb, Travelers, MetLife and Prudential file
+    nothing capex-like at all. At the P&C carriers that do tag it, capex is **3.8% of operating cash
+    flow at the median and 8.2% at the 90th percentile** (30 columns, five filers; AIG's 2020 at 34% is
+    one year of depressed cash flow). So for `pc` and `life` a blank capex is waived, the row prints cash
+    from operations, and its note states that basis. Not for health plans — Cigna and UnitedHealth run
+    11–18% where they tag it, and Cigna tags nothing after 2019, so its row is blank — and not for REITs,
+    whose real spending is development and acquisition under concepts the capex row does not ask for.
+
+    **The capex row gains three spellings, each measured first, and a pin.** Rule 22's protocol against
+    filers that tag an existing candidate and the new one for the same period:
+    `PaymentsToAcquireOtherPropertyPlantAndEquipment` equals the existing figure **12 times in 12** and
+    fills Lilly ($7.8bn) and EA; `PaymentsForCapitalImprovements` equals it at the corporates that file
+    both and fills Gallagher and four REITs; `PaymentsToAcquireOtherProductiveAssets` is **not an alias**
+    — Chevron's "other" at a rounding of zero and Verizon's whole capex line — so it is last and reached
+    only where nothing above it resolves, which is Verizon from 2019. And the row is pinned by run
+    (rule 21), because AvalonBay files `PaymentsToAcquireProductiveAssets` at a twenty-fifth of its
+    capital improvements in the two years it files both, and per-column fallthrough handed the row the
+    small figure there and the large one everywhere else; pinned, GE's and Ventas's oldest columns move
+    to the concept that spans their sheets too. The REIT development and acquisition concepts are a
+    different quantity and stay out (Next item 6).
+
+    Over the cache, annual columns: **free cash flow goes blank on 127 cells of 33 filers** (NextEra,
+    Phillips 66, Cigna, Conoco, the REITs, three of NVIDIA's) and **changes on 83 of 17** where a capex
+    now resolves; the cash tax rate blanks on 156, EBITDA ex-SBC on 94; capex appears on 74; 40 carrier
+    columns carry the waiver, 393 the tangible-book note and 267 the quick-ratio one; 110 D&A cells
+    are rule 34's. The reverse DCF plate loses its levered fallback on exactly the filers whose free
+    cash flow was cash from operations, which is the honest outcome. `test/t-blank.mjs`, 67 assertions,
+    **10 of 10 mutations caught**, including the waiver widened to health plans, the waiver removed,
+    either note keyed to its input instead of its figure, Verizon's tag ahead of the two originals, and
+    the row unpinned. `test/t-declared.mjs` gained the two function-valued notes and the amortisation
+    row's tag.
 
 ### A number that is correct and reads as broken
 
@@ -2411,7 +2532,7 @@ development exercises the real code path against real SEC responses.
 
 ## The fixture cache
 
-Six of the items below are blocked on it, so it is worth knowing what it is. `scripts/build-fixtures.mjs`
+Most of the items below need it, so it is worth knowing what it is. `scripts/build-fixtures.mjs`
 writes one slimmed companyfacts payload per filer into `fixtures/`, **by driving the shipping
 `api/facts.js`** rather than by fetching SEC directly — so each file is byte-identical to what the
 browser receives, and a suite run against it is running the real data path. That is what makes a
@@ -2423,7 +2544,12 @@ node scripts/build-fixtures.mjs --tickers AAPL,JPM # → one or two
 FILINGS_FIXTURES=/path/to/cache npm test           # → point the suites at a copy
 ```
 
-**Measured, now that it has been built: 180 filers, 197 MB, about two and a half minutes.** That is far too
+**Measured, now that it has been built: 180 filers, 199 MB, about two and a half minutes** (197 MB
+before the four tags rules 34 and 35 added to KEEP; a KEEP change means a rebuild, because a fixture
+built before it cannot see the tag). The Sep 14 measurements that needed concepts KEEP does not carry
+— every amortisation and payment concept a filer has ever tagged — were read from a "wide" companion
+built by `measure/audit3/wide-fetch.mjs` in the private notes: the full companyfacts document per
+cached filer, slimmed to the families in question, 43 MB, not kept. That is far too
 large to commit to a public repo, so `fixtures/` stays gitignored and the cache lives wherever it is
 built. The practical consequence is worth stating plainly: **a cloud session cannot use a cache that
 sits on a laptop.** Either work locally, where it already exists, or allow `data.sec.gov` on the
@@ -2451,25 +2577,10 @@ the calendar, the comps workbook), 1 is recorded in rule 15, 7 and 8 were alread
 and *The sweep's own precision*, 10 was measured and rejected in the Sep 11 audit (2.26× the bytes for two
 stale years of a structure that has usually changed). Sep 14 2026: that list's item 0, the balance-sheet
 leg conflict, shipped as rule 32, and its item 4 was re-read against the filings and rewritten as item 3
-below. What is left is below, with what would settle each.
+below. Later the same day the audit's three findings shipped as rules 33, 34 and 35, and the four
+measurements they left open are the last items. What is left is below, with what would settle each.
 
-0. **The Sep 11 audit's three largest verified findings, none of them on this list before.** (a) Seven
-   derivations write `x − (y || 0)`: `fcf = cfo − (capex||0)` prints cash from operations as free cash
-   flow on **186 cells / 30 filers** (Verizon $37.1bn against a real $20.1bn; Dominion +$5.4bn against
-   −$7.3bn), and `fccr`, `cashTaxRate`, `quickRatio`, `ebitdaSbc`, `tbvps` are the same shape — rule 25
-   fixed exactly this for `chgNwc` and left `(v.capex || 0)` three characters away. Rule 27 deliberately
-   KEPT the FCF family for carriers, REITs and health plans, so it wants a per-industry waiver, not a
-   blanket blank, and `ebitda = ebit + (da||0)` is a recorded decision that must not be swept up with it.
-   (b) The D&A row resolves `us-gaap:Depreciation` alone on 188 cells while the filer tags amortisation
-   separately on 135 of them: AbbVie's EBITDA reads **31.8% low**, AMD's 35.3%. Rule 22's protocol first —
-   does `Depreciation + AmortizationOfIntangibleAssets` equal the filer's own total where all three are
-   tagged — because the counter-population (amortisation as a footnote disclosure, other amortisation
-   concepts) is named and unmeasured. (c) **General Mills' revenue row is 10× too small on six of eight
-   columns**: `Revenues` carries $2.0bn beside the 606 tag's $19.9bn, and the sweep sees it as EBITDA
-   above revenue for FY2019–FY2023. Rule 21's `pinByRun` on the revenue row is the obvious candidate and
-   has to be measured against MetLife, whose `Revenues` rule 9 exists to keep.
-
-1. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
+0. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
    only extension concepts — fee-related earnings, distributable earnings, base management fees — with
    no consolidated counterpart, and the one standard concept on the axis that foots is a loss-contingency
    roll-forward nobody models. The tab is right to show nothing; what it could say is *why*, since the
@@ -2478,14 +2589,14 @@ below. What is left is below, with what would settle each.
    2, 3 and 8 are silently off for it and nineteen other filers — the first thing to fix if segments get
    another session.
 
-2. **NextEra's co-registrant axis (measured; a rule is written and not run).** Florida Power & Light's
+1. **NextEra's co-registrant axis (measured; a rule is written and not run).** Florida Power & Light's
    rows carry `dei:LegalEntityAxis`, so the segment view reconciles $9.15bn against $27.41bn. A rule that
    admits the entity axis as a qualifier only when its member IS the segment member — the registrant is
    the segment — would bring the FPL row in and is the general answer to telling a co-registrant axis
    from a breakdown axis. It is drafted in the Sep 13 scratchpad and must be measured on the 30-filer
    segment sweep before it ships, and that sweep's instance cache is gone (621 MB, session-scoped).
 
-3. **Mezzanine equity the template cannot see — inside a dimension, or under a concept no row asks for.**
+2. **Mezzanine equity the template cannot see — inside a dimension, or under a concept no row asks for.**
    Rule 32 closed every column whose legs came from filings that disagreed. What is left on the cache is
    **19 annual columns on six filers, every one closing inside no filing at all**: Instacart's three years
    at 3.7–5.3% (the class-of-stock dimension, unreachable from companyfacts — rule 28's argument against an
@@ -2501,14 +2612,14 @@ below. What is left is below, with what would settle each.
    beside it (the Up-C and LLC population, which a fifth equity spelling would reach), and whether a
    dimensioned temporary-equity total ever reappears undimensioned in a later filing.
 
-4. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
+3. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
    Chevron, Equinix, Alphabet, Iridium (closed by rule 16), Kenvue (right by accident), Morgan Stanley,
    Tronox (rule 15's own boundary, now named) and Tulip. Alphabet's is the one column the audit measured
    as a real double count (7.4%, FY2020). A third witness is available and unmeasured: where a filer tags
    both an unambiguous `…IncludingCurrentMaturities` concept and the ambiguous total at the same date,
    the identity between them settles the scope — how many filers, and does it ever contradict a verdict.
 
-5. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
+4. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
    reports, restatements, Chapter 11, spin-offs, material-weakness restatements — and the last of them
    paid off in a class no earlier frame could reach. Two things the frames have not varied: the
    **statement of cash flows** (nothing has been drawn on how a filer tags its cash flow, and rule 25's
@@ -2517,10 +2628,27 @@ below. What is left is below, with what would settle each.
    restatement frame would want. The trick that found rule 20 is still available too: read something
    carried alongside every value that nothing has inspected — `frame`, or the `fy`/`fp` pair.
 
-6. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
+5. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
    twenty-three on the cache are all a leverage ratio over a NEGATIVE EBITDA, which is arithmetic rather
    than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
    the residual count means less than it should.
+
+6. **What rules 33–35 left open, each with its measurement named.** (a) The cash tax rate is blank on
+   156 annual cells now rather than wrong, and the direct measure exists: `IncomeTaxesPaidNet` is the
+   cash the filer actually paid, so `taxesPaid / pretax` would fill the row from a filed figure instead
+   of an accrual less a deferral — measure how many of the 88 filers tag it, and how far it sits from
+   `tax − deferredTax` where both can be computed. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets`
+   (59 cells) and `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity
+   from plant capex; whether free cash flow for a REIT should deduct development, acquisitions, or only
+   capital improvements is the question, and FFO is already on the overlay. (c) EBITDA ex-SBC is blank on
+   32 filers that tag stock compensation under neither `ShareBasedCompensation` nor
+   `AllocatedShareBasedCompensationExpense` — Walmart, Verizon, Amgen, Altria among them — so a third
+   spelling is out there and unmeasured. (d) Rule 34's sum is a floor: the other amortisation concepts
+   (capitalised software, finance-lease assets, deferred costs) that would make it the total are named
+   and unmeasured, and the 216 protocol disagreements are the population to measure them on. (e) The
+   sibling-leg LTM stitch (rule 33) is admitted on equality of the annual figure; whether a looser
+   basis test would recover the 19 JBTM/Iridium-shaped `restated-basis` refusals without readmitting a
+   slice is a measurement, not a preference.
 
 
 ## A note on how this got built
