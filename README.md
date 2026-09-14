@@ -1302,6 +1302,34 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     switch. `test/t-tax.mjs`, 29 assertions, **3 of 3 mutations caught** — the proxy as a fallback, gross
     ahead of net, the row unpinned — and rule 35's refusal assertions moved to the current-expense row.
 
+37. **An annual leg filed after the prior interim leg's re-presentation is on the re-presented basis,
+    and rule 12's guard was asking it the wrong question.** Rule 12 refuses an LTM stitch when the prior
+    year-to-date leg has moved since it was first filed unless the annual leg's own filing also restated
+    the year before the window — the right test of the 10-K that straddled a divestiture, where the
+    annual figure is on the old basis and the two interim legs on the new. It was firing on **442 LTM
+    cells across 77 filers and 60 rows** of the cache, and the census of them says why: in **311 the annual
+    leg's filing carries no comparative for the year before the window at all**, because rule 2 had taken
+    the annual figure from a LATER 10-K — a report two years on presents the window's year but not the
+    one before it — and in 361 of the 442 that later 10-K was filed after the re-presentation. A report
+    filed after a re-presentation is on the re-presented basis by construction: a discontinued operation
+    or a spin is recast in every period the later report presents. GE's LTM to June 2024 is the shape —
+    FY2023 from the FY2025 10-K on the GE Aerospace basis, H1 2024 filed on it, H1 2023 re-presented onto
+    it in the Q2 2024 10-Q — three coherent legs refused because the FY2025 10-K has no FY2022. AIG,
+    MetLife, Prudential, J&J, 3M, Intel and CSX are the same shape.
+
+    So the guard has a second door: an annual leg filed after the prior leg's **newest** version agrees
+    with it. Newest, not first — a leg re-presented twice needs an annual filed after the second, and the
+    suite asserts one filed between them is still refused. The original door stays and still opens on its
+    own. `scripts/full-diff.mjs` over the cache: **956 LTM cells appear, none vanish, no annual cell
+    moves** — 361 legs and the margins, growth rates, unlevered cash flows and tax rates built on them
+    — and **79 refusals remain**, every one with the annual leg filed before the re-presentation:
+    TripAdvisor's 16 (its FY2025 10-K predates a 2026 recast), Houlihan Lokey's 10, Amrize's 13 (the
+    Holcim spin), JBT Marel's 5. Those are the divestiture-in-progress case and the guard is right about
+    them. `test/t-basis.mjs`, **3 of 3 mutations caught** — the second door removed, the annual compared
+    against the prior leg's first filing instead of its newest, and the same filing counted as before —
+    that third one was found by the mutation run itself: the first version compared with `>`, and a 10-K
+    that carries the year AND its restated quarterly data in one filing was refused against itself.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
@@ -2611,8 +2639,9 @@ the calendar, the comps workbook), 1 is recorded in rule 15, 7 and 8 were alread
 and *The sweep's own precision*, 10 was measured and rejected in the Sep 11 audit (2.26× the bytes for two
 stale years of a structure that has usually changed). Sep 14 2026: that list's item 0, the balance-sheet
 leg conflict, shipped as rule 32, and its item 4 was re-read against the filings and rewritten as item 3
-below. Later the same day the audit's three findings shipped as rules 33, 34 and 35, and the four
-measurements they left open are the last items. What is left is below, with what would settle each.
+below. Later the same day the audit's three findings shipped as rules 33, 34 and 35; of the five
+measurements they left open, (a) shipped as rule 36, (e) as rule 37, and (c) and (d) were measured and
+rejected, leaving the REIT capex row. What is left is below, with what would settle each.
 
 0. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
    only extension concepts — fee-related earnings, distributable earnings, base management fees — with
@@ -2686,10 +2715,9 @@ measurements they left open are the last items. What is left is below, with what
    Two remain. (b) A REIT capex row: `PaymentsToDevelopRealEstateAssets` (59 cells) and
    `PaymentsToAcquireRealEstate` (44) are the REITs' real spending and a different quantity from plant
    capex; whether free cash flow for a REIT should deduct development, acquisitions, or only capital
-   improvements is the question, and FFO is already on the overlay. (e) The sibling-leg LTM stitch
-   (rule 33) is admitted on equality of the annual figure; whether a looser basis test would recover the
-   19 JBTM/Iridium-shaped `restated-basis` refusals without readmitting a slice is a measurement, not a
-   preference.
+   improvements is the question, and FFO is already on the overlay. (e) shipped as rule 37: the
+   `restated-basis` refusals were 442 cells, not 19, and 361 of them had the annual leg filed after the
+   re-presentation; 79 remain and are right.
 
 
 ## A note on how this got built
