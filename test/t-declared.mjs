@@ -583,7 +583,7 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
     `every declared \`formula\` can be drawn by the renderer that draws its section${notDisplayable.length ? ` — unreachable: ${notDisplayable.join(" ")}` : ""}. ` +
     `SectionRows guards the ƒ on how==="computed"; ValuationCard draws it for any row of the ev section. A formula outside both is ` +
     `documentation the page cannot show.`);
-  eq(rows.filter(r => r.line.formula).length, 99, "99 rows declare a formula — the count is asserted so a new one cannot arrive unexamined");
+  eq(rows.filter(r => r.line.formula).length, 100, "100 rows declare a formula — the count is asserted so a new one cannot arrive unexamined");
 }
 
 // ── A tag the template asks for and the proxy drops never arrives ────────────────────────────────
@@ -599,7 +599,7 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   const keep = new Set([...keepSrc.matchAll(/"([A-Za-z][A-Za-z0-9:]*)"/g)].map(m => m[1]));
   ok(keep.size > 300, `api/facts.js's KEEP was parsed — ${keep.size} string literals, or every tag below would look dropped`);
   const tplTags = [...new Set(rows.flatMap(r => r.line.tags || []))];
-  eq(tplTags.length, 252, `the template asks for 252 distinct tags — found ${tplTags.length}`);
+  eq(tplTags.length, 254, `the template asks for 254 distinct tags — found ${tplTags.length}`);
   // The `dei` taxonomy is reached by a different door: facts.js loops us-gaap and dei, and its dei
   // branch admits exactly one element BY NAME rather than through KEEP. So the template's `dei:` tag
   // is checked against that gate instead, and the two spellings must agree — the template writes the

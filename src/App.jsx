@@ -42,7 +42,7 @@ const fmtX = v => (v == null ? null : v.toFixed(2) + "x");
 // Yields are rates and read as percentages; valuation ratios are multiples and read with an x. Left
 // out of these sets a number renders bare — a 3% FCF yield printed "0.03" and 26.7x EBITDA printed
 // "26.74", which are the two figures most likely to be read off this page out loud.
-const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","revGrowth","ebitdaGrowth","epsGrowth",
+const PCT = new Set(["grossMargin","ebitdaMargin","ebitMargin","netMargin","fcfMargin","taxRate","cashTaxRate","currentTaxRate","revGrowth","ebitdaGrowth","epsGrowth",
   // The CAGRs were missing from here for as long as they existed, and it never showed because they
   // were declared with a formula and never actually computed — a blank cannot be mis-formatted.
   // The moment comps made them real, Nvidia's 100% three-year CAGR rendered as "1".

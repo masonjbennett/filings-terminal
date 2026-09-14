@@ -41,8 +41,8 @@ const base = { ...dur("Revenues", 10e9), ...dur("OperatingIncomeLoss", 2e9), ...
   eq(DERIVED.fccr({ ebitda: 2.5e9, capex: 500e6, intExp: 100e6 }), 20, "(2,500 − 500) / 100");
   eq(DERIVED.ufcf({ nopat: 100, da: 40, capex: null, chgNwc: 25 }), null, "unlevered FCF refuses without capex");
   eq(DERIVED.ufcf({ nopat: 100, da: 40, capex: 20, chgNwc: 25 }), 95, "and computes with it — 100 + 40 − 20 − 25, unchanged from rule 25");
-  eq(DERIVED.cashTaxRate({ tax: 400e6, deferredTax: null, pretax: 2e9 }), null, "the cash tax rate refuses without the deferred line — it is not the effective rate");
-  near(DERIVED.cashTaxRate({ tax: 400e6, deferredTax: 100e6, pretax: 2e9 }), 0.15, 1e-9, "(400 − 100) / 2,000");
+  eq(DERIVED.currentTaxRate({ tax: 400e6, deferredTax: null, pretax: 2e9 }), null, "the current tax rate refuses without the deferred line — it is not the effective rate");
+  near(DERIVED.currentTaxRate({ tax: 400e6, deferredTax: 100e6, pretax: 2e9 }), 0.15, 1e-9, "(400 − 100) / 2,000");
   eq(DERIVED.ebitdaSbc({ ebitda: 2.5e9, sbc: null }), null, "EBITDA ex-SBC refuses without SBC — it is not EBITDA");
   eq(DERIVED.ebitdaSbc({ ebitda: 2.5e9, sbc: 300e6 }), 2.2e9, "and deducts it when tagged");
   eq(DERIVED.ebitda({ ebit: 2e9, da: null }), 2e9, "EBITDA with no D&A is still EBIT — the recorded decision (a missing D&A understates), untouched");
@@ -53,7 +53,8 @@ const base = { ...dur("Revenues", 10e9), ...dur("OperatingIncomeLoss", 2e9), ...
   const c = col("2834", base);
   eq(c.v.fcf, null, "a corporate with cash from operations and no capex has no free cash flow");
   eq(c.v.fccr, null, "no fixed-charge coverage");
-  eq(c.v.cashTaxRate, null, "no cash tax rate");
+  eq(c.v.currentTaxRate, null, "no current tax rate");
+  eq(c.v.cashTaxRate, null, "and no cash tax rate either — nothing paid is tagged (rule 36)");
   eq(c.v.ebitdaSbc, null, "no EBITDA ex-SBC");
   ok(!c.v.capexWaived, "and no waiver — it is not a carrier");
   eq(c.v.quickRatio, 2, "the quick ratio prints — current assets over current liabilities, nothing deducted");
@@ -150,7 +151,7 @@ if (needFixtures("t-blank cache pins")) {
   const cb = at("CB", "2025-12-31"); if (cb) { ok(cb.v.capexWaived && cb.v.fcf === cb.v.cfo, "Chubb's free cash flow is its cash from operations, waived and marked"); }
   const ci = at("CI", "2025-12-31"); if (ci) eq(ci.v.fcf, null, "Cigna's is blank — no capex tagged, no waiver for a health plan");
   const nee = at("NEE", "2025-12-31"); if (nee) eq(nee.v.fcf, null, "NextEra's is blank — no capex under any concept the row asks for");
-  const aapl = at("AAPL", "2025-09-27"); if (aapl) eq(aapl.v.cashTaxRate, null, "Apple's cash tax rate is blank where its deferred tax line is untagged, not the effective rate");
+  const aapl = at("AAPL", "2025-09-27"); if (aapl) eq(aapl.v.currentTaxRate, null, "Apple's current tax rate is blank where its deferred tax line is untagged, not the effective rate (its cash tax rate is rule 36's, from taxes paid)");
   const avb = at("AVB", "2018-12-31"); if (avb) eq(avb.meta.capex.tag, "PaymentsForCapitalImprovements", "AvalonBay's FY2018 capex is capital improvements, the concept that spans its sheet");
 }
 

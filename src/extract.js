@@ -1471,7 +1471,12 @@ export const DERIVED = {
   // Valuation tab that the plate beside it described as something else. Where ΔWC is unavailable the
   // row blanks and the reverse DCF falls back to cash from operations less capex, saying so.
   ufcf: v => (v.nopat == null || v.chgNwc == null || v.capex == null ? null : v.nopat + (v.da || 0) - v.capex - v.chgNwc),
-  cashTaxRate: v => (v.tax == null || v.deferredTax == null ? null : div(v.tax - v.deferredTax, v.pretax)),
+  // Rule 36: taxes paid over pre-tax income, and NO fallback to the current-expense proxy — the two sit
+  // 10 points apart at the 10th and 90th percentiles (817 columns), so a row that meant one on some sheets
+  // and the other on the rest would be rule 21's failure under a single label. Rule 35's refusal stands
+  // on the proxy, which keeps its own row.
+  cashTaxRate: v => div(v.taxesPaid, v.pretax),
+  currentTaxRate: v => (v.tax == null || v.deferredTax == null ? null : div(v.tax - v.deferredTax, v.pretax)),
 };
 
 // Bank-only derivations. Kept separate so they only run for a depository — computing an efficiency

@@ -369,6 +369,13 @@ export const SECTIONS = [
 { id: "cf", title: "Cash Flow", feeds: "Historicals · DCF · LBO", lines: [
   { k: "cfDa", label: "D&A (cash flow)", how: "fetched", tags: ["DepreciationDepletionAndAmortization","DepreciationAmortizationAndAccretionNet"] },
   { k: "deferredTax", label: "Deferred income taxes", how: "fetched", tags: ["DeferredIncomeTaxExpenseBenefit"] },
+  // Rule 36: the cash the filer actually paid, from the supplemental cash-flow disclosure. Net of refunds
+  // leads; the gross concept is the fallback for the eight cached filers that tag only it (Costco,
+  // Disney, Merck, Eaton among them). Where a filer tags both for one period they are the same figure
+  // from the 25th to the 90th percentile, with a refund tail below — so gross is a fallback, not a
+  // second quantity — and the row is pinned by run because 90 of the 180 tag both somewhere in their
+  // history and a spelling change must not read as a movement.
+  { k: "taxesPaid", label: "Cash taxes paid", how: "fetched", tags: ["IncomeTaxesPaidNet","IncomeTaxesPaid"], pinByRun: true },
   { k: "chgAr", label: "Change in receivables", how: "fetched", tags: ["IncreaseDecreaseInAccountsReceivable"] },
   { k: "chgInv", label: "Change in inventory", how: "fetched", tags: ["IncreaseDecreaseInInventories"] },
   { k: "chgAp", label: "Change in payables", how: "fetched", tags: ["IncreaseDecreaseInAccountsPayable"] },
@@ -545,7 +552,12 @@ export const SECTIONS = [
   { k: "chgNwc", label: "Change in NWC", how: "fetched", wcAggregate: true, tags: ["IncreaseDecreaseInOperatingCapital"],
     tagNote: { IncreaseDecreaseInOperatingCapital: "This filer tags its own working-capital subtotal, so the figure is that line rather than a sum of components." },
     blankNote: "This filer's cash flow statement tags some of its working-capital movement but not all of it — the receivables, payables or inventory leg is missing, and a partial movement subtracted from free cash flow would look exactly like a whole one." },
-  { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "(tax - deferredTax) / pretax" },
+  // Rule 36. The cash tax rate is what the filer PAID over pre-tax income, which is the figure the row
+  // is named for; the current-expense proxy it used to compute is a different quantity (Apple's FY2018
+  // current expense carried the repatriation tax it would pay over eight years: 63% against 14% paid)
+  // and keeps its own row under its own name.
+  { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "taxesPaid / pretax" },
+  { k: "currentTaxRate", label: "Current tax rate", how: "computed", formula: "(tax - deferredTax) / pretax", note: "Current tax expense — the accrual less the deferred line — over pre-tax income; the cash rate above is what was paid" },
   { k: "netDebtBridge", label: "Net debt (equity bridge)", how: "computed", formula: "netDebt" },
   // The EA build discounted a separate NOL/tax-asset stream, mirroring the Goldman fairness
   // opinion. Carryforwards ARE tagged, so that input can be fetched rather than hunted.
