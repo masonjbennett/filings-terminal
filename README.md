@@ -1073,6 +1073,80 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     wrong: a tiny EPS is refused as ambiguous before the power-of-ten guard is reached, so the guard had to
     be tested on large figures to be tested at all.
 
+32. **A balance sheet whose legs do not close is re-drawn from the newest filing that presents it whole.**
+    `pickFact` resolves every row on its own under rule 2, so nothing makes assets, liabilities and equity
+    come from one document — and *The balance sheet's three legs* below measured that this mostly does not
+    matter: a balance sheet presents two years and the statement of equity three, so the oldest column's
+    equity routinely arrives from a filing a year newer than its assets, 1,106 of the 1,441 three-legged
+    columns on the cache are split that way, and they close as often as the rest. The material-weakness
+    frame found where it does matter: **when the newer filing is on a new basis for that date.** An opening
+    balance restated under LDTI — Allstate's FY2020 equity read **minus $298m against $30.2bn**, which is the
+    FY2023 10-K's transition adjustment tagged as the 2020-12-31 total without its adoption dimension;
+    MetLife FY2021 $50.0bn against $67.7bn; Prudential $30.0bn against $62.6bn; Chubb, Cincinnati, Jackson.
+    A restatement reaching the equity statement a year before the balance sheet (H.B. Fuller, Riot, Urban
+    One, Miller, GE 2021, Inspired's three years). A CIK carrying two registrants' histories after a de-SPAC
+    — Core Scientific's FY2020 pairs the SPAC shell's $15,000 of assets with legacy Core's $89.2m of equity;
+    SmartKem, Hycroft, Nuride and Orchestra BioMed the same, the shell's redeemable shares arriving as the
+    mezzanine leg. And two strays that are rule 30's shape on another row: a footnote figure filed
+    undimensioned under `Assets` in a later 10-Q (Fluent's $93.6m against a balance sheet's $111.9m) or a
+    segment table (Hubbell's FY2023, $7,081m of FIFO assets over LIFO liabilities and equity after a costing
+    change). Every one of them is a column that looks like a balance sheet and is two.
+
+    **The trigger is the identity, not the tags.** The obvious test — does the filing that supplied one leg
+    carry the same tag for another leg at a different value — was measured first: 16 columns on the cache,
+    every remedy closing. It was still the wrong gate, twice over. It cannot see Chubb, whose older 10-K
+    tags only the parent equity concept while the newer equity statement tags the all-in one, so the two
+    filings never state the same tag. And it fires on three columns that already close — GE FY2022,
+    Inspired FY2022, Core Scientific's LTM to June 2024 — where a restatement reached assets and equity but
+    left liabilities alone, and the remedy would have rolled a closing column back to the older basis. So
+    the rule reads: the column misses by more than 0.5% of assets (the sweep's own tolerance, so a column
+    the sweep calls closed is one the rule leaves alone); the newest periodic filing carrying assets AND
+    liabilities at that instant, in the sheet's currency, is the presentation — a filing carrying assets
+    alone is a footnote, which is what makes Fluent's 10-Q lose to its 10-K; every leg is read from that one
+    filing by each row's own tag order (`pickFact` restricted to an accession, so the fallbacks are the
+    rows' own); and if those legs close, they replace the column's. A leg the presentation does not carry is
+    blank rather than borrowed, and that never destroys a real figure: it is blanked only where the
+    presentation closes without it, so Orchestra BioMed's FY2022 drops the shell's $67.7m of redeemable
+    shares while GE's FY2021 keeps its $148m.
+
+    **It fails closed three ways, and the population reaching each is named.** A column that closes is not
+    touched whatever its filings say about each other. The newest whole presentation that cannot be read
+    stands the rule down rather than being skipped: OppFi's FY2020 balance sheet tags an LLC's
+    `MembersEquity`, which no row asks for, and behind it sits the SPAC shell's 10-Q — a whole, closing
+    balance sheet of the wrong company — which the rule must never reach. And a presentation that does not
+    close on its own stands it down too: Symbotic's FY2021 closes on its face only through $836m of
+    redeemable units tagged with class-member dimensions, so its undimensioned legs close in no filing.
+    Rule 2 gives way only to a filing that presents the statement the column claims to be, and never to an
+    older one behind it. There is no "legs from more than one filing" test, on purpose: a column whose legs
+    all came from one filing finds that filing again as the newest presentation, reads the same values and
+    stands down on the closing test — a guard that could never fire is the dead code rule 30 deleted.
+
+    `scripts/full-diff.mjs` over the cache: **14 filers moved, 49 values changed, every one a leg or a ratio
+    built on it** (ROE, book value per share, leverage, the carriers' premium and reserve leverage), 5
+    sources moved, 6 cells blank (Chubb's all-in row at 2021, the mezzanine on three shells' successors,
+    and a $1k "noncontrolling interest" that was the difference between two filings' equity figures). 17
+    columns carry the mark — 16 annual and Amrize's LTM to June 2025 — and the sweep's `bs-not-foot` goes
+    **35 → 19 on the cache and 11 → 2 on the frame**. Everything left is closing inside no filing at all:
+    Instacart, Farmland Partners, General Mills, iQSTEL, Nuride, Erasca, and OppFi and Symbotic on the
+    frame — a mezzanine the template cannot see (Next item 3). Read against the rendered statements
+    before it shipped, which the Sep 13 pass had fetched and not read: Core Scientific's FY2021 10-K is the
+    shell XPDI's, and nothing under that CIK presents legacy Core's 2020 assets, so its FY2020 balance sheet
+    is the shell's, whole; SmartKem's FY2021 10-K/A carries SmartKem Limited's 2020 balance sheet as its
+    comparative, so the rule replaces the shell's $8,441 of assets with the operating company's $2.9m;
+    Allstate's −$298m is the row "Balance, beginning of year at Dec. 31, 2020" summing two cumulative-effect
+    columns; MetLife's $50,013m is the LDTI-restated opening balance under an ordinary caption. Where no
+    filing presents a restated balance sheet whole, the column stays on the older basis and the series
+    changes basis where the filings do — MetLife's FY2021 is pre-LDTI and its FY2022 is not; Hubbell's
+    FY2023 is LIFO and its FY2024 FIFO. The rule adjusts nothing; it decides which filing's figures a
+    column shows, and says so: the five rows carry a note naming the filing and each total that moved
+    against what its own newest filing carried, every cell's tooltip names the filing it was read from and
+    what the newest filing for that line alone carries, and the workbook and the TSV carry a sentence.
+    `test/t-legs.mjs`, 108 assertions, **8 of 8 mutations caught** — re-drawing a closing column, taking the
+    newest assets-carrier without liabilities, skipping an unreadable presentation to the shell, re-drawing
+    from a presentation that does not close, preferring the oldest, leaving the mezzanine where it was, a
+    5% tolerance, and `pickFact` ignoring the accession — and the cache pins assert the exact list of 17
+    columns, so a change that widens or narrows the population changes a list rather than a count.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
@@ -2164,11 +2238,12 @@ Orchestra BioMed and iQSTEL — were each checked and all three legs come from a
 every case, so there is no basis-mixing to blame.
 
 **Except where it is, and the material-weakness frame found where (Sep 13 2026).** The correlation is
-zero in aggregate and the mechanism is real in the tail: 15 columns on the cache and 11 on that frame have
-a leg whose own filing carries a different value for another leg — Allstate's FY2020 equity of minus $298m
-against $30.2bn, MetLife's FY2021 $50.0bn against $67.7bn — because the statement of equity presents three
-years and its oldest column arrives from a filing on a new basis. See Next item 0 for the remedy that was
-measured and foots 25 of 25.
+zero in aggregate and the mechanism is real in the tail: 17 columns on the cache and 10 on that frame did
+not close because one leg arrived from a filing on a new basis for that date — Allstate's FY2020 equity of
+minus $298m against $30.2bn, MetLife's FY2021 $50.0bn against $67.7bn — the statement of equity presenting
+three years and its oldest column coming from a later filing. Rule 32 (Sep 14 2026) re-draws those columns
+from the newest filing that presents the whole balance sheet, and only those: the thousand-odd split columns that
+close are left exactly as rule 2 built them, which is what this section measured.
 
 ### The material-weakness frame: a balance sheet from two entities
 
@@ -2185,15 +2260,19 @@ The sweep over it, against the same sweep over the 180-filer cache: **185 cells 
 different value, 0 of them a power of ten, 0 where `descaled` fired** — every one is the restatement the
 frame was drawn on, rule 2 is right about all 185, and rule 17 needed no second hinge. 13 per-share steps
 that look like splits are all earnings moving (rule 31's net-income test refuses every one). 17 "unexplained"
-ratios are a leverage multiple over a negative EBITDA, which is the sweep's own gap (Next item 7). Two 20-F
+ratios are a leverage multiple over a negative EBITDA, which is the sweep's own gap (Next item 6). Two 20-F
 filers render no columns because they file under IFRS, which is correct. What was new is **`bs-not-foot` on
 11 columns**, and it is not one problem twice: Core Scientific's FY2020 puts a SPAC shell's $15,000 of
 assets beside the successor's $89.2m of equity — one CIK, two entities' statements for the same date —
-with SmartKem and Symbotic the same de-SPAC shape, and Inspired's four restated years, Jackson, Riot,
-Urban One and Hubbell are restatements landing on the equity leg a year before the other two. The class
-is the one rule 12 named for the income statement, on the balance sheet, and it reaches the mega-caps on
-the regression cache through LDTI (Next item 0). OppFi's FY2020 fails rule 28's identity by exactly its
-mezzanine line, which is the first filer seen to carry its redeemable interest inside equity (Next item 4).
+with SmartKem the same de-SPAC shape, and Inspired's three restated years, Jackson, Riot and Urban One
+restatements landing on the equity leg a year before the other two; Hubbell is a segment table's FIFO
+assets over a balance sheet's LIFO liabilities and equity, and Symbotic turned out not to be a member at
+all — its FY2021 closes on its face only through $836m of redeemable units tagged by class member. The
+class is the one rule 12 named for the income statement, on the balance sheet, and it reaches the
+mega-caps on the regression cache through LDTI (rule 32, shipped Sep 14 2026). OppFi's FY2020 misses by
+exactly its mezzanine line, and the line is the SPAC shell's $217m of redeemable shares, not OppFi's: the
+only filing presenting OppFi's own balance sheet at that date tags an LLC's `MembersEquity`, which no row
+asks for, so rule 32 stands down and the column stays open (Next item 3).
 Everything the frame measured is in the private notes' `measure/frame/` directory: the harvest, the
 screen, the sweep, the leg-conflict census with its remedy, and the R-files fetched for the five worst.
 
@@ -2370,30 +2449,11 @@ build the cache from a local session and copy it in.
 Rewritten Sep 13 2026 after a pass over the previous 0–11: items 0, 2, 3 and 11 shipped (rules 30 and 31,
 the calendar, the comps workbook), 1 is recorded in rule 15, 7 and 8 were already answered in rules 15/16
 and *The sweep's own precision*, 10 was measured and rejected in the Sep 11 audit (2.26× the bytes for two
-stale years of a structure that has usually changed). What is left is below, with what would settle each.
+stale years of a structure that has usually changed). Sep 14 2026: that list's item 0, the balance-sheet
+leg conflict, shipped as rule 32, and its item 4 was re-read against the filings and rewritten as item 3
+below. What is left is below, with what would settle each.
 
-0. **A balance sheet whose legs contradict each other's filings — the material-weakness frame's yield,
-   measured and not yet shipped.** The eighth frame (36 filers drawn from EDGAR full-text search for a
-   restatement after a material weakness, reproducible without a seed — see *The material-weakness
-   frame*) found the failure one level below its flag. `bs-not-foot` fired on 11 of its columns, and the
-   cause is that the statement of stockholders' equity presents THREE years while the balance sheet
-   presents two, so the oldest column's equity comes from a filing a year newer than its assets and
-   liabilities — and when that newer filing is on a new basis the column mixes bases. Core Scientific's
-   FY2020 pairs a SPAC shell's $15,000 of assets with the successor's $89.2m of equity; SmartKem and
-   Symbotic are the same de-SPAC shape; Inspired's four restated years and Jackson, Riot, Urban One and
-   Hubbell are restatements. **On the regression cache it is 15 columns**, and they are not small:
-   Allstate FY2020 prints equity of **minus $298m against $30.2bn** (its FY2023 10-K restated the 2020
-   opening balance under LDTI), MetLife FY2021 $50.0bn against $67.7bn, Prudential $30.0bn against $62.6bn,
-   Cincinnati, GE 2021 and 2022, H.B. Fuller, Miller, Cepton, Hycroft, Nuride, Orchestra, Fluent, Amrize.
-   The remedy was measured: wherever a leg's own filing carries a different value for another leg (by
-   more than 0.5% of assets), take all three legs from the newest filing that presents the whole balance
-   sheet. It foots **25 of the 25** columns where such a filing exists (OppFi's has none); *The balance
-   sheet's three legs* below still holds for the other 1,700 — a split is how filings are laid out — and
-   this is the population where it does not. What it needs before it ships: its suite, the full-diff
-   (exactly those 15 columns should move), and the rendered statements for the de-SPAC three, which were
-   fetched and not read. Rule 12's basis problem, arriving on the balance sheet.
-
-1. **The Sep 11 audit's three largest verified findings, none of them on this list before.** (a) Seven
+0. **The Sep 11 audit's three largest verified findings, none of them on this list before.** (a) Seven
    derivations write `x − (y || 0)`: `fcf = cfo − (capex||0)` prints cash from operations as free cash
    flow on **186 cells / 30 filers** (Verizon $37.1bn against a real $20.1bn; Dominion +$5.4bn against
    −$7.3bn), and `fccr`, `cashTaxRate`, `quickRatio`, `ebitdaSbc`, `tbvps` are the same shape — rule 25
@@ -2409,7 +2469,7 @@ stale years of a structure that has usually changed). What is left is below, wit
    above revenue for FY2019–FY2023. Rule 21's `pinByRun` on the revenue row is the obvious candidate and
    has to be measured against MetLife, whose `Revenues` rule 9 exists to keep.
 
-2. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
+1. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
    only extension concepts — fee-related earnings, distributable earnings, base management fees — with
    no consolidated counterpart, and the one standard concept on the axis that foots is a loss-contingency
    roll-forward nobody models. The tab is right to show nothing; what it could say is *why*, since the
@@ -2418,29 +2478,37 @@ stale years of a structure that has usually changed). What is left is below, wit
    2, 3 and 8 are silently off for it and nineteen other filers — the first thing to fix if segments get
    another session.
 
-3. **NextEra's co-registrant axis (measured; a rule is written and not run).** Florida Power & Light's
+2. **NextEra's co-registrant axis (measured; a rule is written and not run).** Florida Power & Light's
    rows carry `dei:LegalEntityAxis`, so the segment view reconciles $9.15bn against $27.41bn. A rule that
    admits the entity axis as a qualifier only when its member IS the segment member — the registrant is
    the segment — would bring the FPL row in and is the general answer to telling a co-registrant axis
    from a breakdown axis. It is drafted in the Sep 13 scratchpad and must be measured on the 30-filer
    segment sweep before it ships, and that sweep's instance cache is gone (621 MB, session-scoped).
 
-4. **Mezzanine equity inside a dimension, and now inside equity.** On the 180-filer cache **4 of the 136
-   filers carrying all three legs fail to close by more than 0.5%**: Instacart 5.3% (the class-of-stock
-   dimension, unreachable from companyfacts — item 9's whole argument stands), and three unexamined —
-   Nuride 81.7%, which is big enough to be a scale error, Farmland Partners 9.8%, iQSTEL 9.5%. And OppFi's
-   FY2020 fails rule 28's identity by exactly its mezzanine line, so that filer's redeemable interest is
-   already inside its equity total: the audit's proposal to pick the mezzanine candidate that CLOSES the
-   identity, and blank otherwise, has its first witness.
+3. **Mezzanine equity the template cannot see — inside a dimension, or under a concept no row asks for.**
+   Rule 32 closed every column whose legs came from filings that disagreed. What is left on the cache is
+   **19 annual columns on six filers, every one closing inside no filing at all**: Instacart's three years
+   at 3.7–5.3% (the class-of-stock dimension, unreachable from companyfacts — rule 28's argument against an
+   instance-reading path stands), Farmland Partners' eight at 9.5–24%, General Mills' three at 1.8%, iQSTEL
+   5.9% and 9.5%, Nuride's 2024 and 2025 at 67% and 82% — big enough to be a scale error — and Erasca's
+   2020 at 177%. On the frame, Symbotic's FY2021 closes on its face only through $836m of redeemable units
+   tagged with `StatementClassOfStockAxis` members, and OppFi's FY2020 balance sheet tags an LLC's
+   `MembersEquity`, which no row asks for, so the column still carries the SPAC shell's $217m of redeemable
+   shares as its mezzanine leg: the only filing that presents OppFi's balance sheet whole cannot be read,
+   and rule 32 stands down. The Sep 13 reading of OppFi as "redeemable interest inside equity" was wrong
+   — the mezzanine was the shell's. Two measurements would settle the class: how many filers tag
+   `MembersEquity` or `PartnersCapital` at a balance-sheet date with no stockholders' equity concept
+   beside it (the Up-C and LLC population, which a fifth equity spelling would reach), and whether a
+   dimensioned temporary-equity total ever reappears undimensioned in a later filing.
 
-5. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
+4. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
    Chevron, Equinix, Alphabet, Iridium (closed by rule 16), Kenvue (right by accident), Morgan Stanley,
    Tronox (rule 15's own boundary, now named) and Tulip. Alphabet's is the one column the audit measured
    as a real double count (7.4%, FY2020). A third witness is available and unmeasured: where a filer tags
    both an unambiguous `…IncludingCurrentMaturities` concept and the ambiguous total at the same date,
    the identity between them settles the scope — how many filers, and does it ever contradict a verdict.
 
-6. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
+5. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
    reports, restatements, Chapter 11, spin-offs, material-weakness restatements — and the last of them
    paid off in a class no earlier frame could reach. Two things the frames have not varied: the
    **statement of cash flows** (nothing has been drawn on how a filer tags its cash flow, and rule 25's
@@ -2449,7 +2517,7 @@ stale years of a structure that has usually changed). What is left is below, wit
    restatement frame would want. The trick that found rule 20 is still available too: read something
    carried alongside every value that nothing has inspected — `frame`, or the `fy`/`fp` pair.
 
-7. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
+6. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
    twenty-three on the cache are all a leverage ratio over a NEGATIVE EBITDA, which is arithmetic rather
    than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
    the residual count means less than it should.
