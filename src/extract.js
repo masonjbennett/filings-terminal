@@ -806,9 +806,21 @@ const moved = (a, b) => a != null && b != null && Math.abs(a - b) / Math.max(Mat
 // filing also restated the year before it. Checked against that accession specifically, not against
 // "was it ever restated". No evidence either way fails closed — this fires for 2 of 89 filers swept,
 // so a blank here is rare enough to be worth its certainty.
+// Rule 37 (the second door). The test above asks whether the annual leg's OWN filing restated the year
+// before it — the right question when that filing is the 10-K that straddled the re-presentation, and
+// the wrong one when rule 2 has taken the annual leg from a LATER 10-K: a report filed after the
+// re-presentation is on the re-presented basis by construction (a discontinued operation or a spin is
+// recast in every period the later report presents), and a 10-K two years on carries no comparative
+// for the year before the window at all, so the old test found nothing and refused. 442 LTM cells on
+// the cache were refused this way, and 361 of them have the annual leg filed after the prior leg's
+// newest re-presentation — GE's FY2023 from its FY2025 10-K, on the post-Vernova basis with both interim
+// legs; AIG, MetLife, Prudential, J&J, 3M, Intel the same shape. So: an annual leg filed after the prior
+// leg's newest version agrees with it. The 81 whose annual leg predates the re-presentation stay refused,
+// which is the divestiture-in-progress case the guard exists for.
 function basisAgrees(facts, tag, win, fy) {
   const pri = history(facts, tag, win.prior.end, win.days - 8, win.days + 8);
   if (pri.length < 2 || !moved(pri[0].val, pri[pri.length - 1].val)) return true;   // nothing re-presented
+  if ((fy.filed || "") >= (pri[pri.length - 1].filed || "")) return true;           // the annual leg post-dates (or IS) the re-presentation
   if (!win.prevFy) return false;
   const prev = history(facts, tag, win.prevFy.end, ANNUAL_MIN, ANNUAL_MAX);
   const inFy = prev.filter(f => f.accn === fy.accn).pop();
