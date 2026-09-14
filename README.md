@@ -1023,6 +1023,56 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     total moving, because its all-in tag already carried the sum. **0 values changed** anywhere else.
     `test/t-debt.mjs`, 22 assertions, 4 of 4 mutations caught.
 
+31. **A stock split restates only the years the newest filing reaches, and the engine carries the
+    filer's own factor back over the rest.** `epsBasic`, `epsDil`, `dps` and the two share counts are
+    fetched per period, and rule 2 takes each period from the newest filing carrying it. A 10-K restates
+    two prior years as comparatives, so after a split the recent years are on the new share basis and the
+    older ones keep the pre-split figures from their own filings. Every cell is correct and the SERIES is
+    a fabrication: NVIDIA read **6.63 | 1.13 | 1.73 | 3.85 | 0.17 | 1.19 | 2.94 | 4.90**, with EPS growth
+    of −83% and −96% at its two split boundaries; Alphabet 49.16 → 2.93; Tesla −0.98 → 0.21; and Netflix's
+    LTM diluted EPS printed **minus 6.80** for a company that has never lost money, because its three legs
+    sat on two bases. An eight-year sheet on any of NVDA, AMZN, GOOGL, TSLA or AAPL spans a split.
+
+    **The split is in the payload.** companyfacts carries every period as filed by every filing, and a
+    split is the one restatement that moves EPS and the share count by the same ratio in opposite
+    directions and leaves net income where it was — so where two filings state one period on two bases,
+    the ratio between them is the split factor, with no calendar and no outside source. Measured over the
+    **830 double-filed per-share and count observations across the 180 cached filers**, the evidence is
+    asked for three ways: a share-count witness within 0.5% of a whole number, 3-for-2 or 5-for-4 (real
+    splits sit within 0.46%; the nearest refused record is 0.86% off and is not a split), a per-share
+    witness carrying the SET of ratios its two-decimal rounding admits (a $0.05 EPS that became $0.45 is
+    ×9 to the digit and ×10 within rounding, and the count decides), **net income unchanged** for the
+    period between the two filings, and a new basis that persists in every later filing and is not a
+    return to an earlier one's value. Alphabet, whose counts are filed per class and so absent from
+    companyfacts, is accepted on two per-share rows over two periods where the counts are silent and the
+    ratio is not a power of ten — Brown & Brown files a quarter's EPS at the wrong decimal, ×100, with no
+    count moving. Every one-witness 4/3, 6/5, 9/8, 11/10 and 7/2 in the census (General Mills, AMD,
+    Verizon, GE, Bank of America, Microsoft, Caterpillar, Allstate, AIG, Interactive Brokers, Conoco, UPS,
+    Morgan Stanley) is a restatement and is refused by the net-income test before the ratio is even
+    considered. **33 filers and 47 events** on the cache, each checked against the filer's own history;
+    Tulip's real 1-for-7 is the one it declines, because Tulip restated the same years afterwards and the
+    new basis does not persist — declining is the honest answer there.
+
+    **The carry-back is applied to the FACTS, once, before anything reads them.** A per-share fact filed
+    before the first post-split filing is divided by the factor and a count multiplied, cumulative across
+    events — NVIDIA's FY2019 is ÷40 — so annual columns, LTM legs and comps all inherit one basis, and
+    the rule-12 machinery in the stitch sees agreeing legs rather than a re-presentation. It is rule 2's
+    own principle, the figure the company stands behind today, reaching the years the newest filing does
+    not. The cell keeps its tag, accession and filing date, so the link opens the filing that shows the
+    figure as reported, and gains a status, the filed value and the factor; the cell carries a marker
+    (`÷40`), the row a note naming the splits and the filing that first carried each, the legend a line,
+    the workbook and the TSV a sentence. The header's promise that every figure is the value the company
+    filed is kept by saying, wherever this fires, that this one is that value on another share basis.
+
+    `scripts/full-diff.mjs` over the cache: **21 filers moved, 334 values changed, all on the five rows
+    and EPS growth**; 46 LTM cells that were refused as mixed-basis now stitch, 4 on two filers become
+    honest refusals, and no other row moved. Tesla's FY2018 lands at −0.38, which is −1.14 ÷ 3 rather than
+    −5.72 ÷ 15: its newest filing already showed the post-5-for-1 figure, rounded, so only the 3-for-1 is
+    carried back — the rule adjusts what the filing shows, never a figure it reconstructs. `test/t-splits.mjs`,
+    46 assertions, **5 of 5 mutations caught** — the fifth survived its first fixture, and the fixture was
+    wrong: a tiny EPS is refused as ambiguous before the power-of-ten guard is reached, so the guard had to
+    be tested on large figures to be tested at all.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
@@ -2113,6 +2163,40 @@ inside a dimension, or did not tag at all. The four the Chapter 11 frame flags �
 Orchestra BioMed and iQSTEL — were each checked and all three legs come from a single accession in
 every case, so there is no basis-mixing to blame.
 
+**Except where it is, and the material-weakness frame found where (Sep 13 2026).** The correlation is
+zero in aggregate and the mechanism is real in the tail: 15 columns on the cache and 11 on that frame have
+a leg whose own filing carries a different value for another leg — Allstate's FY2020 equity of minus $298m
+against $30.2bn, MetLife's FY2021 $50.0bn against $67.7bn — because the statement of equity presents three
+years and its oldest column arrives from a filing on a new basis. See Next item 0 for the remedy that was
+measured and foots 25 of 25.
+
+### The material-weakness frame: a balance sheet from two entities
+
+The eighth frame, drawn Sep 13 2026 from EDGAR's full-text search rather than from `form.idx`, which cannot
+see it: every primary document 2022–2026 matching *"material weakness"* with *"restatement of previously
+issued"* or *"restated" "previously issued financial statements"*, across 10-K, 10-K/A, 20-F, 20-F/A and the
+transition forms — 689 10-Ks and 646 10-K/As on the two queries, fully paged. Joined to `tickers.json` on
+CIK (rule 10), screened to a listed filer, not a SPAC, with an annual report since 2024: 301 → 248. Then the
+first 24 by `tickers.json` row and a fixed stride of 18 through the rest, **36 filers across 26 industries**,
+reproducible without a seed, 31 MB of fixtures built through the shipping `api/facts.js`. The evidencing
+filing for each is recorded beside it, 18 of them an amendment.
+
+The sweep over it, against the same sweep over the 180-filer cache: **185 cells won by an amendment with a
+different value, 0 of them a power of ten, 0 where `descaled` fired** — every one is the restatement the
+frame was drawn on, rule 2 is right about all 185, and rule 17 needed no second hinge. 13 per-share steps
+that look like splits are all earnings moving (rule 31's net-income test refuses every one). 17 "unexplained"
+ratios are a leverage multiple over a negative EBITDA, which is the sweep's own gap (Next item 7). Two 20-F
+filers render no columns because they file under IFRS, which is correct. What was new is **`bs-not-foot` on
+11 columns**, and it is not one problem twice: Core Scientific's FY2020 puts a SPAC shell's $15,000 of
+assets beside the successor's $89.2m of equity — one CIK, two entities' statements for the same date —
+with SmartKem and Symbotic the same de-SPAC shape, and Inspired's four restated years, Jackson, Riot,
+Urban One and Hubbell are restatements landing on the equity leg a year before the other two. The class
+is the one rule 12 named for the income statement, on the balance sheet, and it reaches the mega-caps on
+the regression cache through LDTI (Next item 0). OppFi's FY2020 fails rule 28's identity by exactly its
+mezzanine line, which is the first filer seen to carry its redeemable interest inside equity (Next item 4).
+Everything the frame measured is in the private notes' `measure/frame/` directory: the harvest, the
+screen, the sweep, the leg-conflict census with its remedy, and the R-files fetched for the five worst.
+
 ### Bottom-up EBIT: tested against 422 filer-years, and rejected
 
 The obvious repair is to build EBIT as **pre-tax + interest expense − interest income**, which is what
@@ -2283,119 +2367,92 @@ build the cache from a local session and copy it in.
 
 ## Next
 
-0. **A stock split fabricates an EPS collapse, and there is no split handling anywhere in the engine.**
-   Demonstrated rather than measured — it needs no filer to confirm, only the mechanism. `epsBasic`,
-   `epsDil` and `dps` are `how: "fetched"` per period, and rule 2 takes the value from the NEWEST
-   filing carrying that period. A 10-K carries three years of comparatives, so the years inside a
-   recent filing's window get the filer's SPLIT-RESTATED figures while older years keep the
-   pre-split figures from their own filings. Every column is individually correct — the filer really
-   did report each one — and the SERIES is a fabrication. On a fixture with a 10-for-1 split three
-   years into an eight-year sheet, EPS reads 19 → 2.4 at the boundary and **`epsGrowth` prints
-   −87.4% for a year in which earnings per share actually grew 26%.** The population is the opposite
-   of obscure: NVDA (10:1, 2024), AMZN and GOOGL (20:1, 2022), TSLA (3:1 2022, 5:1 2020), AAPL (4:1,
-   2020) — an eight-year sheet on any of them spans a split.
-   **The data to fix it is already in the payload.** companyfacts carries every reported fact
-   including the same period filed more than once, so where two filings state one period's EPS at a
-   clean ratio, that ratio IS the split factor and can be carried back over the earlier years. That
-   makes it a rule rather than a lookup — no split calendar, no outside source. It wants measuring
-   across the fixture cache before it ships, which is why it is here and not done: the risk is
-   mistaking a restatement for a split.
+Rewritten Sep 13 2026 after a pass over the previous 0–11: items 0, 2, 3 and 11 shipped (rules 30 and 31,
+the calendar, the comps workbook), 1 is recorded in rule 15, 7 and 8 were already answered in rules 15/16
+and *The sweep's own precision*, 10 was measured and rejected in the Sep 11 audit (2.26× the bytes for two
+stale years of a structure that has usually changed). What is left is below, with what would settle each.
 
-1. **Tronox's $39m double count, the one thing rule 15 and rule 16 between them still cannot reach.**
-   Its long-term tag carries FINANCE LEASES as well, so `T` equals neither Noncurrent nor
-   Noncurrent + Current and no identity closes; its lease residual is untagged, so there is no second
-   witness. A per-filer test needs a witness and this filer supplies none — which may mean the answer
-   is the XBRL instance rather than another tag.
-2. **AMT's FY2019 total debt reads $1.9m against a filed $24,055m — UNVERIFIED, and on its face the
-   most severe thing on this list.** An agent finding from the Sep 10 audit whose verifier never ran.
-   If it is real it is not a display bug: `totalDebt` feeds `netDebt`, the EV bridge, `netLev`,
-   `grossLev`, `debtCap` and `debtEquity`, so a filer reading four orders of magnitude light would
-   print an enterprise value, a leverage ratio and a credit profile that all look ordinary and are
-   all wrong — the Capital One and Equinix shape, which rules 15, 16 and the `corpDebt` guard were
-   each written for. What it needs is the narrow thing: fetch AMT, read which tag `totalDebt`
-   actually resolved for FY2019 and what its own balance sheet says. Then either it joins the rules
-   or it is struck from this list as an agent claim that did not survive contact.
-3. **The comps set can hold two currencies and only says so per column.** Rule 20 made a single sheet
-   honest and marked the comps columns, which is right as far as it goes — the ratio and multiple rows
-   are dimensionless and compare fine, and the median is taken only over those. But **Revenue, EBITDA
-   and Net income are absolute**, and ASML's €32.67bn sits in the same row as a US filer's dollars with
-   only a small note under each ticker to separate them. The single sheet solves this by having one
-   currency; a set cannot. Worth deciding whether those three rows should be marked per CELL the way
-   the near-cancelled-equity ones are, or whether a mixed-currency set should refuse the absolute rows
-   altogether and keep the multiples. Measured cost: only 10 of 426 filers report in anything but USD,
-   so a mixed set is rare — but it is exactly the set someone builds to compare ASML with Applied
-   Materials, which is a real comp.
-4. **Blackstone's segments, which are a question about what the tab is for.** It reports on measures
-   with no consolidated counterpart — fee-related earnings, segment distributable earnings — so the
-   gate has nothing to reconcile against and shows nothing. Three of its concepts do foot. Whether a
-   table can be shown for the concepts that reconcile while saying the rest cannot is a design
-   question, not a bug; the risk is that a partial table reads as the whole segment footnote.
-5. **NextEra's co-registrant axis.** Its combined 10-K carries Florida Power & Light's own statements
-   under `LegalEntityAxis`, which is not a breakdown of the parent, so most of its segment rows are
-   correctly excluded and its table comes to $8.76bn of a $27.41bn company. Telling a co-registrant
-   axis from a breakdown axis is the general question behind it.
-6. **The next sampling frame.** Six are swept now — mega, small/mid, foreign issuers, transition
-   reports, restatements, Chapter 11 — and the last four all paid off by varying something STRUCTURAL
-   rather than size. Chapter 11 was the named candidate and is done; rules 18 and 19 came out of it.
-   No obvious structural axis is left unswept, which is itself worth noticing: the next one probably
-   has to be drawn from a mechanism rather than a form. The two that look most promising are filers
-   that **restated after a material weakness** — a population EDGAR's full-text search can find and
-   `form.idx` cannot — and **spin-offs**, whose first years are carve-out financials for a company
-   that did not exist as filed. Worth knowing that the frames are no longer the only way in: rule 20
-   came out of reading the UNITS across the filers already cached, and nothing had ever looked at
-   them. The same trick is available for anything else carried alongside a value and never inspected.
-7. **The four filers rule 15 cannot decide, checked against their filings — two are right and two are
-   overstated by 1.2% and 0.2%.** Worth knowing which, because "undecidable" is not the same as
-   "probably fine", and the two failures share a cause the rule cannot see past.
-   - **Exxon is correct.** Its tag is `LongTermDebtAndCapitalLeaseObligations`, whose taxonomy
-     definition is *"classified as noncurrent"*, and its balance sheet agrees: long-term debt 34,241
-     against notes and loans payable 9,296, total 43,537 against the 43,500 shown — 0.09% out.
-   - **Kenvue is correct, by accident.** Its balance sheet reads 1,453 + 7,071 = 8,524 and the sheet
-     shows exactly that, but through `DebtLongtermAndShorttermCombinedAmount` rather than the sum: its
-     long-term tag really does include the current maturities (7,821 = 7,071 + 750), so the three-way
-     sum would read 9,271. The same accident that rescues Verizon.
-   - **Tronox is overstated by $39m (1.2%)** and shows why the rule missed it: its tag carries
-     FINANCE LEASES as well, so `T` equals neither Noncurrent nor Noncurrent + Current. In its one
-     evidence year T is 2.94bn against a 2.89bn non-current balance and 16m of current maturities —
-     a 50m gap where the current portion is 16m, so no identity closes and the rule correctly declines
-     to guess. There is no clean second witness for it: the lease residual is untagged.
-   - **Iridium is overstated by $3m (0.2%)**, and by a different mechanism entirely — it tags
-     `ShortTermBorrowings` and `LongTermDebtCurrent` at the SAME $3m, so the sum counts one figure
-     twice regardless of what its long-term tag means. **Closed by rule 16**, which turned out to be a
-     class of seven filers rather than one, and which corrects UPS by $3.42bn as well.
-8. **`t-corp`'s `out-of-range` bucket could now tell itself apart.** The engine knows which of those
-   ratios are near-cancelled-equity cases and which are unexplained; the sweep still reports both the
-   same way. Splitting them would leave the finding count meaning "things nobody has accounted for",
-   which is what a sweep is for — deliberately not done here, because the counts are a tracked baseline
-   and moving them in the same session as an engine change would blur what caused what.
-9. **Mezzanine equity tagged inside a class-of-stock dimension** is invisible to companyfacts, which
-   is why Instacart's balance sheet is $195m out. Reaching it means reading the XBRL instance for
-   balance-sheet facts, which `api/segments.js` already does for breakdowns — a real option, and a
-   much larger one than it looks. Watch the Hobby function cap: `api/` is at 12 on the main site and
-   this project has room, but a second instance-reading route is a route.
+0. **A balance sheet whose legs contradict each other's filings — the material-weakness frame's yield,
+   measured and not yet shipped.** The eighth frame (36 filers drawn from EDGAR full-text search for a
+   restatement after a material weakness, reproducible without a seed — see *The material-weakness
+   frame*) found the failure one level below its flag. `bs-not-foot` fired on 11 of its columns, and the
+   cause is that the statement of stockholders' equity presents THREE years while the balance sheet
+   presents two, so the oldest column's equity comes from a filing a year newer than its assets and
+   liabilities — and when that newer filing is on a new basis the column mixes bases. Core Scientific's
+   FY2020 pairs a SPAC shell's $15,000 of assets with the successor's $89.2m of equity; SmartKem and
+   Symbotic are the same de-SPAC shape; Inspired's four restated years and Jackson, Riot, Urban One and
+   Hubbell are restatements. **On the regression cache it is 15 columns**, and they are not small:
+   Allstate FY2020 prints equity of **minus $298m against $30.2bn** (its FY2023 10-K restated the 2020
+   opening balance under LDTI), MetLife FY2021 $50.0bn against $67.7bn, Prudential $30.0bn against $62.6bn,
+   Cincinnati, GE 2021 and 2022, H.B. Fuller, Miller, Cepton, Hycroft, Nuride, Orchestra, Fluent, Amrize.
+   The remedy was measured: wherever a leg's own filing carries a different value for another leg (by
+   more than 0.5% of assets), take all three legs from the newest filing that presents the whole balance
+   sheet. It foots **25 of the 25** columns where such a filing exists (OppFi's has none); *The balance
+   sheet's three legs* below still holds for the other 1,700 — a split is how filings are laid out — and
+   this is the population where it does not. What it needs before it ships: its suite, the full-diff
+   (exactly those 15 columns should move), and the rendered statements for the de-SPAC three, which were
+   fetched and not read. Rule 12's basis problem, arriving on the balance sheet.
 
-   **What it would buy is now measured, and the number argues against doing it on its own.** After the
-   AMTD repair, **1 of the 235 filers across the three frames fails to close its balance sheet** —
-   Instacart, by 5.3%; every other gap either closed or sits inside 3%. So the whole new data path buys
-   one filer today, against fetching a 1.4–17MB instance on every lookup rather than only when the
-   Segments tab is opened. It is a **coverage** decision rather than a correctness one: the class is
-   "any balance-sheet fact a filer tags only inside a dimension", the sweeps have found exactly one
-   instance of it, and the row already reads as empty rather than guessing. Worth doing when something
-   else needs the instance at load time anyway.
-10. **Segment coverage beyond the newest 10-K.** Scope is three years by construction; a reader
-   comparing a segment to the eight-year sheet above it cannot. Reaching further means more instances
-   and a structure that has usually been reorganised, which is why it was not done — but the tab now
-   carries enough filers that the question is worth re-asking.
-11. **A 53-week year flips the sign of revenue growth on four mega-caps — UNVERIFIED.** The other
-   finding the Sep 10/11 audits left without a verifier. A 52/53-week filer runs 371 days in the long
-   year, and the calendar rules (`annualPeriods`, the overlap rule, `gapBefore`) were written for
-   fiscal-year CHANGES rather than for the extra week, so the claim is that a 53-week column compared
-   against a 52-week one inverts the growth rate rather than merely inflating it by ~2%. Note this
-   engine already knows about the shape — the period-length section counts 370-day years explicitly,
-   and the transition-report frame covers year-end changes — so the question is narrow: does the
-   extra week reach `crossColumn`, and on which filers. Worth pairing with item 0: both are about a
-   SERIES being wrong while every column in it is right, which is the class this engine is least
-   instrumented for.
+1. **The Sep 11 audit's three largest verified findings, none of them on this list before.** (a) Seven
+   derivations write `x − (y || 0)`: `fcf = cfo − (capex||0)` prints cash from operations as free cash
+   flow on **186 cells / 30 filers** (Verizon $37.1bn against a real $20.1bn; Dominion +$5.4bn against
+   −$7.3bn), and `fccr`, `cashTaxRate`, `quickRatio`, `ebitdaSbc`, `tbvps` are the same shape — rule 25
+   fixed exactly this for `chgNwc` and left `(v.capex || 0)` three characters away. Rule 27 deliberately
+   KEPT the FCF family for carriers, REITs and health plans, so it wants a per-industry waiver, not a
+   blanket blank, and `ebitda = ebit + (da||0)` is a recorded decision that must not be swept up with it.
+   (b) The D&A row resolves `us-gaap:Depreciation` alone on 188 cells while the filer tags amortisation
+   separately on 135 of them: AbbVie's EBITDA reads **31.8% low**, AMD's 35.3%. Rule 22's protocol first —
+   does `Depreciation + AmortizationOfIntangibleAssets` equal the filer's own total where all three are
+   tagged — because the counter-population (amortisation as a footnote disclosure, other amortisation
+   concepts) is named and unmeasured. (c) **General Mills' revenue row is 10× too small on six of eight
+   columns**: `Revenues` carries $2.0bn beside the 606 tag's $19.9bn, and the sweep sees it as EBITDA
+   above revenue for FY2019–FY2023. Rule 21's `pinByRun` on the revenue row is the obvious candidate and
+   has to be measured against MetLife, whose `Revenues` rule 9 exists to keep.
+
+2. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
+   only extension concepts — fee-related earnings, distributable earnings, base management fees — with
+   no consolidated counterpart, and the one standard concept on the axis that foots is a loss-contingency
+   roll-forward nobody models. The tab is right to show nothing; what it could say is *why*, since the
+   diagnostic distinguishes "no consolidated figure to reconcile against" from "did not reconcile". And
+   its definition and label linkbases live inside the `.xsd`, which the handler never fetches, so rules
+   2, 3 and 8 are silently off for it and nineteen other filers — the first thing to fix if segments get
+   another session.
+
+3. **NextEra's co-registrant axis (measured; a rule is written and not run).** Florida Power & Light's
+   rows carry `dei:LegalEntityAxis`, so the segment view reconciles $9.15bn against $27.41bn. A rule that
+   admits the entity axis as a qualifier only when its member IS the segment member — the registrant is
+   the segment — would bring the FPL row in and is the general answer to telling a co-registrant axis
+   from a breakdown axis. It is drafted in the Sep 13 scratchpad and must be measured on the 30-filer
+   segment sweep before it ships, and that sweep's instance cache is gone (621 MB, session-scoped).
+
+4. **Mezzanine equity inside a dimension, and now inside equity.** On the 180-filer cache **4 of the 136
+   filers carrying all three legs fail to close by more than 0.5%**: Instacart 5.3% (the class-of-stock
+   dimension, unreachable from companyfacts — item 9's whole argument stands), and three unexamined —
+   Nuride 81.7%, which is big enough to be a scale error, Farmland Partners 9.8%, iQSTEL 9.5%. And OppFi's
+   FY2020 fails rule 28's identity by exactly its mezzanine line, so that filer's redeemable interest is
+   already inside its equity total: the audit's proposal to pick the mezzanine candidate that CLOSES the
+   identity, and blank otherwise, has its first witness.
+
+5. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
+   Chevron, Equinix, Alphabet, Iridium (closed by rule 16), Kenvue (right by accident), Morgan Stanley,
+   Tronox (rule 15's own boundary, now named) and Tulip. Alphabet's is the one column the audit measured
+   as a real double count (7.4%, FY2020). A third witness is available and unmeasured: where a filer tags
+   both an unambiguous `…IncludingCurrentMaturities` concept and the ambiguous total at the same date,
+   the identity between them settles the scope — how many filers, and does it ever contradict a verdict.
+
+6. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
+   reports, restatements, Chapter 11, spin-offs, material-weakness restatements — and the last of them
+   paid off in a class no earlier frame could reach. Two things the frames have not varied: the
+   **statement of cash flows** (nothing has been drawn on how a filer tags its cash flow, and rule 25's
+   census of 159 working-capital tags suggests it is the least standardised statement), and **filers
+   that changed auditor**, which EDGAR's full-text search can find and which is the other population a
+   restatement frame would want. The trick that found rule 20 is still available too: read something
+   carried alongside every value that nothing has inspected — `frame`, or the `fy`/`fp` pair.
+
+7. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
+   twenty-three on the cache are all a leverage ratio over a NEGATIVE EBITDA, which is arithmetic rather
+   than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
+   the residual count means less than it should.
 
 
 ## A note on how this got built
@@ -2562,3 +2619,13 @@ with eight at 1500px — and it is a weaker case than the sheet's, worth stating
 and never auto-scrolls, so it opens with nothing hidden and a reader reaches the bad state only by
 scrolling there. But the rows it truncates are Revenue, EBITDA and Net income, where a fragment reads
 as a smaller company.
+
+The Sep 13 pass added two more, both about the process rather than a number. Six measuring agents and a
+critic burned 1.4M tokens in fourteen minutes and were all killed by a usage limit with nothing returned —
+and the pass survived because every one had written its census, its scripts and its half-finished
+findings to disk as it went, so the whole of it was rebuilt from those files rather than re-run. A
+finding that exists only in a transcript is the scratchpad problem in a new coat. And rule 30 shipped
+with one floor fewer than it was written with: a second guard inside the all-in helper survived its own
+mutation, because the rows feeding it had just gained their own floor and nothing could reach it any more.
+The mutation run is the only reason that was noticed, and "a guard nothing can exercise is dead code" is
+now the rule for the next one.
