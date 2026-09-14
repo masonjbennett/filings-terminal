@@ -748,7 +748,11 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
 {
   const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10 }, period: { end: "2024-12-31" },
     meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } },
-      epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] } } };
+      epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] },
+      // Rule 32's probe: Allstate's FY2020, the legs read from the 10-K filed 2022-02-18 and the equity
+      // leg displacing the −$298m the 10-K filed 2024-02-21 carried.
+      totalAssets: { value: 125987e6, aligned: { form: "10-K", filed: "2022-02-18", accn: "a" } },
+      equityAll: { value: 30217e6, aligned: { form: "10-K", filed: "2022-02-18", accn: "a" }, displaced: { value: -298e6, form: "10-K", filed: "2024-02-21", accn: "b", tag: "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest" } } } };
   let fns = 0;
   for (const r of rows) if (r.line.flagNote) for (const [k, text] of Object.entries(r.line.flagNote)) {
     if (typeof text !== "function") { ok(typeof text === "string" && text.length > 0, `\`${r.id}\`'s flagNote for ${k} is a non-empty string or a function`); continue; }
@@ -761,12 +765,13 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     if (k === "equityThin") ok(out.includes("0.32%"), `and the percentage is computed from the column it was handed (expected 0.32% from the probe) — ${r.id}/${k}`);
     else if (k === "ltDebtRejected") ok(/1\.9m/.test(out) && /LongTermDebt\b/.test(out) && /2\.93bn/.test(out), `and it names the figure it set aside, the tag it came from and the current portion it fell below — ${r.id}/${k}: ${out.slice(0, 90)}`);
     else if (k === "splitAdjusted") ok(/4-for-1 split first reported 2021-08-20/.test(out) && /10-for-1 split first reported 2024-08-28/.test(out) && /÷40/.test(out) && /6\.63/.test(out), `and it names both splits, the factor and the figure as filed — ${r.id}/${k}: ${out.slice(0, 90)}`);
+    else if (k === "bsAligned") ok(/read from the 10-K filed 2022-02-18/.test(out) && /total equity incl\. NCI −298\.0m in the 10-K filed 2024-02-21 against 30\.22bn here/.test(out) && /2024-12-31/.test(out) && !/total assets/.test(out), `and it names the filing the legs were read from, the leg that moved with the figure its own newest filing carried, and the date — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 8, `all eight function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 13, `all thirteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

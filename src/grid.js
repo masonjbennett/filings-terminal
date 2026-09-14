@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, BS_LEGS, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -69,7 +69,7 @@ export function hasAnnualPeriods(d) {
 // the same column. `get` is the only thing that differs between a fiscal year and a trailing twelve
 // months — everything after it, the derivations and the industry blanking, has to be identical or
 // the LTM column would be a second engine with its own bugs.
-function fillCol(facts, sections, industry, get, scopeOf, pinned) {
+function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   const v = {}, meta = {};
   for (const sec of sections) for (const line of sec.lines) {
     if (line.how !== "fetched" || !line.tags) continue;
@@ -100,6 +100,13 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned) {
     }
     v[line.k] = got.value; meta[line.k] = got;
   }
+  // Rule 32. The five balance-sheet legs were each fetched from their own newest filing above; if
+  // they do not close and the newest filing presenting the whole balance sheet does, every leg is
+  // re-read from that one filing. Before the flags and derivations, because `equityThin`,
+  // `equityIsParent`, ROE, leverage and the EV bridge all read the legs. `bsAligned` is the column
+  // flag the five rows' note keys off; the cells carry which filing they came from and what they displaced.
+  const aligned = align ? align(v, meta) : null;
+  v.bsAligned = !!aligned;
   // Which long-term debt tag this column actually resolved decides whether the current portion is
   // already inside it — see `debtScope`. Not a displayed line: it is a fact about the tag, so it goes
   // in `v` where the debt derivation can read it and nowhere else. Per column, because a filer can
@@ -322,6 +329,11 @@ export function buildGrid(data, quote, limit = 8) {
     pinned[line.k] = order || tagsByRun(facts, line.tags, calEnds);
   }
 
+  // Rule 32 reads the five leg rows by their own tag lists, so a tag added to a row reaches the
+  // re-draw without a second list to keep in step.
+  const legLines = Object.fromEntries(BS_LEGS.map(k => [k, lineByKey[k]]));
+  const alignAt = end => (v, meta) => alignBalanceSheet(facts, v, meta, legLines, end, ccy);
+
   // The filer's own newest periodic report, which is what a cover-page figure is measured as stale
   // against. Taken from the filing list the payload already carries rather than from a clock, so the
   // answer is deterministic: a cached payload builds the same sheet tomorrow as it does today, and a
@@ -332,7 +344,7 @@ export function buildGrid(data, quote, limit = 8) {
 
   const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
     line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickFact(facts, [t], p, { ccy }), p.end)
-    : line.latest ? latestFact(facts, line.tags, latestOpts(line)) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned) }));
+    : line.latest ? latestFact(facts, line.tags, latestOpts(line)) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned, alignAt(p.end)) }));
   crossColumn(cols);
   applyQuote(cols[cols.length - 1], industry, quote, ccy);
 
@@ -351,7 +363,7 @@ export function buildGrid(data, quote, limit = 8) {
       line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickLtm(facts, [t], w, ccy), w.end)
       : line.latest ? latestFact(facts, line.tags, latestOpts(line))
       : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy, preferNonZero: line.preferNonZero })
-      : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned),
+      : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned, alignAt(w.end)),
   }));
   crossColumn(ltmCols);
   applyQuote(ltmCols[ltmCols.length - 1], industry, quote, ccy);

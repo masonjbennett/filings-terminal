@@ -140,6 +140,10 @@ export function pickFact(facts, tags, period, opts = {}) {
       // a year it does not — the note would be a worse lie than the blank it replaces.
       if (wantDuration !== isDuration(f)) return false;
       if (f.end !== period.end) return false;
+      // Rule 32 reads a row INSIDE one filing — the same tag order, the same period and currency
+      // tests, restricted to one accession — so a balance sheet can be re-drawn from a single
+      // presentation with the row's own fallbacks intact.
+      if (opts.accn && f.accn !== opts.accn) return false;
       if (wantDuration) { const d = days(f.start, f.end); if (d < minD || d > maxD) return false; }
       if (opts.ccy) {
         const c = currencyOf(f.unit);
@@ -980,6 +984,98 @@ const allIn = (total, v) => (total != null && (v.ltDebt == null || total >= v.lt
 // resolved long-term figure below the current portion, and only American Tower's is an inclusive
 // concept. Everything else is left exactly as filed.
 export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]);
+
+// ── Rule 32: a balance sheet whose legs do not close is re-drawn from ONE filing ─────────────────
+// `pickFact` resolves every row on its own under rule 2, so nothing makes assets, liabilities and
+// equity come from the same document — and mostly it does not matter (README, *The balance sheet's
+// three legs*): a balance sheet presents two years while the statement of equity presents three, so
+// the oldest column's equity routinely arrives from a filing a year newer than its assets, and
+// 1,106 of the 1,441 three-legged columns on the cache are split this way and close just as often as
+// the rest. The mechanism only bites when the newer filing is on a NEW BASIS for that date: an
+// opening balance restated under LDTI (Allstate's FY2020 equity read **minus $298m against
+// $30.2bn**; MetLife FY2021 $50.0bn against $67.7bn; Prudential $30.0bn against $62.6bn; Chubb,
+// Cincinnati, Jackson), a restatement that reached the equity statement before the balance sheet
+// (H.B. Fuller, Riot, Urban One, Inspired's four years, GE 2021), or a CIK that carries two
+// registrants' histories after a de-SPAC — Core Scientific's FY2020 pairs the SPAC shell's $15,000
+// of assets with legacy Core's $89.2m of equity, and Hycroft, Nuride, Orchestra BioMed and OppFi are
+// the same shape with the shell's redeemable shares arriving as the mezzanine leg. Two more are a
+// stray: a FOOTNOTE figure filed undimensioned under `Assets` in a later 10-Q (Fluent) or 10-K
+// (Hubbell), which rule 2 hands the row exactly as it handed American Tower's debt (rule 30).
+//
+// The trigger is the identity, not the tags. A same-tag witness — "does the filing that supplied one
+// leg carry another leg at a different value?" — was measured first and finds 16 columns on the
+// cache, but it cannot see Chubb (whose older 10-K tags only the parent concept while the newer
+// equity statement tags the all-in one) and it would fire on three columns that already close,
+// rolling GE's FY2022 and Inspired's FY2022 back from a restatement that reached assets and equity
+// but left liabilities alone. So: the column does not close within 0.5% of assets, its legs come
+// from more than one filing, and the NEWEST filing that presents the whole balance sheet at that
+// instant — assets AND liabilities, in the sheet's currency — closes on its own. Then every leg is
+// read from that one filing, by each row's own tag order, and a leg it does not carry (GE's
+// mezzanine, which the restated presentation reclassified) is blank rather than borrowed.
+//
+// It fails CLOSED three ways, and the population that reaches each is named. A column that closes is
+// never touched, whatever its filings say about each other (3 columns). A column whose legs all come
+// from one filing has nothing to re-draw — Instacart, iQSTEL, Farmland Partners: a mezzanine tagged
+// only inside a dimension, rule 28's residue, 33 columns. And the rule stands down when the newest
+// presentation cannot be read whole or does not close itself: OppFi's FY2020 balance sheet tags an
+// LLC's `MembersEquity`, which no row asks for, so the shell's older 10-Q must NOT be reached behind
+// it; Symbotic's FY2021 closes on its face only through $836m of redeemable units tagged with
+// class-member dimensions. Never an older filing behind a newer whole presentation: rule 2 gives way
+// only to a filing that presents the statement the column claims to be.
+//
+// Measured over every annual and LTM column of the 180-filer cache and the 36-filer material-weakness
+// frame: 17 columns move on the cache and 10 on the frame, every one closes afterwards, and no column
+// that closed before is touched. Read against the rendered statements (the shell's FY2021 10-K for
+// Core Scientific, SmartKem's 10-K/A carrying SmartKem Limited's 2020 balance sheet, Allstate's and
+// MetLife's LDTI opening balances) before it shipped. `test/t-legs.mjs`.
+export const BS_LEGS = ["totalAssets", "totalLiab", "equity", "equityAll", "tempEquity"];
+export const BS_FOOT_TOL = 0.005;
+export const bsFoots = (a, l, e, m) => a != null && l != null && e != null && Math.abs(a - (l + e + (m || 0))) <= BS_FOOT_TOL * Math.abs(a);
+export function alignBalanceSheet(facts, v, meta, legLines, end, ccy) {
+  const eqK = v.equityAll != null ? "equityAll" : "equity";
+  const legs = ["totalAssets", "totalLiab", eqK].map(k => meta[k]);
+  if (legs.some(m => !m || m.status !== "reported" || !m.accn)) return null;
+  if (bsFoots(v.totalAssets, v.totalLiab, v[eqK], v.tempEquity)) return null;
+  // No "legs from more than one filing" test, on purpose: a column whose legs all came from one filing
+  // X and does not close finds X again below as the newest whole presentation, reads the same values,
+  // and stands down on the foot test — so the guard could never fire, and a guard nothing can exercise
+  // is dead code (the second floor rule 30 deleted). Instacart's class falls out of the identity.
+  // Every periodic filing carrying an assets figure at this instant, newest first — the same order
+  // rule 2 sorts by, so the first one that also carries liabilities is the newest whole presentation.
+  const seen = new Map();
+  for (const tag of legLines.totalAssets.tags || []) for (const f of factsFor(facts, tag) || []) {
+    if (isDuration(f) || f.end !== end || !periodic(f.form)) continue;
+    const c = currencyOf(f.unit);
+    if (ccy && c && c !== ccy) continue;
+    if (!seen.has(f.accn)) seen.set(f.accn, { accn: f.accn, form: f.form, filed: f.filed });
+  }
+  const at = (k, accn) => pickFact(facts, legLines[k].tags, { end }, { ccy, accn });
+  const ordered = [...seen.values()].sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form));
+  const R = ordered.find(r => at("totalLiab", r.accn).value != null);
+  if (!R) return null;
+  const got = Object.fromEntries(BS_LEGS.map(k => [k, at(k, R.accn)]));
+  const E = got.equityAll.value != null ? got.equityAll.value : got.equity.value;
+  if (E == null) return null;                                                     // a balance sheet the template cannot read whole
+  if (!bsFoots(got.totalAssets.value, got.totalLiab.value, E, got.tempEquity.value)) return null;
+  const from = { accn: R.accn, form: R.form, filed: R.filed };
+  const moved = [];
+  for (const k of BS_LEGS) {
+    const was = meta[k];
+    const displaced = was && was.status === "reported" && was.accn && was.accn !== R.accn
+      ? { value: was.value, tag: was.tag, form: was.form, filed: was.filed, accn: was.accn } : null;
+    if (displaced) moved.push(k);
+    v[k] = got[k].value;
+    meta[k] = { ...got[k], aligned: from, ...(displaced ? { displaced } : {}) };
+  }
+  return { ...from, moved };
+}
+// The sentence the workbook and the TSV carry, since neither has a tooltip or a row note.
+export const describeAligned = cols => {
+  const hit = (cols || []).filter(c => c.v && c.v.bsAligned);
+  if (!hit.length) return "";
+  const one = c => `${c.period.ltm ? "LTM " : "FY"}${c.period.fy} from the ${c.meta.totalAssets.aligned.form} filed ${c.meta.totalAssets.aligned.filed}`;
+  return `Balance-sheet totals in ${hit.map(one).join("; ")} are all taken from that one filing — the newest presenting the whole balance sheet at the date — because taken each from its own newest filing they did not close; every figure is as filed there.`;
+};
 
 // ── The change in working capital, as the FILER reported it ─────────────────────────────────────
 //

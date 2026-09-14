@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
-import { describeSplits } from "./extract.js";
+import { describeSplits, describeAligned } from "./extract.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
@@ -462,6 +462,8 @@ export default function App() {
           // Rule 31: a share-basis change travels with the file, on the section it applies to. The
           // workbook has no cell marker and no tooltip, so the sentence goes in column A above the rows.
           if (sec.id === "sh" && grid.splits && grid.splits.length) rows.push([{ v: `Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`, s: XF.MUTED }]);
+          // Rule 32, the same way: which columns' balance-sheet totals were read from one filing, and which.
+          if (sec.id === "bs" && describeAligned(grid.cols)) rows.push([{ v: describeAligned(grid.cols), s: XF.MUTED }]);
           // Said on its own row, because a spreadsheet has no tooltip and no card header to carry it:
           // these are today's price against the newest year, not a time series. In column A, not
           // beside the title — a year column has to stay numeric all the way down, or the first
@@ -527,6 +529,7 @@ export default function App() {
     }
     // Rule 31 travels with the paste too: a trailing line, since a TSV has no cell marker either.
     if (grid.splits && grid.splits.length) out.push(`Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`);
+    if (describeAligned(grid.cols)) out.push(describeAligned(grid.cols));
     navigator.clipboard.writeText(out.join("\n")).then(() => { setCopied("Copied — paste into Excel"); setTimeout(() => setCopied(""), 3000); })
       .catch(() => setCopied("Clipboard blocked by the browser"));
   };
@@ -1508,7 +1511,7 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           // provenance. Those keep the ƒ marker and stay plain text.
           const url = shown != null && x.m.accn ? secFilingUrl(cik, x.m.accn) : null;
           return <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
-            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
+            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
               : (shown || "—")}

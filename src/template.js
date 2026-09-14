@@ -51,6 +51,27 @@ const SPLIT_NOTE = col => {
     + `The factor is the filer's own — the same period filed on both bases, with net income unchanged — and each cell links to the filing that carries the figure as reported (${m.filedValue} here).`;
 };
 
+// Rule 32's note, shared by the five balance-sheet legs. A function of the column: it names the one
+// filing the legs were read from and, for each leg that moved, the figure its own newest filing
+// carried instead — the reader is being shown a filed figure that rule 2 would not have chosen, and
+// the sentence has to say which filing would have and what it said.
+const BS_ALIGN_NOTE = col => {
+  const m = col.meta || {}, from = ["totalAssets", "totalLiab", "equity", "equityAll", "tempEquity"].map(k => m[k]).find(x => x && x.aligned);
+  if (!from) return "";                     // keyed off `bsAligned`, so this cannot render — but it must not throw either
+  const money = x => (x == null ? "nothing" : (x < 0 ? "−" : "") + (Math.abs(x) >= 1e9 ? (Math.abs(x) / 1e9).toFixed(2) + "bn" : Math.abs(x) >= 1e6 ? (Math.abs(x) / 1e6).toFixed(1) + "m" : Math.abs(x) >= 1e3 ? (Math.abs(x) / 1e3).toFixed(0) + "k" : String(Math.abs(x))));
+  const label = { totalAssets: "total assets", totalLiab: "total liabilities", equity: "shareholders' equity", equityAll: "total equity incl. NCI", tempEquity: "mezzanine equity" };
+  // Only the legs whose FIGURE moved are named. A leg can change source without changing value — the
+  // parent-equity row read from the balance sheet instead of a later equity statement's identical
+  // opening balance — and "30.22bn against 30.22bn here" would send a reader looking for a difference
+  // that is not there. Material means the sweep's own tolerance, 0.5% of assets.
+  const tol = 0.005 * Math.abs(col.v.totalAssets || 0);
+  const moved = Object.entries(label).filter(([k]) => m[k] && m[k].displaced && (m[k].value == null || Math.abs(m[k].displaced.value - m[k].value) > tol))
+    .map(([k, name]) => `${name} ${money(m[k].displaced.value)} in the ${m[k].displaced.form} filed ${m[k].displaced.filed}${m[k].value == null ? ", which this filing does not carry at this date" : ` against ${money(m[k].value)} here`}`);
+  return `The balance-sheet totals in this column are all read from the ${from.aligned.form} filed ${from.aligned.filed}, the newest filing that presents the whole balance sheet at ${col.period.end} — `
+    + `because taken each from its own newest filing they did not close${moved.length ? `: ${moved.join("; ")}` : ", though no single total moved by more than 0.5% of assets"}. `
+    + `A later filing restates an opening balance, or carries another registrant's history under the same CIK, and only the balance sheet presented whole is on one basis. Each cell links to the filing it was read from.`;
+};
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
@@ -161,7 +182,10 @@ export const SECTIONS = [
   { k: "olRou", label: "Operating lease right-of-use asset", how: "fetched", tags: ["OperatingLeaseRightOfUseAsset"] },
   { k: "ltInvest", label: "Long-term investments", how: "fetched", tags: ["LongTermInvestments","MarketableSecuritiesNoncurrent"] },
   { k: "otherAssets", label: "Other non-current assets", how: "fetched", tags: ["OtherAssetsNoncurrent"] },
-  { k: "totalAssets", label: "Total assets", how: "fetched", tags: ["Assets"] },
+  // Rule 32: the five legs of the identity `assets = liabilities + equity + mezzanine` carry the same
+  // note, keyed off the column flag, because whichever leg a reader is looking at is the one that
+  // may have been re-drawn.
+  { k: "totalAssets", label: "Total assets", how: "fetched", tags: ["Assets"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   { k: "ap", label: "Accounts payable", how: "fetched", tags: ["AccountsPayableCurrent","AccountsPayableAndAccruedLiabilitiesCurrent"] },
   { k: "accrued", label: "Accrued liabilities", how: "fetched", tags: ["AccruedLiabilitiesCurrent","EmployeeRelatedLiabilitiesCurrent"] },
   { k: "defRevCur", label: "Deferred revenue, current", how: "fetched", tags: ["ContractWithCustomerLiabilityCurrent","DeferredRevenueCurrent"] },
@@ -241,7 +265,7 @@ export const SECTIONS = [
   { k: "flNon", label: "Finance lease liability, non-current", how: "fetched", tags: ["FinanceLeaseLiabilityNoncurrent"] },
   { k: "defTaxLiab", label: "Deferred tax liabilities", how: "fetched", tags: ["DeferredIncomeTaxLiabilitiesNet","DeferredTaxLiabilitiesNoncurrent"] },
   { k: "pension", label: "Pension & post-retirement", how: "fetched", tags: ["DefinedBenefitPensionPlanLiabilitiesNoncurrent","LiabilityDefinedBenefitPlanNoncurrent"] },
-  { k: "totalLiab", label: "Total liabilities", how: "fetched", tags: ["Liabilities"] },
+  { k: "totalLiab", label: "Total liabilities", how: "fetched", tags: ["Liabilities"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   // Mezzanine equity — redeemable preferred, usually a VC round that has not converted. It sits
   // BETWEEN liabilities and equity on the face of the balance sheet and is in neither `Liabilities`
   // nor `StockholdersEquity`, so without this row a filer that has any simply does not foot. The
@@ -288,16 +312,16 @@ export const SECTIONS = [
     tags: ["TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
       "RedeemableNoncontrollingInterestEquityCarryingAmount", "TemporaryEquityCarryingAmount",
       "TemporaryEquityCarryingAmountAttributableToParent"],
-    note: "Between liabilities and equity — counted in neither total above" },
+    note: "Between liabilities and equity — counted in neither total above", flagNote: { bsAligned: BS_ALIGN_NOTE } },
   { k: "preferred", label: "Preferred stock", how: "fetched", tags: ["PreferredStockValue"] },
   { k: "retained", label: "Retained earnings", how: "fetched", tags: ["RetainedEarningsAccumulatedDeficit"] },
   { k: "treasury", label: "Treasury stock", how: "fetched", tags: ["TreasuryStockValue","TreasuryStockCommonValue"] },
   { k: "aoci", label: "AOCI", how: "fetched", tags: ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"] },
-  { k: "equity", label: "Total shareholders' equity", how: "fetched", tags: ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"] },
+  { k: "equity", label: "Total shareholders' equity", how: "fetched", tags: ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   // The filer's own ALL-IN equity total, tagged by 129 of the 235 filers swept. It is a real line on a
   // consolidated balance sheet and it is also what makes the row below derivable when the filer stops
   // tagging the piece directly — see the `nciBs` derivation.
-  { k: "equityAll", label: "Total equity incl. NCI", how: "fetched", tags: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"] },
+  { k: "equityAll", label: "Total equity incl. NCI", how: "fetched", tags: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   // `MinorityInterest` is the direct tag and a filer can simply stop filing it: AMTD Idea Group last
   // tagged it in 2023 and reports the residual only through the two equity totals, which left its
   // balance sheet $389m out — 16.9% of assets. Where the direct tag is missing and both totals are
