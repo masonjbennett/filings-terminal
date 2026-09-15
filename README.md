@@ -2396,6 +2396,28 @@ is the near-cancelled-equity mark's reasoning arriving on a different row.
 $60k on revenue of $25k and $68k. Correct, checkable at a glance, and the whole residual. The frame
 totals do not move, because nothing is suppressed and nothing is added; the bucket is only sorted.
 
+**The one test had an `abs()` in it, and the eighth frame found where that mattered (Sep 14 2026).** A
+fraction over a **negative** denominator is arithmetic too: Shopify's $916m of debt over its FY2023 EBITDA
+loss of $1,348m is −0.68x, which is not a leverage multiple at all, and "denominator smaller than numerator"
+could not see it because the magnitude of the loss is larger than the debt. Compared signed — the −$1,348m
+really is smaller than $916m — the same single test sorts it, and nothing else moves: the finding set is
+identical either way, the explained bucket just says `denominator<0` so a reader can tell the two apart.
+Measured over every ratio the sweep range-checks, it is one row by construction. Return on equity, the tax
+rate, debt/equity and net debt/EBITDA all run over negative denominators (109, 156, 82 and 77 cells on the
+cache), but a negative denominator no larger than its numerator gives a ratio inside ±1, which is inside all
+four ranges; total debt/EBITDA's range starts at zero, and the other rows that start at zero — the day counts —
+never have a negative denominator here, nor do revenue, cost of sales or total assets (476–1,224 cells a row).
+**22 unexplained on the cache and 17 on the material-weakness frame become 0 and 0**, the totals exactly as
+they were (538 and 190). All 39 were read before they were sorted: each is a reported operating loss larger
+than its D&A; of the 38 whose loss-supplying filing tags a cost line, 36 close to within 0.5% on that
+filing's own revenue-less-costs arithmetic and the other two agree in sign; and 37 carry that sign in every
+filing that states the year. Of the two that do not,
+Trutankless's FY2019 10-K/A tagged its loss from operations positive and the next 10-K corrected it, and AIOS's
+FY2024 is a discontinued-operations re-presentation — a continuing loss of $9.95m in the newer 20-F beside the
+$340m of consolidated revenue the older one reported with $3.58m of operating income. The ratio is exact over
+the figures that column holds; the column's basis is a different question (Next item 7), and so is whether a
+sheet should print a leverage multiple over a loss at all (Next item 8). The sort is not a verdict on the page.
+
 ### The spin-off frame: years a company did not exist
 
 The seventh frame, drawn from a hypothesis like the transition and restatement ones. A **Form 10-12B**
@@ -2473,7 +2495,8 @@ The sweep over it, against the same sweep over the 180-filer cache: **185 cells 
 different value, 0 of them a power of ten, 0 where `descaled` fired** — every one is the restatement the
 frame was drawn on, rule 2 is right about all 185, and rule 17 needed no second hinge. 13 per-share steps
 that look like splits are all earnings moving (rule 31's net-income test refuses every one). 17 "unexplained"
-ratios are a leverage multiple over a negative EBITDA, which is the sweep's own gap (Next item 6). Two 20-F
+ratios were a leverage multiple over a negative EBITDA — the sweep's own gap, now sorted as arithmetic
+(*The sweep's own precision*). Two 20-F
 filers render no columns because they file under IFRS, which is correct. What was new is **`bs-not-foot` on
 11 columns**, and it is not one problem twice: Core Scientific's FY2020 puts a SPAC shell's $15,000 of
 assets beside the successor's $89.2m of equity — one CIK, two entities' statements for the same date —
@@ -2722,10 +2745,11 @@ left is below, with what would settle each.
    restatement frame would want. The trick that found rule 20 is still available too: read something
    carried alongside every value that nothing has inspected — `frame`, or the `fy`/`fp` pair.
 
-5. **A sweep gap the frame exposed in the sweep itself.** Seventeen "unexplained" ratios on the frame and
-   twenty-three on the cache are all a leverage ratio over a NEGATIVE EBITDA, which is arithmetic rather
-   than breakage and belongs in the explained bucket beside the near-cancelled denominator. Until it is,
-   the residual count means less than it should.
+5. **A sweep gap the frame exposed in the sweep itself — closed Sep 14 2026.** Re-counted at `77fda65` it
+   was 22 on the cache, not 23 (rule 34 summed GE Vernova's amortisation into its FY2023 D&A and EBITDA went
+   from −$199m to +$41m), and 17 on the frame, every one total debt over an EBITDA loss larger than the debt.
+   The sweep's one test now compares signed: residual 0 on both, totals unchanged (*The sweep's own
+   precision*; the private notes' `measure/audit4/item5/`). Reading the 39 found items 7 and 8.
 
 6. **What rules 33–36 left open.** (a) shipped as rule 36, the cash tax rate from taxes paid. (c) and
    (d) were measured the same day and REJECTED, and the numbers are why. (c) EBITDA ex-SBC is blank on
@@ -2749,6 +2773,24 @@ left is below, with what would settle each.
    to blank the free-cash-flow family for REITs outright rather than leave the ten that resolve some
    capex concept printing a free cash flow the other four cannot have: rule 27's REIT paragraph has
    the reading, the population and the full-diff. Item 6 is closed.
+
+7. **Three column defects that reading item 5's 39 found, none of them a ratio problem (measured, open).**
+   No sweep check fires on the first two after item 5, so this entry is their only record.
+   **iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures** (R4: revenue
+   $64,702,018, operating loss (2,983,916)), and rule 2 takes the newest filing, so the sheet prints FY2021's
+   figures in both FY2020 and FY2021; the FY2020 and FY2021 10-Ks carry 2020 as $44,910,006 and (3,212,015).
+   One identical adjacent column pair in 1,087 on the cache, none in 211 on the frame — a filer's
+   mislabelled context, which a newest-filing rule cannot see and a twin-column test could. **AIOS's FY2024
+   takes revenue from the consolidated 2025 20-F ($340.2m) and EBIT from the 2026 20-F's discontinued-operations
+   re-presentation ((9,953,175), no continuing revenue)** — rule 12's basis problem on an annual column, which
+   rule 32 solved only for the balance sheet. **Bloomia's FY2020 pre-tax prints 0** where its FY2021 10-K's
+   R3 reads (4,806,000) and its 10-K/A tagged −4,806,000; which element carries the zero is unread.
+
+8. **A leverage multiple printed over a negative EBITDA (measured, a design question).** The sweep now calls
+   Shopify's −0.68x arithmetic, and it is — but the sheet still prints it, with no note: total debt/EBITDA
+   over a loss with positive debt on **70 cells of the cache and 35 of the frame**, net debt/EBITDA on **77
+   and 36**. Practice is "n/m". Whether that is a blank with a note, a status like `equityThin`'s, or left as
+   exact arithmetic is the question, and the population is already counted.
 
 
 ## A note on how this got built
