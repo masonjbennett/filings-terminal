@@ -2729,12 +2729,34 @@ left is below, with what would settle each.
    beside it (the Up-C and LLC population, which a fifth equity spelling would reach), and whether a
    dimensioned temporary-equity total ever reappears undimensioned in a later filing.
 
-3. **Rule 15's undecided filers, after American Tower.** `debtScope` reaches no verdict for CBL, Cepton,
-   Chevron, Equinix, Alphabet, Iridium (closed by rule 16), Kenvue (right by accident), Morgan Stanley,
-   Tronox (rule 15's own boundary, now named) and Tulip. Alphabet's is the one column the audit measured
-   as a real double count (7.4%, FY2020). A third witness is available and unmeasured: where a filer tags
-   both an unambiguous `…IncludingCurrentMaturities` concept and the ambiguous total at the same date,
-   the identity between them settles the scope — how many filers, and does it ever contradict a verdict.
+3. **Rule 15's undecided filers: the third witness measured and REJECTED; what does reach the double counts
+   is rule 15's own identity, measured and not yet right (Sep 14 2026).** Over the cache and the
+   material-weakness frame (216 filers, 283 filer-tag pairs, every debt and equity concept companyfacts
+   carries fetched wide), a concept whose us-gaap definition puts the current maturities inside decides 10
+   undecided pairs and **moves no value**, and its one decision on a pair the sheet exposes is wrong:
+   Chevron's `LongTermDebt` reads `excludes`, and its FY2019 10-K (R96) shows $18,730m of instruments with
+   $5,054m due within one year inside them. The definition is not the filer's arithmetic — rule 15's own
+   Chevron case, again — so the witness is not a door. What reaches the verified double counts is the
+   identity rule 15 already reads, with a NAMED third term: where T − non-current − current equals the
+   filer's unamortised issuance costs or a finance-lease balance, T is the gross figure with the current
+   maturities inside. That moves **Alphabet FY2020 from $16,318m to $15,319m** (its maturity-schedule total;
+   the audit's 7.35% double count against the note's $15,201m) and **Tronox on nine columns** ($3,294m →
+   $3,255m at FY2025, against a $3,222m balance sheet); and Capstone's total debt doubles today ($50.64m
+   against $25.32m of current exit notes and no non-current line, R2). An adversarial re-check reproduced
+   every one of those values by running the amended engine and stopped the amendment on five things, which
+   is why this is a design item for a review pass rather than a rule: (1) the named terms are 11 concepts
+   KEEP does not carry, so it needs a rebuild; (2) the flag moves on **22 columns of 5 filers**, not 13 of 3,
+   and NVIDIA's FY2019 would gain the "already inside" note with nothing moving; (3) the draft's other half —
+   "a date with `LongTermDebtCurrent` untagged decides nothing" — discards 110 dates, 30 of which carry a
+   current maturity under another concept outside the tolerance (Eaton, AMD); every sheet move it made is a
+   column where T EQUALS the current portion beside it, which is rule 30's floor at equality and has no
+   census yet; (4) residuals were matched on absolute value at max(1%, one reporting unit), and one verdict
+   (PACS) depends on which; (5) pooled, 11 verdicts un-decide, none moving a value. Two more for the same
+   pass: **Corpay (frame) counts a $2,126.7m current portion twice**, $8,849.7m against a filed $6,722.9m on
+   seven columns, reachable only through `DebtInstrumentCarryingAmount`, which fails at rule 15's 0.5%
+   (issuance costs at HCA, Broadcom, GE HealthCare) and holds at exact equality; and **Chevron's FY2020–21
+   long-term row resolves `LongTermDebt` at $25,676m**, a figure its debt table does not print, leaving total
+   debt 32.7% under the balance sheet — unread in the instance. The private notes' `measure/audit4/item3/`.
 
 4. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
    reports, restatements, Chapter 11, spin-offs, material-weakness restatements — and the last of them
