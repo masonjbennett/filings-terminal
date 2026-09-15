@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -125,6 +125,8 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   // flag the five rows' note keys off; the cells carry which filing they came from and what they displaced.
   const aligned = align ? align(v, meta) : null;
   v.bsAligned = !!aligned;
+  // Rule 38's note: a mezzanine total the filer never tags, summed from the classes it does.
+  v.mezzSummed = v.tempEquity != null && (meta.tempEquity || {}).closes === "sum";
   // Which long-term debt tag this column actually resolved decides whether the current portion is
   // already inside it — see `debtScope`. Not a displayed line: it is a fact about the tag, so it goes
   // in `v` where the debt derivation can read it and nowhere else. Per column, because a filer can
@@ -368,7 +370,9 @@ export function buildGrid(data, quote, limit = 8) {
   // Rule 32 reads the five leg rows by their own tag lists, so a tag added to a row reaches the
   // re-draw without a second list to keep in step.
   const legLines = Object.fromEntries(BS_LEGS.map(k => [k, lineByKey[k]]));
-  const alignAt = end => (v, meta) => alignBalanceSheet(facts, v, meta, legLines, end, ccy);
+  // Rule 38 runs first: a column that closes once its mezzanine line is found under a class concept has
+  // nothing for rule 32 to re-draw, and rule 32's foot test must see that line.
+  const alignAt = end => (v, meta) => { fillMezzanine(facts, v, meta, end, ccy); return alignBalanceSheet(facts, v, meta, legLines, end, ccy); };
 
   // The filer's own newest periodic report, which is what a cover-page figure is measured as stale
   // against. Taken from the filing list the payload already carries rather than from a clock, so the

@@ -72,6 +72,16 @@ const BS_ALIGN_NOTE = col => {
     + `A later filing restates an opening balance, or carries another registrant's history under the same CIK, and only the balance sheet presented whole is on one basis. Each cell links to the filing it was read from.`;
 };
 
+// Rule 38's note: a mezzanine total no filing presents, summed from the classes one filing does.
+const MEZZ_SUMMED_NOTE = col => {
+  const m = (col.meta || {}).tempEquity || {}, parts = m.parts || {};
+  const money = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : (x / 1e6).toFixed(1) + "m");
+  const name = t => (/Common/.test(t) ? "common" : /Preferred/.test(t) ? "preferred" : "other");
+  const listed = Object.entries(parts).map(([t, x]) => `${name(t)} ${money(x)}`).join(" plus ");
+  return `Mezzanine equity in this column is the sum of the redeemable noncontrolling interests the filer tags by class — ${listed} — in the ${m.from ? `${m.from.form} filed ${m.from.filed}` : "same filing"}, which tags no mezzanine total. `
+    + `It is taken only because the balance sheet then closes: assets equal liabilities plus this plus equity to within a hundredth of a percent. A single class that did not close it is never shown as the whole.`;
+};
+
 // Rule 34's note: the two tagged lines the row was summed from, and what the sum cannot see.
 const DA_SUMMED_NOTE = col => {
   const money = x => (x == null ? "nothing" : Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : (x / 1e6).toFixed(1) + "m");
@@ -343,16 +353,25 @@ export const SECTIONS = [
     tags: ["TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
       "RedeemableNoncontrollingInterestEquityCarryingAmount", "TemporaryEquityCarryingAmount",
       "TemporaryEquityCarryingAmountAttributableToParent"],
-    note: "Between liabilities and equity — counted in neither total above", flagNote: { bsAligned: BS_ALIGN_NOTE } },
+    note: "Between liabilities and equity — counted in neither total above", flagNote: { bsAligned: BS_ALIGN_NOTE, mezzSummed: MEZZ_SUMMED_NOTE } },
   { k: "preferred", label: "Preferred stock", how: "fetched", tags: ["PreferredStockValue"] },
   { k: "retained", label: "Retained earnings", how: "fetched", tags: ["RetainedEarningsAccumulatedDeficit"] },
   { k: "treasury", label: "Treasury stock", how: "fetched", tags: ["TreasuryStockValue","TreasuryStockCommonValue"] },
   { k: "aoci", label: "AOCI", how: "fetched", tags: ["AccumulatedOtherComprehensiveIncomeLossNetOfTax"] },
-  { k: "equity", label: "Total shareholders' equity", how: "fetched", tags: ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
+  // Rule 38: an LLC's members' equity and a partnership's partners' capital are this line under the
+  // names those entities file — MPLX's eight years and GRAIL's FY2023 had assets and liabilities and a
+  // BLANK equity, and OppFi's FY2020 balance sheet could not be read whole, so rule 32 stood down behind
+  // the SPAC shell's. LAST, because at all 20 dates on the cache and the frame where one of these sits
+  // beside a DIFFERENT stockholders' equity figure (MPLX's limited partners in 2012–15, Prologis's
+  // operating partnership at zero, RadNet's consolidated partnership) a stockholders' equity concept
+  // resolves first. The two all-in spellings follow the parent ones, the fallback shape the row has.
+  { k: "equity", label: "Total shareholders' equity", how: "fetched", tags: ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    "MembersEquity","PartnersCapital","LimitedLiabilityCompanyLlcMembersEquityIncludingPortionAttributableToNoncontrollingInterest","PartnersCapitalIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   // The filer's own ALL-IN equity total, tagged by 129 of the 235 filers swept. It is a real line on a
   // consolidated balance sheet and it is also what makes the row below derivable when the filer stops
   // tagging the piece directly — see the `nciBs` derivation.
-  { k: "equityAll", label: "Total equity incl. NCI", how: "fetched", tags: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
+  { k: "equityAll", label: "Total equity incl. NCI", how: "fetched", tags: ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    "LimitedLiabilityCompanyLlcMembersEquityIncludingPortionAttributableToNoncontrollingInterest","PartnersCapitalIncludingPortionAttributableToNoncontrollingInterest"], flagNote: { bsAligned: BS_ALIGN_NOTE } },
   // `MinorityInterest` is the direct tag and a filer can simply stop filing it: AMTD Idea Group last
   // tagged it in 2023 and reports the residual only through the two equity totals, which left its
   // balance sheet $389m out — 16.9% of assets. Where the direct tag is missing and both totals are

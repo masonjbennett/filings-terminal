@@ -599,7 +599,7 @@ for (const r of rows) if (r.line.flagNote) for (const k of Object.keys(r.line.fl
   const keep = new Set([...keepSrc.matchAll(/"([A-Za-z][A-Za-z0-9:]*)"/g)].map(m => m[1]));
   ok(keep.size > 300, `api/facts.js's KEEP was parsed — ${keep.size} string literals, or every tag below would look dropped`);
   const tplTags = [...new Set(rows.flatMap(r => r.line.tags || []))];
-  eq(tplTags.length, 254, `the template asks for 254 distinct tags — found ${tplTags.length}`);
+  eq(tplTags.length, 258, `the template asks for 258 distinct tags — found ${tplTags.length}`);
   // The `dei` taxonomy is reached by a different door: facts.js loops us-gaap and dei, and its dei
   // branch admits exactly one element BY NAME rather than through KEEP. So the template's `dei:` tag
   // is checked against that gate instead, and the two spellings must agree — the template writes the
@@ -755,6 +755,10 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
       // Rule 32's probe: Allstate's FY2020, the legs read from the 10-K filed 2022-02-18 and the equity
       // leg displacing the −$298m the 10-K filed 2024-02-21 carried.
       totalAssets: { value: 125987e6, aligned: { form: "10-K", filed: "2022-02-18", accn: "a" } },
+      // Rule 38's probe: Farmland Partners' FY2018 mezzanine, its preferred units plus its Series B
+      // "other" redeemable interest, summed inside one filing.
+      tempEquity: { value: 264268000, closes: "sum", from: { form: "10-K", filed: "2019-03-01", accn: "f" },
+        parts: { RedeemableNoncontrollingInterestEquityPreferredCarryingAmount: 120510000, RedeemableNoncontrollingInterestEquityOtherCarryingAmount: 143758000 } },
       equityAll: { value: 30217e6, aligned: { form: "10-K", filed: "2022-02-18", accn: "a" }, displaced: { value: -298e6, form: "10-K", filed: "2024-02-21", accn: "b", tag: "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest" } } } };
   let fns = 0;
   for (const r of rows) if (r.line.flagNote) for (const [k, text] of Object.entries(r.line.flagNote)) {
@@ -771,12 +775,13 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     else if (k === "daSummed") ok(/depreciation 471\.0m plus amortisation of intangibles 1\.29bn/.test(out), `and it names both parts with the filer's own figures — ${r.id}/${k}: ${out.slice(0, 100)}`);
     else if (k === "tbvpsPartial") ok(/tags no goodwill at 2024-12-31/.test(out) && /deducts only intangibles/.test(out) && !/no goodwill and no intangibles/.test(out), `and it names the leg that was not deducted and only that leg — ${r.id}/${k}: ${out.slice(0, 100)}`);
     else if (k === "bsAligned") ok(/read from the 10-K filed 2022-02-18/.test(out) && /total equity incl\. NCI −298\.0m in the 10-K filed 2024-02-21 against 30\.22bn here/.test(out) && /2024-12-31/.test(out) && !/total assets/.test(out), `and it names the filing the legs were read from, the leg that moved with the figure its own newest filing carried, and the date — ${r.id}/${k}: ${out.slice(0, 120)}`);
+    else if (k === "mezzSummed") ok(/preferred 120\.5m plus other 143\.8m/.test(out) && /10-K filed 2019-03-01/.test(out) && /closes/.test(out), `and it names both classes with the filer's figures, the filing, and the condition it was taken on — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 15, `all fifteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32, one rule 34, one rule 35) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 16, `all sixteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32, one rule 34, one rule 35, one rule 38) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

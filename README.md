@@ -1142,9 +1142,9 @@ Each was learned by probing real filings, and each fails **silently** if broken:
 
     **It fails closed three ways, and the population reaching each is named.** A column that closes is not
     touched whatever its filings say about each other. The newest whole presentation that cannot be read
-    stands the rule down rather than being skipped: OppFi's FY2020 balance sheet tags an LLC's
-    `MembersEquity`, which no row asks for, and behind it sits the SPAC shell's 10-Q — a whole, closing
-    balance sheet of the wrong company — which the rule must never reach. And a presentation that does not
+    stands the rule down rather than being skipped: OppFi's FY2020 balance sheet tagged an LLC's
+    `MembersEquity`, which no row asked for until rule 38, and behind it sits the SPAC shell's 10-Q — a
+    whole, closing balance sheet of the wrong company — which the rule must never reach. And a presentation that does not
     close on its own stands it down too: Symbotic's FY2021 closes on its face only through $836m of
     redeemable units tagged with class-member dimensions, so its undimensioned legs close in no filing.
     Rule 2 gives way only to a filing that presents the statement the column claims to be, and never to an
@@ -1159,7 +1159,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     columns carry the mark — 16 annual and Amrize's LTM to June 2025 — and the sweep's `bs-not-foot` goes
     **35 → 19 on the cache and 11 → 2 on the frame**. Everything left is closing inside no filing at all:
     Instacart, Farmland Partners, General Mills, iQSTEL, Nuride, Erasca, and OppFi and Symbotic on the
-    frame — a mezzanine the template cannot see (Next item 3). Read against the rendered statements
+    frame — three classes, not one mezzanine the template cannot see (rule 38). Read against the rendered statements
     before it shipped, which the Sep 13 pass had fetched and not read: Core Scientific's FY2021 10-K is the
     shell XPDI's, and nothing under that CIK presents legacy Core's 2020 assets, so its FY2020 balance sheet
     is the shell's, whole; SmartKem's FY2021 10-K/A carries SmartKem Limited's 2020 balance sheet as its
@@ -1358,6 +1358,70 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     against the prior leg's first filing instead of its newest, and the same filing counted as before —
     that third one was found by the mutation run itself: the first version compared with `>`, and a 10-K
     that carries the year AND its restated quarterly data in one filing was refused against itself.
+
+38. **An LLC's equity is equity, and a mezzanine line under a name the row does not ask for is taken
+    only where the balance sheet closes on it.** Rule 32 left **19 annual columns on six filers** of the
+    cache open, and two on the material-weakness frame, described as one class — "a mezzanine the
+    template cannot see". Read against the rendered balance sheets and the XBRL instances, it is three.
+    **Eleven are a mezzanine line under a class concept no row asks for**: General Mills' redeemable
+    interest under `RedeemableNoncontrollingInterestEquityOtherFairValue` ($551.7m, $544.6m, $604.9m, equal
+    to the gap in all three years), and Farmland Partners' preferred units under `…PreferredCarryingAmount`
+    — alone from FY2021, and in FY2018–20 PLUS its Series B participating preferred under
+    `…OtherCarryingAmount`, $120.5m + $143.8m, to the dollar. **Six, and Symbotic on the frame, are a
+    mezzanine tagged only on a class-of-stock axis**, which companyfacts cannot carry: Instacart, Erasca
+    ($221,405,000 in the instance, equal to the gap) and Nuride ($35,455,000 and $38,378,000) — so Nuride's
+    67% and 82% were never a scale error. **Two are iQSTEL swapping its own equity tags** in its FY2025
+    10-K (the parent figure under the all-in concept); its FY2024 10-K had them right and closes to the
+    dollar. And OppFi's FY2020, on the frame, is an LLC's `MembersEquity`.
+
+    **The equity rows gain the LLC and partnership totals**, `MembersEquity`, `PartnersCapital` and their
+    two all-in spellings, LAST. Nine of the 216 filers on the cache and the frame tag one with no
+    stockholders' equity concept beside it; at all 20 dates where one sits beside a DIFFERENT stockholders'
+    equity figure — MPLX's limited partners in 2012–15, Prologis's operating partnership at zero, RadNet's
+    consolidated partnership, OppFi's two registrants — a stockholders' equity concept resolves first, so
+    the order is what keeps a subsidiary's capital off the line. MPLX's eight years and GRAIL's FY2023 had
+    assets and liabilities and a blank equity; now they close (GRAIL's FY2024 10-K: $3,913,814k =
+    $267,627k + $3,646,187k). OppFi's FY2020 reaches rule 32: its 10-K/A presents the balance sheet whole
+    once `MembersEquity` is readable, closes on it, and the column is re-drawn — equity $99.3m instead of
+    the SPAC shell's $5.0m, and the shell's **$217.2m of redeemable shares leaves** the mezzanine row.
+
+    **The mezzanine row does not gain four more tags, because the measurement says what that does.**
+    Appended first-hit, Farmland's $120.5m of preferred units becomes the whole of a $264.3m mezzanine in
+    three years — rule 7's partial-as-whole. So the class concepts are CANDIDATES, tried only where the
+    row's four totals resolve nothing: `…CommonCarryingAmount`, `…PreferredCarryingAmount`,
+    `…OtherFairValue`, then the sum of the common, preferred and other carrying amounts read inside ONE
+    filing; one is taken only if assets then equal liabilities plus it plus equity to within **1e-4 of
+    assets**, and otherwise the row stays blank. The gate is rule 33's precision, not rule 32's 0.5%,
+    because every accepted candidate closes its column to the dollar and a figure that merely lands inside
+    half a percent of a large balance sheet is a coincidence. A summed cell is computed — no filing
+    presents that total — so it links nowhere and its note names the classes and the filing. **40
+    candidates are taken, every one closing to $0**: 37 single spellings (common 20, preferred 9, other
+    fair value 8) and Farmland's 3 sums. 17 close columns that were open — Farmland Partners' eleven, General
+    Mills' three, and Welltower's LTM columns to March 2023–25 at 1.02%, 0.68% and 0.52%, which no list had
+    named — and 23 tighten columns that already closed (Warner Bros Discovery's $318m of redeemable interest
+    at FY2022, AvalonBay's, CBL's). The sum
+    reaches one filer, and it is kept because it is the redeemable interest's own composition rather than a
+    filer's quirk — the part of this rule a review would cut first. Rule 32's in-filing re-read does not use
+    the candidates: no column reaches that path.
+
+    **Rejected, with the numbers.** An instance-reading path for the class-of-stock mezzanine: 7 columns on
+    4 of 216 filers, and 0 of the 7 ever reappear undimensioned in a later 10-K or 10-Q, so rule 28's
+    argument stands and those columns stay open on purpose. A rule for iQSTEL's swap: 5 columns, one filer.
+    Four more mezzanine spellings the census tried: they reach no column.
+
+    The cache was rebuilt for the eight new KEEP concepts and the refresh isolated first (old code, old
+    cache against new cache: **0 cells**). `scripts/full-diff.mjs` then: **10 filers moved, 66 values changed,
+    195 appeared, 0 vanished, 0 sources moved**, 4 flags, +4 concept switches. All 66 changed values are
+    MPLX's and NGL's debt-to-capital, invested capital and ROIC, which had printed **debt-to-capital of
+    exactly 1.000 on 24 columns** because `sum()` read the blank equity as zero — fixed by the equity, and
+    the formula stays open for the next filer with debt and no equity (Next item 2). The frame, rebuilt the
+    same way: OppFi alone — 5 changed, 5 appeared, 2 vanished, 1 source moved. The sweep's `bs-not-foot`
+    goes **19 → 8 on the cache and 2 → 1 on the frame**, and no column that closed is opened. Named costs:
+    NGL's equity row switches from partners' capital to the all-in figure at FY2021 (its NCI is 2.6–4.2%),
+    the parent-then-all-in shape the row already has, and NGL tags no `Liabilities`, so its twelve new equity
+    cells have no identity to check them; MPLX's LTM to June 2023 becomes a three-legged column that misses
+    by 2.70%, exactly the $968m of mezzanine its 10-Q does not tag. `test/t-mezz.mjs`, **12 of 12 mutations
+    caught**, one of them found by the run: the sum was first taken without the gate and nothing failed.
 
 ### A number that is correct and reads as broken
 
@@ -2508,7 +2572,8 @@ class is the one rule 12 named for the income statement, on the balance sheet, a
 mega-caps on the regression cache through LDTI (rule 32, shipped Sep 14 2026). OppFi's FY2020 misses by
 exactly its mezzanine line, and the line is the SPAC shell's $217m of redeemable shares, not OppFi's: the
 only filing presenting OppFi's own balance sheet at that date tags an LLC's `MembersEquity`, which no row
-asks for, so rule 32 stands down and the column stays open (Next item 3).
+asked for, so rule 32 stood down and the column stayed open — until rule 38 made that concept equity, and
+the column closes on OppFi's own balance sheet.
 Everything the frame measured is in the private notes' `measure/frame/` directory: the harvest, the
 screen, the sweep, the leg-conflict census with its remedy, and the R-files fetched for the five worst.
 
@@ -2713,21 +2778,18 @@ left is below, with what would settle each.
    from a breakdown axis. It is drafted in the Sep 13 scratchpad and must be measured on the 30-filer
    segment sweep before it ships, and that sweep's instance cache is gone (621 MB, session-scoped).
 
-2. **Mezzanine equity the template cannot see — inside a dimension, or under a concept no row asks for.**
-   Rule 32 closed every column whose legs came from filings that disagreed. What is left on the cache is
-   **19 annual columns on six filers, every one closing inside no filing at all**: Instacart's three years
-   at 3.7–5.3% (the class-of-stock dimension, unreachable from companyfacts — rule 28's argument against an
-   instance-reading path stands), Farmland Partners' eight at 9.5–24%, General Mills' three at 1.8%, iQSTEL
-   5.9% and 9.5%, Nuride's 2024 and 2025 at 67% and 82% — big enough to be a scale error — and Erasca's
-   2020 at 177%. On the frame, Symbotic's FY2021 closes on its face only through $836m of redeemable units
-   tagged with `StatementClassOfStockAxis` members, and OppFi's FY2020 balance sheet tags an LLC's
-   `MembersEquity`, which no row asks for, so the column still carries the SPAC shell's $217m of redeemable
-   shares as its mezzanine leg: the only filing that presents OppFi's balance sheet whole cannot be read,
-   and rule 32 stands down. The Sep 13 reading of OppFi as "redeemable interest inside equity" was wrong
-   — the mezzanine was the shell's. Two measurements would settle the class: how many filers tag
-   `MembersEquity` or `PartnersCapital` at a balance-sheet date with no stockholders' equity concept
-   beside it (the Up-C and LLC population, which a fifth equity spelling would reach), and whether a
-   dimensioned temporary-equity total ever reappears undimensioned in a later filing.
+2. **Mezzanine equity the template cannot see — measured, and shipped as rule 38 (Sep 15 2026).** The 19
+   open columns were three classes: a mezzanine under class concepts no row asked for (General Mills,
+   Farmland Partners — now taken, gated by the balance sheet closing), a mezzanine tagged only on a
+   class-of-stock axis (Instacart, Erasca, Nuride; Symbotic on the frame — open on purpose, 0 of 7 ever
+   reappear undimensioned), and iQSTEL's swapped equity tags (open, one filer). OppFi's was an LLC's
+   `MembersEquity`, now an equity spelling, and the column closes through rule 32. `bs-not-foot` 19 → 8 and
+   2 → 1. Left open, with the numbers in the private notes' `measure/audit4/item2/`: `debtCap` and
+   `investedCap` still read a blank equity as zero (24 cells before rule 38 supplied MPLX's and NGL's
+   equity, 0 now — rule 25's class, waiting for its next filer); `equityIsParent` tests only
+   `StockholdersEquity`, so MPLX's $231m of noncontrolling interest is not derived from its two partners'
+   capital totals; and a partnership tagging only its limited and general partners' capital accounts is
+   outside the census.
 
 3. **Rule 15's undecided filers: the third witness measured and REJECTED; what does reach the double counts
    is rule 15's own identity, measured and not yet right (Sep 14 2026).** Over the cache and the

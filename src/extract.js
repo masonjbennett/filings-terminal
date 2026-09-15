@@ -1143,6 +1143,69 @@ export function alignBalanceSheet(facts, v, meta, legLines, end, ccy) {
   }
   return { ...from, moved };
 }
+// ── Rule 38: a mezzanine line under a name the row does not ask for, taken only where it closes ─────
+// The mezzanine row asks for four temporary-equity totals, first hit. Where it resolves none, a filer
+// can still present its redeemable noncontrolling interests on the face under the CLASS concepts —
+// General Mills' `RedeemableNoncontrollingInterestEquityOtherFairValue` ($551.7m, $544.6m, $604.9m),
+// Farmland Partners' preferred units under `…PreferredCarryingAmount` — and the column then misses the
+// identity by exactly that line (1.8% at General Mills, 9.5–24% at Farmland). Appended as four more
+// first-hit tags, the list prints Farmland's $120.5m preferred units as the whole of a $264m mezzanine
+// in FY2018–20, which is rule 7's partial-as-whole. So these are not tags; they are candidates, and one
+// is taken only where the balance sheet then CLOSES on it — in list order, then the sum of the class
+// components read inside ONE filing (Farmland's preferred plus its Series B "other", $120.5m + $143.8m,
+// to the dollar). Nothing closes, nothing is taken.
+//
+// Measured over every annual and LTM column of the 180-filer cache and the material-weakness frame
+// (the private notes' measure/audit4/item2): 40 candidates, 40 taken — 37 single spellings (Common 20,
+// Preferred 9, OtherFairValue 8), 3 sums — every one closing its column to a residual of $0; 0 columns
+// that closed before are opened; the ungated list's three partial cells are the three the sum replaces.
+// Because every accepted candidate closes to the dollar, the gate is the filer's own arithmetic at
+// rule 33's precision (1e-4 of assets), not rule 32's 0.5% foot test: a candidate that merely lands
+// inside half a percent of a large balance sheet is a coincidence, not the line.
+//
+// Four more spellings the census tried reach nothing and are not listed; the dimensioned class
+// (Instacart, Erasca, Nuride, Symbotic — mezzanine tagged only on a class-of-stock axis) is not
+// reachable from companyfacts at all, and 0 of 7 such columns ever reappear undimensioned in a later
+// filing, so rule 28's argument against an instance-reading path stands. Rule 32's in-filing re-read
+// does not use these candidates: 0 columns reach that path, and a guard nothing exercises is dead code.
+export const MEZZ_CANDIDATES = ["RedeemableNoncontrollingInterestEquityCommonCarryingAmount",
+  "RedeemableNoncontrollingInterestEquityPreferredCarryingAmount", "RedeemableNoncontrollingInterestEquityOtherFairValue"];
+export const MEZZ_COMPONENTS = ["RedeemableNoncontrollingInterestEquityCommonCarryingAmount",
+  "RedeemableNoncontrollingInterestEquityPreferredCarryingAmount", "RedeemableNoncontrollingInterestEquityOtherCarryingAmount"];
+export const MEZZ_GATE_TOL = 1e-4;
+export function fillMezzanine(facts, v, meta, end, ccy) {
+  if (v.tempEquity != null) return null;
+  const E = v.equityAll != null ? v.equityAll : v.equity;
+  if (v.totalAssets == null || v.totalLiab == null || E == null) return null;
+  const residual = v.totalAssets - (v.totalLiab + E), tol = MEZZ_GATE_TOL * Math.abs(v.totalAssets);
+  const closes = m => m != null && Math.abs(residual - m) <= tol;
+  for (const tag of MEZZ_CANDIDATES) {
+    const got = pickFact(facts, [tag], { end }, { ccy });
+    if (closes(got.value)) { v.tempEquity = got.value; meta.tempEquity = { ...got, closes: "single" }; return meta.tempEquity; }
+  }
+  // The components inside one filing: the newest periodic filing that carries two or more of them at
+  // this instant, in the sheet's currency. Never mixed across filings — a sum of two filings' classes
+  // is a figure no filing presents.
+  const byAccn = new Map();
+  for (const tag of MEZZ_COMPONENTS) for (const f of factsFor(facts, tag) || []) {
+    if (isDuration(f) || f.end !== end || !periodic(f.form)) continue;
+    const c = currencyOf(f.unit);
+    if (ccy && c && c !== ccy) continue;
+    if (!byAccn.has(f.accn)) byAccn.set(f.accn, { accn: f.accn, form: f.form, filed: f.filed, unit: f.unit, parts: {} });
+    byAccn.get(f.accn).parts[tag] = f.val;
+  }
+  const R = [...byAccn.values()].filter(r => Object.keys(r.parts).length >= 2)
+    .sort((a, b) => (b.filed || "").localeCompare(a.filed || "") || rank(b.form) - rank(a.form))[0];
+  if (!R) return null;
+  const sum = Object.values(R.parts).reduce((s, x) => s + x, 0);
+  if (!closes(sum)) return null;
+  v.tempEquity = sum;
+  // Computed, not reported: no filing presents this total, so the cell carries no single accession to
+  // link to, and the row's note names the parts and the filing they were read from.
+  meta.tempEquity = { value: sum, status: "computed", closes: "sum", parts: R.parts, from: { accn: R.accn, form: R.form, filed: R.filed }, unit: R.unit };
+  return meta.tempEquity;
+}
+
 // The sentence the workbook and the TSV carry, since neither has a tooltip or a row note.
 export const describeAligned = cols => {
   const hit = (cols || []).filter(c => c.v && c.v.bsAligned);

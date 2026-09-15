@@ -142,15 +142,17 @@ const legsOf = c => ({ A: c.v.totalAssets, L: c.v.totalLiab, E: c.v.equityAll !=
   ok(c.v.bsAligned && bsFoots(c.v.totalAssets, c.v.totalLiab, c.v.equityAll, c.v.tempEquity), "the column is marked and closes");
 }
 
-// ── Stand down: the newest whole presentation cannot be read (OppFi's FY2020) ────────────────────
-// OppFi's 10-K/A presents assets, liabilities and an LLC's `MembersEquity`, which no row asks for.
-// Behind it sits the SPAC shell's 10-Q — a whole, closing balance sheet of the wrong entity. The rule
-// must not reach behind a newer whole presentation, so the column stays as filed and stays open.
+// ── Stand down: the newest whole presentation cannot be read ─────────────────────────────────────
+// A newer filing presents assets, liabilities and an equity concept no row asks for — the partnership
+// that tags only its limited partners' capital account, which the rule 38 census left outside the
+// template. Behind it sits a SPAC shell's 10-Q — a whole, closing balance sheet of the wrong entity. The
+// rule must not reach behind a newer whole presentation, so the column stays as filed and stays open.
+// (This was OppFi's FY2020 until rule 38 made `MembersEquity` a row's concept; OppFi is the next block.)
 // MUTATION: skipping an unreadable candidate to the next one hands the column to the shell and fails here.
 {
   const shell = filing("10-Q", "2021-08-10", "shell").a("2020-12-31", 244746983).l("2020-12-31", 22571751).m("2020-12-31", 217175222).e("2020-12-31", 5000010);
   const succA = filing("10-K/A", "2023-03-22", "succ-a").rev("2020-01-01", "2020-12-31", 291e6).rev("2021-01-01", "2021-12-31", 350e6)
-    .a("2020-12-31", 285843000).l("2020-12-31", 186511000).tag("MembersEquity", "2020-12-31", 99332000)
+    .a("2020-12-31", 285843000).l("2020-12-31", 186511000).tag("LimitedPartnersCapitalAccount", "2020-12-31", 99332000)
     .a("2021-12-31", 400e6).l("2021-12-31", 250e6).ea("2021-12-31", 150e6);
   const succ2 = filing("10-K", "2024-03-20", "succ-2").rev("2021-01-01", "2021-12-31", 350e6).rev("2022-01-01", "2022-12-31", 450e6)
     .ea("2020-12-31", 99332000).a("2021-12-31", 400e6).l("2021-12-31", 250e6).ea("2021-12-31", 150e6)
@@ -160,6 +162,26 @@ const legsOf = c => ({ A: c.v.totalAssets, L: c.v.totalLiab, E: c.v.equityAll !=
   eq(c.v.tempEquity, 217175222, "so the shell's redeemable shares are still on the column, as filed");
   ok(!c.v.bsAligned && !c.meta.totalAssets.aligned, "nothing is marked as re-drawn");
   ok(!bsFoots(c.v.totalAssets, c.v.totalLiab, c.v.equityAll, c.v.tempEquity), "and the column stays open — honest, because the fix is a tag the template does not know, not a re-draw");
+}
+
+// ── Rule 38 reaches rule 32: OppFi's FY2020, once an LLC's equity is equity ─────────────────────
+// The same filings with OppFi's real concept. `MembersEquity` now fills the equity row, so the 10-K/A
+// presents the balance sheet whole and closes on it — $285,843,000 = $186,511,000 + $99,332,000 — and
+// rule 32 re-draws the column from it: the shell's $217m of redeemable shares leave, displaced.
+// MUTATION: dropping `MembersEquity` from the equity row puts the shell's mezzanine back and fails here.
+{
+  const shell = filing("10-Q", "2021-08-10", "shell").a("2020-12-31", 244746983).l("2020-12-31", 22571751).m("2020-12-31", 217175222).e("2020-12-31", 5000010);
+  const succA = filing("10-K/A", "2023-03-22", "succ-a").rev("2020-01-01", "2020-12-31", 291e6).rev("2021-01-01", "2021-12-31", 350e6)
+    .a("2020-12-31", 285843000).l("2020-12-31", 186511000).tag("MembersEquity", "2020-12-31", 99332000)
+    .a("2021-12-31", 400e6).l("2021-12-31", 250e6).ea("2021-12-31", 150e6);
+  const succ2 = filing("10-K", "2024-03-20", "succ-2").rev("2021-01-01", "2021-12-31", 350e6).rev("2022-01-01", "2022-12-31", 450e6)
+    .ea("2020-12-31", 99332000).a("2021-12-31", 400e6).l("2021-12-31", 250e6).ea("2021-12-31", 150e6)
+    .a("2022-12-31", 500e6).l("2022-12-31", 300e6).ea("2022-12-31", 200e6);
+  const c = col(filer(shell, succA, succ2), "2020-12-31");
+  eq(c.v.tempEquity, null, "the shell's $217.2m of redeemable shares is gone — OppFi's own balance sheet carries no mezzanine");
+  eq(c.meta.tempEquity.displaced && c.meta.tempEquity.displaced.value, 217175222, "and the cell says what it displaced");
+  ok(c.v.bsAligned && c.meta.totalAssets.accn === "succ-a", "the column is re-drawn from the 10-K/A");
+  ok(bsFoots(c.v.totalAssets, c.v.totalLiab, c.v.equityAll != null ? c.v.equityAll : c.v.equity, c.v.tempEquity), "and it closes");
 }
 
 // ── Stand down: the newest whole presentation does not close itself (Symbotic's FY2021) ─────────
