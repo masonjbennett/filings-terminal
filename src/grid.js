@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, LEV_ROWS, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -168,6 +168,13 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   // Lines a filer of this type does not have are blanked outright, so a derived value can never be
   // built from an inapplicable input — a bank with a computed "EBITDA" would be a fiction.
   for (const k of NOT_APPLICABLE[industry] || []) { v[k] = null; meta[k] = { status: "not-applicable" }; }
+  // Rule 39: a debt multiple of a negative EBITDA reads n/m, not blank and not a negative number, and only
+  // where the row's own debt figure exists. After the blanking pass, which is what keeps a bank's n/a: every
+  // industry whose leverage rows are n/a has its EBITDA blanked too, so this never reaches one (a guard on
+  // the rows' own status was tried and could never fire — rule 30's dead code).
+  const nm = LEV_ROWS.filter(([, num]) => v.ebitda != null && v.ebitda < 0 && v[num] != null);
+  for (const [k] of nm) { v[k] = null; meta[k] = { status: "not-meaningful" }; }
+  v.levNegEbitda = nm.length > 0;
   // Rule 22: the gross-profit row is fetched for most filers and computed for the ones reporting the
   // two lines above it and no subtotal. Recorded AFTER the blanking pass, so an industry that has no
   // gross profit at all cannot claim to have derived one. Read by the row's `flagNote`, which is how

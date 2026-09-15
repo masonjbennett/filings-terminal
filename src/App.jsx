@@ -1551,7 +1551,7 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
             title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
-              : (shown || "—")}
+              : (shown || (x.m.status === "not-meaningful" ? "n/m" : "—"))}
             {/* Rule 31: a figure carried to today's share basis is marked ON THE CELL, not only in the
                 tooltip, because a phone has no hover and the header says every figure is as filed. The
                 marker is what was done to this number; the row's note says why and names the split. */}

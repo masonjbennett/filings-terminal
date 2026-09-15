@@ -935,6 +935,16 @@ export const dupCurrentDebt = v => v.stDebt != null && v.ltdCur != null && v.stD
 // 21,614% on MINUS $21m of equity against $65bn of assets, Boeing's FY2018 3,085%, Home Depot's
 // FY2024 1,450%, Oracle's FY2023 792%, HCA's FY2020 656%.
 export const THIN_EQUITY = 0.02;
+// ── Rule 39: debt as a multiple of a LOSS is not a leverage figure ───────────────────────────────
+// Shopify's $916m of debt over its FY2023 EBITDA loss of $1,348m printed −0.68x, and the sign carries no
+// meaning: a smaller loss prints a LARGER negative multiple, and net cash over a loss prints a POSITIVE
+// one that reads as ordinary leverage — Shopify's FY2019 net debt/EBITDA read 23.27x on a company holding
+// net cash. The comps convention is "n/m", and that is what the sheet says: `fillCol` marks both cells
+// `not-meaningful` after the blanking pass, the cell prints n/m, and the row's note names the loss. The
+// debt and the EBITDA stay on the sheet. The derivations themselves are untouched, because the pass
+// blanks every cell they could produce over a loss. Each row is listed with the debt figure it divides:
+// a cell is n/m only where that figure exists, since a blank numerator is a blank for its own reason.
+export const LEV_ROWS = [["netLev", "netDebt"], ["grossLev", "totalDebt"]];
 export const thinEquity = v => v.equity != null && v.totalAssets != null && v.totalAssets !== 0
   && Math.abs(v.equity) / Math.abs(v.totalAssets) < THIN_EQUITY;
 

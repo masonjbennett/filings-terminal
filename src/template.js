@@ -96,6 +96,13 @@ const TBVPS_NOTE = col => {
     + `A company carrying none has nothing to deduct; one that tags it under another concept would read the same, and the two cannot be told apart from the filing.`;
 };
 
+// Rule 39's note: the loss the multiple would have divided by, named with the filer's own figure.
+const LEV_NM_NOTE = col => {
+  const x = -col.v.ebitda, money = Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : (x / 1e6).toFixed(1) + "m";
+  return `EBITDA is a loss of ${money} in ${col.period.ltm ? `the twelve months to ${col.period.end}` : `FY${col.period.fy}`}, so debt as a multiple of it has no meaning — a smaller loss would print a larger negative multiple, and net cash over a loss a positive one. `
+    + `The row reads n/m wherever EBITDA is negative, as comps tables do; the debt and the EBITDA are both on the sheet.`;
+};
+
 const EQUITY_THIN_NOTE = tail => col =>
   `Shareholders' equity is ${(Math.abs(col.v.equity / col.v.totalAssets) * 100).toFixed(2)}% of total assets `
   + `at ${col.period.end} — a residual that has very nearly cancelled, usually after years of buybacks. `
@@ -469,8 +476,8 @@ export const SECTIONS = [
   { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt" },
   { k: "totalDebtLeases", label: "Total debt incl. leases", how: "computed", formula: "totalDebt + olCur + olNon + flCur + flNon", note: "Lenders increasingly capitalise leases" },
   { k: "netDebt", label: "Net debt", how: "computed", formula: "totalDebt - cash - sti" },
-  { k: "netLev", label: "Net debt / EBITDA", how: "computed", formula: "netDebt / ebitda", note: "The covenant that actually gets tested" },
-  { k: "grossLev", label: "Total debt / EBITDA", how: "computed", formula: "totalDebt / ebitda" },
+  { k: "netLev", label: "Net debt / EBITDA", how: "computed", formula: "netDebt / ebitda", note: "The covenant that actually gets tested", flagNote: { levNegEbitda: LEV_NM_NOTE } },
+  { k: "grossLev", label: "Total debt / EBITDA", how: "computed", formula: "totalDebt / ebitda", flagNote: { levNegEbitda: LEV_NM_NOTE } },
   { k: "intCover", label: "EBITDA / interest expense", how: "computed", formula: "ebitda / intExp" },
   { k: "fccr", label: "(EBITDA − capex) / interest", how: "computed", formula: "(ebitda - capex) / intExp", note: "Fixed-charge coverage proxy" },
   // Nothing is suppressed and the figure is exactly right — Debt/equity really does run −62.29x to

@@ -749,7 +749,9 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
   const col = { v: { equity: -1.2e8, totalAssets: 3.7e10, ltdCur: 2.9282e9, ltDebt: 2.40554e10,
       // Rules 34 and 35: AbbVie's 2018 D&A summed from $471m of depreciation and $1.29bn of amortisation,
       // and a tangible book that could not deduct goodwill.
-      da: 1.765e9, amort: 1.294e9, goodwill: null, intangibles: 2.1e9 }, period: { end: "2024-12-31" },
+      da: 1.765e9, amort: 1.294e9, goodwill: null, intangibles: 2.1e9,
+      // Rule 39: Shopify's FY2023 EBITDA loss.
+      ebitda: -1.348e9 }, period: { end: "2024-12-31", fy: 2024 },
     meta: { ltDebt: { rejected: { tag: "LongTermDebt", value: 1.9e6 } },
       epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] },
       // Rule 32's probe: Allstate's FY2020, the legs read from the 10-K filed 2022-02-18 and the equity
@@ -775,13 +777,14 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     else if (k === "daSummed") ok(/depreciation 471\.0m plus amortisation of intangibles 1\.29bn/.test(out), `and it names both parts with the filer's own figures — ${r.id}/${k}: ${out.slice(0, 100)}`);
     else if (k === "tbvpsPartial") ok(/tags no goodwill at 2024-12-31/.test(out) && /deducts only intangibles/.test(out) && !/no goodwill and no intangibles/.test(out), `and it names the leg that was not deducted and only that leg — ${r.id}/${k}: ${out.slice(0, 100)}`);
     else if (k === "bsAligned") ok(/read from the 10-K filed 2022-02-18/.test(out) && /total equity incl\. NCI −298\.0m in the 10-K filed 2024-02-21 against 30\.22bn here/.test(out) && /2024-12-31/.test(out) && !/total assets/.test(out), `and it names the filing the legs were read from, the leg that moved with the figure its own newest filing carried, and the date — ${r.id}/${k}: ${out.slice(0, 120)}`);
+    else if (k === "levNegEbitda") ok(/EBITDA is a loss of 1\.35bn in FY2024/.test(out) && /n\/m/.test(out), `and it names the loss with the filer's figure and the column, and says what the row reads — ${r.id}/${k}: ${out.slice(0, 110)}`);
     else if (k === "mezzSummed") ok(/preferred 120\.5m plus other 143\.8m/.test(out) && /10-K filed 2019-03-01/.test(out) && /closes/.test(out), `and it names both classes with the filer's figures, the filing, and the condition it was taken on — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
       ok(coreK.has(m[1]), `and \`${m[1]}\`, which the note reads off the column, is a core row`);
   }
-  eq(fns, 16, `all sixteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32, one rule 34, one rule 35, one rule 38) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
+  eq(fns, 18, `all eighteen function-valued flagNotes were exercised (two equity-thin, one rule 30, five rule 31, five rule 32, one rule 34, one rule 35, one rule 38, two rule 39) — found ${fns}. If this reaches zero the checks above pass over nothing.`);
 }
 
 // ── PERIOD_TAGS is the revenue row's own tag array, not a copy of it ────────────────────────────

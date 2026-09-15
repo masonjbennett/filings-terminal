@@ -1423,6 +1423,24 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     by 2.70%, exactly the $968m of mezzanine its 10-Q does not tag. `test/t-mezz.mjs`, **12 of 12 mutations
     caught**, one of them found by the run: the sum was first taken without the gate and nothing failed.
 
+39. **Debt as a multiple of a loss is not a leverage figure, and the sheet says n/m.** Shopify's $916m of
+    debt over its FY2023 EBITDA loss of $1,348m printed a total debt/EBITDA of **−0.68x**, and the sign
+    carries no meaning: a smaller loss prints a LARGER negative multiple, and net cash over a loss prints a
+    POSITIVE one that reads as ordinary leverage — **Shopify's FY2019 net debt/EBITDA read 23.27x** on a
+    company holding net cash, AMD's LTM to July 2023 10.10x. The sweep had already sorted these as arithmetic
+    rather than breakage (*The sweep's own precision*), which is true and was never a verdict on the page.
+    Comps tables print "n/m", and Mason's call was the same: after the blanking pass, where EBITDA is negative
+    and the row's own debt figure exists, both rows are marked `not-meaningful`, the cell prints **n/m**, and
+    a row note names the loss; the debt and the EBITDA stay on the sheet. A blank debt figure stays a blank
+    for its own reason, and a bank's rows stay n/a — not by a guard on the rows' status, which was written and
+    could never fire, but because every industry whose leverage rows are n/a has its EBITDA blanked first.
+    `scripts/full-diff.mjs` over the cache: **26 filers moved, 0 values changed, 0 appeared, 226 cells now
+    n/m** — 77 annual on each row, exactly the item-5 census, and 36 LTM each — **31 of them positive
+    multiples**. Not extended, and counted so it can be: EV/EBITDA over a loss prints on 13 newest columns at
+    a price of 100 (Fluent −301x), which is the same shape on a valuation row, and EBITDA/interest over a loss
+    on 122 cells, where a negative cover is a meaningful "cannot cover". `test/t-lev.mjs`, **8 of 8 mutations
+    caught**; the ninth written, the rows'-own-status guard, survived and was deleted as dead code.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,
@@ -2586,7 +2604,8 @@ Trutankless's FY2019 10-K/A tagged its loss from operations positive and the nex
 FY2024 is a discontinued-operations re-presentation — a continuing loss of $9.95m in the newer 20-F beside the
 $340m of consolidated revenue the older one reported with $3.58m of operating income. The ratio is exact over
 the figures that column holds; the column's basis is a different question (Next item 7), and so is whether a
-sheet should print a leverage multiple over a loss at all (Next item 8). The sort is not a verdict on the page.
+sheet should print a leverage multiple over a loss at all — it now prints n/m (rule 39). The sort is not a
+verdict on the page.
 
 ### The spin-off frame: years a company did not exist
 
@@ -2886,8 +2905,13 @@ left is below, with what would settle each.
    consolidated revenue), Warner Bros. Discovery's product table still printed twice (one row is
    `ServiceOtherMember` in one table and `ProductAndServiceOtherMember` in the other, same label and
    value), Regency's two-concept table split into two one-row tables, Moelis' and Portland General's
-   breakdowns on lines outside the allow-list, and a check on production after the deploy that the first
-   call per CIK is a cache MISS. The private notes' `measure/audit4/item0/` and `segments-impl/`.
+   breakdowns on lines outside the allow-list. Checked on production after the Sep 15 deploy: the first call
+   per CIK is a cache MISS and the second a HIT, and Blackstone, NextEra, Microsoft, Brown & Brown and Realty
+   Income answer as measured. Two more of Mason's calls the same day: the tab never shows a co-registrant
+   subsidiary's own segment table (Duke's, FirstEnergy's), only the registrant's — rule 1 exists to keep
+   another company's statement out — and a row keeps the label its own table gives it, Morgan Stanley's
+   "I/E" and Chevron's "Int'l." included, because that is how the reader finds it in the filing. The private
+   notes' `measure/audit4/item0/` and `segments-impl/`.
 
 1. **NextEra's co-registrant axis — shipped as rule 1's exception (Sep 15 2026).** Measured on 217 filers
    with the rebuilt segment cache: the equal-member rule fires on NextEra alone (3 contexts, 27 facts),
@@ -2990,12 +3014,10 @@ left is below, with what would settle each.
    rule 32 solved only for the balance sheet. **Bloomia's FY2020 pre-tax prints 0** where its FY2021 10-K's
    R3 reads (4,806,000) and its 10-K/A tagged −4,806,000; which element carries the zero is unread.
 
-8. **A leverage multiple printed over a negative EBITDA (measured, a design question).** The sweep now calls
-   Shopify's −0.68x arithmetic, and it is — but the sheet still prints it, with no note: total debt/EBITDA
-   over a loss with positive debt on **70 cells of the cache and 35 of the frame**, net debt/EBITDA on **77
-   and 36**. Practice is "n/m". Whether that is a blank with a note, a status like `equityThin`'s, or left as
-   exact arithmetic is the question, and the population is already counted.
-
+8. **A leverage multiple printed over a negative EBITDA — decided and shipped as rule 39 (Sep 15 2026).** The
+   two debt multiples read n/m over a loss: 226 cells on 26 filers, 31 of them positive multiples on net cash.
+   EV/EBITDA over a loss (13 newest columns at a price of 100) is the same shape on a valuation row and was
+   not part of the decision.
 
 ## A note on how this got built
 
