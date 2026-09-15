@@ -1054,8 +1054,9 @@ export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDe
 // operating cash flow at the median and 8.2% at the 90th percentile (30 columns, five filers; AIG's
 // 2020 at 34% is one year of depressed cash flow). So for `pc` and `life` a blank capex is waived, the
 // row prints cash from operations, and the note says so. Not for health plans — Cigna and
-// UnitedHealth run 11–18% where they tag it, and Cigna tags nothing after 2019 — and not for REITs,
-// whose real spending is development and acquisition under concepts the capex row does not ask for.
+// UnitedHealth run 11–18% where they tag it, and Cigna tags nothing after 2019 — and a REIT never
+// reaches it: its capex concepts mean a different thing at each filer, so NOT_APPLICABLE.reit blanks
+// the whole free-cash-flow family before the waiver could apply.
 export const CAPEX_IMMATERIAL_INDUSTRIES = new Set(["pc", "life"]);
 
 // ── Rule 32: a balance sheet whose legs do not close is re-drawn from ONE filing ─────────────────

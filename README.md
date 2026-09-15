@@ -920,12 +920,41 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     filed inputs stay, exactly as the EBITDA family already does, with `cfo` and `capex` still on the
     sheet and asserted to be.
 
-    **Not extended to the carriers, REITs or health plans, and that is measured rather than
-    preferred**: an insurer's operating cash flow is premiums less claims less expenses, which IS an
-    operating flow — **none of the nine carriers swept reports a negative one** (Progressive $17.5bn,
-    Travelers $10.6bn, Chubb $12.8bn, MetLife $17.1bn) — and blanking it would delete a sheet that is
-    correct as it stands. That is the `health` list's reasoning, and the suite asserts those four
-    industries KEEP the rows so a later pass cannot widen this quietly.
+    **Not extended to the carriers or health plans, and that is measured rather than preferred**: an
+    insurer's operating cash flow is premiums less claims less expenses, which IS an operating flow —
+    **none of the nine carriers swept reports a negative one** (Progressive $17.5bn, Travelers $10.6bn,
+    Chubb $12.8bn, MetLife $17.1bn) — and blanking it would delete a sheet that is correct as it stands.
+    That is the `health` list's reasoning, and the suite asserts those three industries KEEP the rows so
+    a later pass cannot widen this quietly.
+
+    **The REITs were kept on the same reasoning, and it was the wrong half of the formula** (Sep 14
+    2026). A REIT's operating cash flow is an operating flow too; what breaks is the subtrahend. Seven
+    REITs' FY2025 10-Ks were read for what their capex concepts hold (the private notes'
+    `measure/audit3/reit/`): `PaymentsToDevelopRealEstateAssets` is pure development at AvalonBay,
+    Prologis and Essex and development plus recurring capex plus capitalised overhead at Digital Realty;
+    `PaymentsForCapitalImprovements` is every dollar spent on existing assets at AvalonBay and **64%
+    value-add redevelopment at Welltower**, whose own recurring figure has no element at all; two of the
+    seven put operating-property capex on a filer-custom element. So `cfo − capex` deducts somewhere
+    between 11% recurring and all construction, and switches definition filer to filer. On the cache
+    **ten of the fourteen REITs printed one**, each on a different concept — American Tower on PP&E
+    payments, AvalonBay and Welltower on capital improvements, Simon, Equinix and Ventas on productive
+    assets — with newest-year FCF yields from **−4.1% (Equinix) to 9.9% (AvalonBay)**, lined up in a
+    comps set as one quantity. That is the Chubb shape: a figure the other REITs cannot have, which looks
+    ordinary. `NOT_APPLICABLE.reit` now blanks `fcf`, `fcfMargin`, `fcfConv`, `fcfYield`, `evFcf`,
+    `ufcf` and the `(EBITDA − capex) / interest` proxy — everything that deducts the capex row as if it
+    were maintenance — and keeps `cfo`, `capex`, the enterprise value, EBITDA and FFO, which carries the
+    load. American Tower and Equinix pay the most for it: their capex is ordinary plant spending on towers
+    and data centres, and their FCF was a conventional one. No carve-out survives the house rule —
+    Equinix and Ventas resolve the same concept, `PaymentsToAcquireProductiveAssets`, as Simon, so the
+    only line that would keep them is the tag name — and a reader cannot tell a conventional REIT FCF
+    from a redevelopment-sized one by looking. Blanking `ufcf` also stops the reverse DCF for REITs
+    (`dcfApplicable`), and the plate needed a REIT sentence — which showed the carriers had been falling
+    through to the broker-dealer one ("funded by client payables, repo…") since rule 27; each now has
+    its own. A gross real-estate investment row (development + acquisitions + improvements, never
+    labelled capex) is the one number the filings would support, and is not built. `full-diff.mjs` at a
+    price of 100: **10 filers moved, 0 values changed, 0 appeared, 392 vanished**, 777 blanks now say n/a,
+    and the `ufcfFromCashFlow` flag clears on American Tower's and Equinix's 20 columns because the row it
+    explains is gone. Ten of ten mutations caught.
 
     `full-diff.mjs` across the 160 at a live price: **22 filers moved, 0 values changed, 0 appeared,
     234 vanished** for the share count and the EV bridge, and **16 filers / 392 cells** for the FCF
@@ -1241,8 +1270,8 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     flow at the median and 8.2% at the 90th percentile** (30 columns, five filers; AIG's 2020 at 34% is
     one year of depressed cash flow). So for `pc` and `life` a blank capex is waived, the row prints cash
     from operations, and its note states that basis. Not for health plans — Cigna and UnitedHealth run
-    11–18% where they tag it, and Cigna tags nothing after 2019, so its row is blank — and not for REITs,
-    whose real spending is development and acquisition under concepts the capex row does not ask for.
+    11–18% where they tag it, and Cigna tags nothing after 2019, so its row is blank — and a REIT never
+    reaches the question, because its free-cash-flow family is n/a (rule 27).
 
     **The capex row gains three spellings, each measured first, and a pin.** Rule 22's protocol against
     filers that tag an existing candidate and the new one for the same period:
@@ -1255,7 +1284,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     capital improvements in the two years it files both, and per-column fallthrough handed the row the
     small figure there and the large one everywhere else; pinned, GE's and Ventas's oldest columns move
     to the concept that spans their sheets too. The REIT development and acquisition concepts are a
-    different quantity and stay out (Next item 6).
+    different quantity and stay out (rule 27's REIT paragraph).
 
     Over the cache, annual columns: **free cash flow goes blank on 127 cells of 33 filers** (NextEra,
     Phillips 66, Cigna, Conoco, the REITs, three of NVIDIA's) and **changes on 83 of 17** where a capex
@@ -1978,7 +2007,8 @@ combined ratio, Aflac and Berkley no total debt, Centene no premium line, Molina
 
 A REIT, unlike a bank or a carrier, **is** an operating company: it keeps EBIT, EBITDA, EV/EBITDA
 and Net debt/EBITDA, which is the leverage metric the sector is quoted on. `NOT_APPLICABLE.reit` is
-therefore almost empty. What the corporate template misses is that GAAP net income is close to
+therefore short: the working-capital cycle, and the free-cash-flow family, because no capex concept
+means one thing across REITs (rule 27). What the corporate template misses is that GAAP net income is close to
 meaningless here — depreciating buildings that are appreciating pushes reported earnings far below
 cash generation, which is the entire reason FFO exists.
 
@@ -2641,7 +2671,8 @@ stale years of a structure that has usually changed). Sep 14 2026: that list's i
 leg conflict, shipped as rule 32, and its item 4 was re-read against the filings and rewritten as item 3
 below. Later the same day the audit's three findings shipped as rules 33, 34 and 35; of the five
 measurements they left open, (a) shipped as rule 36, (e) as rule 37, and (c) and (d) were measured and
-rejected, leaving the REIT capex row. What is left is below, with what would settle each.
+rejected, and (b), the REIT capex row, was decided: the family is n/a for REITs (rule 27). What is
+left is below, with what would settle each.
 
 0. **Blackstone's segments (measured; a design question, and Mason's call).** Its segment axis carries
    only extension concepts — fee-related earnings, distributable earnings, base management fees — with
@@ -2713,27 +2744,11 @@ rejected, leaving the REIT capex row. What is left is below, with what would set
    lease amortisation is usually already inside `Depreciation` (Verizon, Micron, Equinix, HCA, Philip
    Morris, Disney), so adding it would double count three times as often as it completed a total.
    (e) shipped as rule 37: the `restated-basis` refusals were 442 cells, not 19, and 361 of them had
-   the annual leg filed after the re-presentation; 79 remain and are right. (b) **The REIT capex row is
-   measured, and the answer is a decision rather than a row — Mason's call.** Seven REITs' cash-flow
-   investing sections and MD&A capex tables were read from their FY2025 10-Ks (AvalonBay, Prologis,
-   Welltower, Essex, Digital Realty, Alexandria, Simon; the private notes' `measure/audit3/reit/`). No
-   concept carries recurring capex across them, and the same us-gaap concept means different things at
-   different filers: `PaymentsToDevelopRealEstateAssets` is pure development at AvalonBay, Prologis and
-   Essex, development plus recurring capex plus capitalised overhead at Digital Realty, and all
-   construction at Alexandria; `PaymentsForCapitalImprovements` is every dollar on existing assets at
-   AvalonBay and **64% value-add redevelopment at Welltower**, whose own recurring figure ($374m) has
-   no XBRL element at all. Two of seven put their operating-property capex on a filer-custom element,
-   Essex's named for the opposite of what it holds. No filer publishes AFFO in the 10-K: all seven stop
-   at Nareit FFO, five with a Core or adjusted FFO, none deducting any capex. So a REIT free cash flow
-   deducting any of these would deduct between 11% recurring (Digital Realty) and everything (Simon) and
-   switch definition filer to filer. The two honest choices: leave the capex and FCF rows blank for REITs
-   where no plant-capex concept resolves and let FFO carry the load (today's state), or go further and
-   blank the FCF family for REITs even where a concept matches — Simon's `PaymentsToAcquireProductiveAssets`
-   and the five REITs rule 35's `PaymentsForCapitalImprovements` now fills show a "free cash flow" the
-   other REITs cannot have, which is rule 27's Chubb shape. The second is a `NOT_APPLICABLE.reit` change
-   with rule 27's keep assertion flipped and its paragraph rewritten, and it wants Mason's answer before
-   anyone writes it. A gross real-estate investment row (development + acquisitions + improvements,
-   labelled as such and never as capex) is the one number the filings would support.
+   the annual leg filed after the re-presentation; 79 remain and are right. (b) **The REIT capex row was measured, decided and shipped (Sep 14 2026).**
+   Seven REITs' FY2025 10-Ks showed no concept carrying recurring capex across them, so Mason chose
+   to blank the free-cash-flow family for REITs outright rather than leave the ten that resolve some
+   capex concept printing a free cash flow the other four cannot have: rule 27's REIT paragraph has
+   the reading, the population and the full-diff. Item 6 is closed.
 
 
 ## A note on how this got built

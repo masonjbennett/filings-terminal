@@ -775,13 +775,25 @@ export const NOT_APPLICABLE = {
   // The free-cash-flow family goes with them, and the evidence is the same one: Goldman shows
   // −$47.2bn and an FCF yield of −162.2%, Morgan Stanley −$17.9bn — while Schwab reads +$8.8bn and
   // 5.1% and Blackstone +$4.5bn and 6.1%, which look like ordinary yields and are the same artifact
-  // wearing a friendlier sign. Not extended to the carriers or the REITs below: an insurer's
-  // operating cash flow is premiums less claims less expenses, which IS an operating flow — none of
-  // the nine swept is negative — and blanking it would delete a sheet that is correct as it stands,
-  // the reasoning the `health` list already uses.
+  // wearing a friendlier sign. Not extended to the carriers: an insurer's operating cash flow is
+  // premiums less claims less expenses, which IS an operating flow — none of the nine swept is
+  // negative — and blanking it would delete a sheet that is correct as it stands, the reasoning the
+  // `health` list already uses. The REITs below lose it for a different reason.
   advisory: ["inventory", "dio", "dpo", "ccc", "ev", "evRev", "evEbitda", "evEbit", "evFcf",
     "fcf", "fcfMargin", "fcfConv", "fcfYield"],
-  reit: ["inventory", "dio", "dpo", "ccc"],
+  // A REIT keeps its enterprise value and its EBITDA — its debt IS its debt — but not free cash flow,
+  // and the reason is the SUBTRAHEND, not the operating flow. Seven REITs' FY2025 10-Ks were read for
+  // what their capex concepts hold (README rule 27): `PaymentsToDevelopRealEstateAssets` is pure
+  // development at AvalonBay, Prologis and Essex and development plus recurring capex plus capitalised
+  // overhead at Digital Realty; `PaymentsForCapitalImprovements` is every dollar on existing assets at
+  // AvalonBay and 64% value-add redevelopment at Welltower, whose own recurring figure has no element
+  // at all. So `cfo − capex` deducts somewhere between 11% recurring and all construction and switches
+  // definition filer to filer: on the cache ten of fourteen REITs printed one (70 annual cells), newest
+  // yields from −4.1% (Equinix) to 9.9% (AvalonBay), and a comps set lined them up as one quantity.
+  // Rule 27's Chubb shape. Everything that deducts the capex row as if it were maintenance goes —
+  // `ufcf` and the `(EBITDA − capex)` coverage proxy with the FCF family, which also stops the reverse
+  // DCF (`dcfApplicable`) — and the filed inputs stay: `cfo`, `capex`, and FFO, which carries the load.
+  reit: ["inventory", "dio", "dpo", "ccc", "fcf", "fcfMargin", "fcfConv", "fcfYield", "evFcf", "ufcf", "fccr"],
 };
 
 // Sections added for a given industry, and which tab they belong to.

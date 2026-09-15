@@ -10,6 +10,7 @@ import { NOT_APPLICABLE } from "../src/template.js";
 eq(dcfApplicable(NOT_APPLICABLE.bank), false, "a bank gets no reverse DCF (its sheet blanks unlevered FCF)");
 eq(dcfApplicable(NOT_APPLICABLE.pc), false, "a P&C insurer gets none (its sheet blanks enterprise value)");
 eq(dcfApplicable(NOT_APPLICABLE.life), false, "a life insurer gets none");
+eq(dcfApplicable(NOT_APPLICABLE.reit), false, "a REIT gets none (its sheet blanks unlevered FCF: no capex concept means one thing across REITs)");
 eq(dcfApplicable(NOT_APPLICABLE.corporate), true, "a corporate does (no list at all)");
 eq(dcfApplicable(undefined), true, "an industry with no list is applicable");
 ok(["bank", "pc", "life"].every(k => Array.isArray(NOT_APPLICABLE[k])), "the three lists this relies on still exist in the template");

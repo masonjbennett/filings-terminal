@@ -111,13 +111,28 @@ for (const ind of ["bank", "advisory"])
 for (const ind of ["bank", "advisory"])
   for (const k of ["cfo", "capex"])
     ok(!NOT_APPLICABLE[ind].includes(k), `...but ${k} stays on a ${ind} sheet — it is a figure the filer actually reported`);
-// NOT extended to the carriers, the REITs or the health plans, and that is measured rather than
-// preferred: an insurer's operating cash flow is premiums less claims less expenses, which IS an
-// operating flow — none of the nine carriers swept reports a negative one — and blanking it would
-// delete a sheet that is correct as it stands. Asserted so a later pass cannot widen this quietly.
-for (const ind of ["pc", "life", "health", "reit"])
+// NOT extended to the carriers or the health plans, and that is measured rather than preferred: an
+// insurer's operating cash flow is premiums less claims less expenses, which IS an operating flow —
+// none of the nine carriers swept reports a negative one — and blanking it would delete a sheet that
+// is correct as it stands. Asserted so a later pass cannot widen this quietly.
+for (const ind of ["pc", "life", "health"])
   for (const k of ["fcf", "fcfYield"])
     ok(!NOT_APPLICABLE[ind].includes(k), `a ${ind} filer KEEPS ${k} — its operating cash flow is an operating flow`);
+
+// ── The REITs lose it, for the subtrahend rather than the operating flow ────────────────────────
+// Seven REITs' FY2025 10-Ks were read for what their capex concepts hold: pure development at one,
+// every dollar on existing assets at another, 64% redevelopment at Welltower, whose recurring figure
+// has no element. So `cfo − capex` deducts between 11% recurring and all construction and switches
+// definition filer to filer — ten of the fourteen cached REITs printed one, newest yields −4.1% to
+// 9.9%. Everything that deducts the capex row as maintenance goes (the family, `ufcf`, the coverage
+// proxy); the filed inputs and the enterprise value stay, and so does FFO.
+// MUTATION: removing any key from NOT_APPLICABLE.reit fails here; adding `capex`, `cfo` or `ev` fails
+// the keep; restoring `reit` to the carriers' keep loop above fails the first line of this block.
+for (const k of ["fcf", "fcfMargin", "fcfConv", "fcfYield", "evFcf", "ufcf", "fccr"])
+  ok(NOT_APPLICABLE.reit.includes(k), `a REIT's ${k} is blanked — its capex concept means a different thing at each filer`);
+for (const k of ["cfo", "capex", "ev", "ebitda", "evEbitda", "netLev"])
+  ok(!NOT_APPLICABLE.reit.includes(k), `...but a REIT keeps ${k}`);
+eq(dcfApplicable(NOT_APPLICABLE.reit), false, "and a REIT gets no reverse DCF — there is no free cash flow to grow");
 
 // ── The status chip has to stay short, because it sets a sticky column's width ──────────────────
 // Blanking the EV rows for `advisory` made the reverse-DCF sentence fire for the first time, and the

@@ -84,8 +84,8 @@ const base = { ...dur("Revenues", 10e9), ...dur("OperatingIncomeLoss", 2e9), ...
 
 // ── The carriers: capex untagged is waived, measured, and the row says so ────────────────────────
 // At the P&C carriers that do tag capex it is 3.8% of operating cash flow at the median and 8.2% at the
-// 90th percentile; no life carrier tags it at all. Health plans run 11–18% and get no waiver, and
-// neither do REITs, whose real spending is under concepts the capex row does not ask for.
+// 90th percentile; no life carrier tags it at all. Health plans run 11–18% and get no waiver, and a
+// REIT never reaches the question: its whole free-cash-flow family is n/a (NOT_APPLICABLE.reit).
 // MUTATION: adding "health" to CAPEX_IMMATERIAL_INDUSTRIES fails the Cigna block; removing "pc" or
 // "life" fails the Chubb one; setting the waiver before the blanking pass and not after leaves a bank
 // explaining a figure it does not show (asserted on the bank below).
@@ -101,11 +101,17 @@ const base = { ...dur("Revenues", 10e9), ...dur("OperatingIncomeLoss", 2e9), ...
   eq(cigna.v.fcf, null, "a health plan does not — its capex is material where it is tagged, and Cigna's is untagged after 2019");
   ok(!cigna.v.capexWaived, "no waiver, no note");
   const reit = col("6798", { ...base });
-  eq(reit.v.fcf, null, "nor a REIT, whose real capital spending is development and acquisition under other concepts");
+  eq(reit.v.fcf, null, "nor a REIT, whose free-cash-flow family is n/a (NOT_APPLICABLE.reit)");
+  eq(reit.meta.fcf.status, "not-applicable", "and the blank says n/a rather than asking for a capex figure");
+  ok(!reit.v.capexWaived, "no waiver note on a row the sheet refuses");
+  const reitCapex = col("6798", { ...base, ...dur("PaymentsForCapitalImprovements", 1e9) });
+  eq(reitCapex.v.capex, 1e9, "a REIT's filed capex stays on the sheet");
+  eq(reitCapex.v.fcf, null, "and it is still not subtracted from cash from operations");
+  eq(reitCapex.v.fccr, null, "nor from EBITDA in the coverage proxy");
   const bank = col("6021", { ...base });
   eq(bank.v.fcf, null, "a bank's free cash flow is n/a (rule 27)");
   ok(!bank.v.capexWaived && !bank.v.quickNoInventory, "and it carries neither note, because both are set after the blanking pass");
-  for (const ind of ["pc", "life", "health", "reit"]) ok(!NOT_APPLICABLE[ind].includes("fcf"), `rule 27's keep for ${ind} is untouched`);
+  for (const ind of ["pc", "life", "health"]) ok(!NOT_APPLICABLE[ind].includes("fcf"), `rule 27's keep for ${ind} is untouched`);
 }
 
 // ── The capex row: three measured spellings, last-resort last, and pinned by run ─────────────────
@@ -153,6 +159,13 @@ if (needFixtures("t-blank cache pins")) {
   const nee = at("NEE", "2025-12-31"); if (nee) eq(nee.v.fcf, null, "NextEra's is blank — no capex under any concept the row asks for");
   const aapl = at("AAPL", "2025-09-27"); if (aapl) eq(aapl.v.currentTaxRate, null, "Apple's current tax rate is blank where its deferred tax line is untagged, not the effective rate (its cash tax rate is rule 36's, from taxes paid)");
   const avb = at("AVB", "2018-12-31"); if (avb) eq(avb.meta.capex.tag, "PaymentsForCapitalImprovements", "AvalonBay's FY2018 capex is capital improvements, the concept that spans its sheet");
+  // The REITs that printed a free cash flow before NOT_APPLICABLE.reit, each on a different concept:
+  // American Tower on PP&E payments, AvalonBay and Welltower on capital improvements, Simon and
+  // Equinix on productive assets. The capex row stays; everything that deducted it is n/a.
+  for (const t of ["AMT", "AVB", "WELL", "SPG", "EQIX"]) { const c = at(t, "2025-12-31"); if (c) {
+    ok(c.v.capex != null && c.v.cfo != null, `${t} keeps its filed capex and cash from operations`);
+    for (const k of ["fcf", "fcfMargin", "fcfConv", "ufcf", "fccr"]) ok(c.v[k] == null && c.meta[k].status === "not-applicable", `${t}'s ${k} is n/a, not a figure`);
+  } }
 }
 
 done("t-blank");

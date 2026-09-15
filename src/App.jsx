@@ -1319,7 +1319,13 @@ function PricedIn({ grid, industry, note, S }) {
       {/* The plate has room the row status does not, so it names the business in full. SIC 6200-6299
           is one bucket holding bulge-bracket dealers, advisory boutiques and alternative managers,
           and the sticky-column measurement is why that only gets said here. */}
-      {!applicable ? `A reverse DCF is n/a for a ${industry === "advisory" ? "broker-dealer or asset manager" : INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow." : "it is funded by client payables, repo and consolidated fund liabilities, which total debt cannot see — so enterprise value and unlevered cash flow are category errors here, not gaps."}`
+      {/* One sentence per industry that reaches this branch. The carriers fell through to the
+          broker-dealer sentence until the REIT one was added — Chubb was "funded by client payables
+          and repo" — because the ternary only ever told a bank from everything else. */}
+      {!applicable ? `A reverse DCF is n/a for a ${industry === "advisory" ? "broker-dealer or asset manager" : INDUSTRY_LABEL[industry] || "filer of this kind"} — ${industry === "bank" ? "a depository is valued on capital ratios and book value, and its cash from operations swings with deposits and trading; there is no unlevered cash flow to grow."
+        : industry === "pc" || industry === "life" ? "a carrier's liabilities are the business, so enterprise value and unlevered cash flow are category errors here, not gaps; carriers are valued on book value and return on equity."
+        : industry === "reit" ? "no capital-expenditure concept means the same thing across REITs (development at one, redevelopment at another, recurring at a third), so there is no free cash flow to grow; FFO is the cash measure the sector is valued on."
+        : "it is funded by client payables, repo and consolidated fund liabilities, which total debt cannot see — so enterprise value and unlevered cash flow are category errors here, not gaps."}`
         : ev == null && evMeta.status === "not-applicable" ? "Enterprise value is n/a for this filer's industry — it is a category error for a bank or a carrier, so there is nothing to solve against."
         : ev == null && evMeta.status === "currency-mismatch" ? `The price is in dollars and these figures are in ${evMeta.ccy}, as filed — no enterprise value is built across the two, so there is nothing to solve against.`
         // The price arrived and the bridge still did not close, which is a different sentence. Saying
