@@ -318,6 +318,10 @@ function parseLabels(xml, byRole) {
 // for one table, so a global pick names rows from other footnotes — Caterpillar's United States row reads
 // "U.S. Pension Benefits", Prologis' Other Americas reads "Europe", MGE Energy's Electric segment reads
 // "Corporate And Other Member". Read per role, each row is named the way the filing's own table names it.
+//
+// Where a role presents the same member more than once, the FIRST arc names it. Taken on purpose and measured, not
+// assumed: over 217 filers 3,208 (role, concept) pairs are presented twice with different label roles, none of them
+// is a row a payload shows, and letting the last arc win changes no payload (Sep 15 2026). t-seg-rules pins it.
 function parsePreferred(xml) {
   const out = new Map();
   for (const blk of xml.matchAll(/<link:presentationLink\b[^>]*xlink:role="([^"]+)"[^>]*>([\s\S]*?)<\/link:presentationLink>/g)) {
@@ -365,6 +369,8 @@ export default async function handler(req, res) {
   // Success path only — see api/facts.js. A cached 404 here means "no 10-K on file" or "no XBRL
   // instance" survives a day plus a week of stale-while-revalidate, for a filer that has both.
   const CACHE_OK = "public, s-maxage=86400, stale-while-revalidate=604800";
+  // A 200 built without a companion the listing named (`meta.linkbases.partial`, below).
+  const CACHE_PARTIAL = "public, s-maxage=300";
   try {
     const sub = await get(`https://data.sec.gov/submissions/CIK${pad(cik)}.json`, true);
     const r = (sub.filings && sub.filings.recent) || { form: [] };
@@ -383,20 +389,33 @@ export default async function handler(req, res) {
     // name them <stem>_def.xml / <stem>_lab.xml; 25 file them under a name the instance stem cannot produce
     // — Wells Fargo's instance is wfc-20251231_d2_htm.xml and its linkbase wfc-20251231_def.xml, Blackstone's
     // instance is d48618d10k_htm.xml against bx-20251231.xsd — and 28 file no separate linkbase at all,
-    // because DFIN embeds every one of them inside the .xsd. Every listing names exactly one .xsd.
+    // because DFIN embeds every one of them inside the .xsd. Every listing names exactly one .xsd (217 of 217),
+    // which is the only reason taking the FIRST `.xsd` the listing names is safe: a listing with a second schema
+    // sorted ahead of the filer's own would lose the embedded linkbases without a sound (the review's P3). EDGAR
+    // accepts one schema per submission; if that ever stops holding, prefer the .xsd whose stem matches a listed
+    // linkbase, else the largest.
     //
     // The label linkbase and FilingSummary are nice-to-have and must never fail the request: without
     // them the members render from their QNames and a view is titled by its axis. The DEFINITION
     // linkbase is different — without it there are no roles, so the axis-wide fallback runs.
+    //
+    // But a companion the listing NAMES that then fails to arrive — a 5xx, a reset — is not the same as one the filer
+    // never filed, and the payload built without it is not the filing's answer: without DFIN's .xsd two product
+    // tables merge and the tab says nothing reconciles; without a `_pre.xml` a row takes a label written for another
+    // table. Such a payload says `meta.linkbases.partial` and is cached for five minutes, not a day plus a week of
+    // stale-while-revalidate. Not `no-store`, as api/sections.js sends for its failures: this is still an answer to
+    // show, and five minutes keeps a wobble at SEC from re-running a 20MB parse for every reader.
     const listed = re => (items.find(x => re.test(x.name)) || {}).name;
     const defName = listed(/_def\.xml$/), labName = listed(/_lab\.xml$/), xsdName = listed(/\.xsd$/), preName = listed(/_pre\.xml$/);
+    const failed = [];
+    const companion = name => get(`${dir}/${name}`).catch(() => { failed.push(name); return ""; });
     const [xml, defSep, labSep, sumXml, xsd, preSep] = await Promise.all([
       get(`${dir}/${inst.name}`),
-      defName ? get(`${dir}/${defName}`).catch(() => "") : "",
-      labName ? get(`${dir}/${labName}`).catch(() => "") : "",
+      defName ? companion(defName) : "",
+      labName ? companion(labName) : "",
       get(`${dir}/FilingSummary.xml`).catch(() => ""),
-      (!defName || !labName) && xsdName ? get(`${dir}/${xsdName}`).catch(() => "") : "",
-      preName ? get(`${dir}/${preName}`).catch(() => "") : "",
+      (!defName || !labName) && xsdName ? companion(xsdName) : "",
+      preName ? companion(preName) : "",
     ]);
     const preXml = preSep || (/<link:presentationLink\b/.test(xsd) ? xsd : "");
     const defXml = defSep || (/<link:definitionLink\b/.test(xsd) ? xsd : "");
@@ -614,7 +633,15 @@ export default async function handler(req, res) {
         // corporate row is `CorporateAndReconcilingItems`, so a table-wide choice dropped the
         // corporate row and left D&A $76m short. The choice is per member, by rank.
         // Per (concept, period): every view of every member, before anything is chosen.
-        const cells = new Map();
+        //
+        // Within one view the first fact in the document takes the slot — except that rule 1's entity form never keeps
+        // it from an entity-free fact at the same coordinates. Decided by instance order, an entity fact filed first
+        // put a figure $7m off the whole segment's into the row and the table still passed the gate at 0.08% (the
+        // review's P2). Over 217 filers no such pair exists (item 1), so this changes no payload; it is replaced IN
+        // PLACE rather than by sorting the facts, because a sort moves every entity-axis row behind the others and
+        // reorders NextEra's facts in its payload for no change in any figure (measured over the same 217, Sep 15
+        // 2026: the private notes' segments-impl/fixes/pop-fix.txt).
+        const cells = new Map(), viaEntity = new WeakSet();
         for (const f of facts) {
           const c = keep.get(f.ctx), m = mi.get(c.dims[v.axis]);
           if (m == null || !wantedHere(g, f.tag)) continue;
@@ -622,7 +649,11 @@ export default async function handler(req, res) {
           if (!cells.has(k)) cells.set(k, new Map());
           const per = cells.get(k);
           if (!per.has(m)) per.set(m, new Map());
-          if (!per.get(m).has(q)) per.get(m).set(q, { t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit });
+          const slot = per.get(m), ent = ENTITY in c.dims;
+          if (slot.has(q) && !(viaEntity.has(slot.get(q)) && !ent)) continue;
+          const cellFact = { t: f.tag, m, p: periods.indexOf(c.end), v: f.val, u: f.unit };
+          if (ent) viaEntity.add(cellFact);
+          slot.set(q, cellFact);
         }
         if (!cells.size) continue;
         const out = [], otherViews = new Set();
@@ -816,17 +847,21 @@ export default async function handler(req, res) {
     // saying it "did not add up" would be false. So the order below is the safety: a refusal by the gate
     // is decided FIRST, from the gate's own record, and nothing later can overrule it.
     //   unreconciled            an allow-listed concept had a consolidated figure and the rows missed it
-    //   no-consolidated-figure  the breakdown's measures have no undimensioned counterpart in the filing
+    //   no-consolidated-figure  the filer's own measures (outside the allow-list) have no undimensioned counterpart
     //   outside-allow-list      the breakdown is on concepts the tab does not read, which DO have one
     //   one-member              every breakdown is a single row
     //   no-breakdown            no annual fact on a breakdown axis stands on its own
-    //   other                   none of the above (never seen over 217 filers; the page keeps the old copy)
+    //   other                   none of the above, e.g. an allow-listed breakdown whose company figure is under a
+    //                           sibling tag (not seen over 217 filers; the page keeps the old copy)
     let empty;
     if (!views.length) {
       const nameOfTag = t => LABEL[t.split(":").pop()] || (roleLabels.get(t) || {}).label || labels[t] || t.split(":").pop().replace(/([a-z0-9])([A-Z])/g, "$1 $2");
       if (refused.size) {
         const worst = [...refused].sort((a, b) => a[1] - b[1]);
-        empty = { reason: "unreconciled", concepts: worst.slice(0, 3).map(([t, off]) => ({ tag: t, label: nameOfTag(t), offPct: +(off * 100).toFixed(1) })),
+        // Under 1% the miss is rounded UP to two decimals: a refusal is more than TOL by definition, and to one decimal
+        // a table 0.1004% off printed "the nearest is 0.1% away" — the tolerance itself. From 1% up, one decimal, rounded.
+        const pct = off => off * 100 < 1 ? Math.ceil(off * 1e4 - 1e-9) / 100 : +(off * 100).toFixed(1);
+        empty = { reason: "unreconciled", concepts: worst.slice(0, 3).map(([t, off]) => ({ tag: t, label: nameOfTag(t), offPct: pct(off) })),
           more: Math.max(0, worst.length - 3) };
       } else {
         const one = new Map(), plainIds = new Set();
@@ -859,12 +894,24 @@ export default async function handler(req, res) {
         if (!all.length) empty = { reason: "no-breakdown" };
         else if (!multi.length) empty = { reason: "one-member", ...name(rank(all)) };
         else if (multi.some(x => x.keep && x.con)) empty = { reason: "other" };
-        else if (multi.some(x => x.keep) || !multi.some(x => x.con)) empty = { reason: "no-consolidated-figure", ...name(rank(multi.filter(x => !x.con))) };
-        else empty = { reason: "outside-allow-list", ...name(rank(multi.filter(x => x.con))) };
+        else {
+          // "Nothing to reconcile against" says the company files no figure, so it is said only of the filer's OWN
+          // measures: not allow-listed, and no undimensioned fact under the same tag. An allow-listed breakdown with
+          // no same-tag figure proves nothing — a segment note tagging `Revenues` beside an income statement tagging
+          // contract revenue has a company figure under a sibling tag — so on its own it is `other`. Blackstone is
+          // named for its segment measures and not for that (the review's P1 and P4): of 26 empty tabs over 217
+          // filers this re-keying changes one payload, Blackstone's `more`, 8 -> 7, because contract revenue by
+          // product is no longer counted among its own measures.
+          const own = multi.filter(x => !x.keep && !x.con);
+          if (own.some(x => x.segment)) empty = { reason: "no-consolidated-figure", ...name(rank(own)) };
+          else if (multi.some(x => x.con)) empty = { reason: "outside-allow-list", ...name(rank(multi.filter(x => x.con))) };
+          else if (own.length) empty = { reason: "no-consolidated-figure", ...name(rank(own)) };
+          else empty = { reason: "other" };
+        }
       }
     }
 
-    res.setHeader("Cache-Control", CACHE_OK);
+    res.setHeader("Cache-Control", failed.length ? CACHE_PARTIAL : CACHE_OK);
     return res.status(200).json({
       cik, name: sub.name, accn, period: r.reportDate ? r.reportDate[i] : null, filed: r.filingDate[i],
       filingUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${bare}/${accn}-index.htm`,
@@ -872,7 +919,7 @@ export default async function handler(req, res) {
       conceptLabels: Object.fromEntries([...new Set(views.flatMap(v => v.concepts))]
         .map(t => [t, LABEL[t.split(":").pop()] || labels[t] || t.split(":").pop()])),
       meta: { instance: inst.name, bytes: Number(inst.size) || xml.length, contexts: ctxs.size,
-        linkbases: { definition: !!defXml, label: !!labXml, from: defSep ? "separate" : defXml ? "xsd" : null } },
+        linkbases: { definition: !!defXml, label: !!labXml, from: defSep ? "separate" : defXml ? "xsd" : null, ...(failed.length ? { partial: true } : {}) } },
     });
   } catch (e) {
     if (e.status === 404) return res.status(404).json({ error: "SEC has no such filing on file" });

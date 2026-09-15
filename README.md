@@ -1753,20 +1753,25 @@ somewhere else.** Rules 2, 3 and 8 read the definition and label linkbases, and 
 way; **25 file separate linkbases under a name the stem cannot produce** — Wells Fargo's instance is
 `wfc-20251231_d2_htm.xml` and its linkbase `wfc-20251231_def.xml`, several small filers call the instance
 `form10-k_htm.xml` — and **28 file none at all**, because DFIN embeds them inside the `.xsd`; Blackstone's
-`d48618d10k_htm.xml` sits against `bx-20251231.xsd`. Both misses were silent: the catch that keeps a
-missing label linkbase from failing the request also hid that rules 2, 3 and 8 were off for 53 filers, and
-Microsoft's twelve product members from two hypercubes reached the gate at exactly twice the company. The
-Sep 11 audit read all of it as "inside the `.xsd`" and proposed falling back to the `.xsd` on a 404; half
-its twenty were the other kind, whose `.xsd` holds no linkbase, so that fallback changes 23 filers'
-payloads where finding the files by listing changes 29. Every listing names exactly one `.xsd`, so the
-handler takes the listing's `_def.xml`, `_lab.xml` and `_pre.xml`, and the `.xsd` where there are none.
-**The concept a locator or a label belongs to is read from its href, not its name,** because the name is a
-convention and there are three: Workiva writes `lab_us-gaap_Revenues`, DFIN `us-gaap_Revenues_lbl` with
-`_default` tails on its locators, Blackstone `loc_<q>_<number>` with the role attribute first. Reading the
-name matched 0 of the 69,994 labels in the embedded linkbases and named every one of Blackstone's axes
-wrong, and a pattern that accepted all three conventions still renamed Coca-Cola's `ko:A.PacificMember`
-"A.Pacific", because a concept name can contain a period. Read by href alone, the 164 filers the old parser
-could read come out byte-identical; what then changes on them is rule 8's label choice, below.
+`d48618d10k_htm.xml` sits against `bx-20251231.xsd`. Both misses were silent: the catch that keeps a missing
+label linkbase from failing the request also hid that rules 2, 3 and 8 were off for 53 filers, and Microsoft's
+twelve product members from two hypercubes reached the gate at exactly twice the company. The Sep 11 audit
+read all of it as "inside the `.xsd`" and proposed falling back to the `.xsd` on a 404; half its twenty were
+the other kind, whose `.xsd` holds no linkbase, so that fallback changes 23 filers' payloads where finding the
+files by listing changes 29. Every listing names exactly one `.xsd`, so the handler takes the listing's
+`_def.xml`, `_lab.xml` and `_pre.xml`, and the `.xsd` where there are none. **The concept a locator or a label
+belongs to is read from its href, not its name,** because the name is a convention and there are three:
+Workiva writes `lab_us-gaap_Revenues`, DFIN `us-gaap_Revenues_lbl` with `_default` tails on its locators,
+Blackstone `loc_<q>_<number>` with the role attribute first. Reading the name matched 0 of the 69,994 labels
+in the embedded linkbases and named every one of Blackstone's axes wrong, and a pattern that accepted all
+three conventions still renamed Coca-Cola's `ko:A.PacificMember` "A.Pacific", because a concept name can
+contain a period. Read by href alone, the 164 filers the old parser could read come out byte-identical; what
+then changes on them is rule 8's label choice, below. **A companion the listing names and SEC then fails to
+serve is not one the filer never filed.** Without DFIN's `.xsd` two product tables merge and the tab says
+nothing reconciles about tables that each foot to the dollar, and that 200 was cached for a day and served
+stale for a week; now a listed `_def.xml`, `_lab.xml`, `_pre.xml` or `.xsd` that answers non-OK or not at all
+makes the payload `meta.linkbases.partial` and its cache five minutes. A file the listing never named is not a
+failure. None of the 217 cached filings is partial, and no payload changes.
 
 **The claim the tab makes is that every table on it adds up**, and it is enforced rather than
 reported: a breakdown whose rows do not sum to the consolidated figure for the same period in the
@@ -1815,13 +1820,14 @@ Nine rules, each learned the same way as the others here:
    segment. The exact QName, not a suffix: the one other `…LegalEntityAxis` in the population,
    `FinancialSupportToNonconsolidatedLegalEntityAxis`, names no registrant. The empty-tab classifier below
    asks the same one-axis question through the same predicate, so an entity-axis row is a row there too.
-   2. **A view is an (axis, extended-link ROLE) pair, not an axis.** One axis can carry two completely
-   different breakdowns. Apple files revenue by product twice — on the income statement as {Product,
-   Service} and in the revenue footnote as {iPhone, Mac, iPad, Wearables, Service}. Both sit on
-   `srt:ProductOrServiceAxis` and each foots to $416.2bn alone; grouped by axis they summed to **$832.3bn,
-   exactly twice the company**. No containment arc says so, because the linkbase declares Product and
-   iPhone as *siblings* under one domain. What separates them is belonging to different hypercubes, and the
-   role is where that is written down.
+
+2. **A view is an (axis, extended-link ROLE) pair, not an axis.** One axis can carry two completely
+   different breakdowns. Apple files revenue by product twice — on the income statement as
+   {Product, Service} and in the revenue footnote as {iPhone, Mac, iPad, Wearables, Service}. Both
+   sit on `srt:ProductOrServiceAxis` and each foots to $416.2bn alone; grouped by axis they summed to
+   **$832.3bn, exactly twice the company**. No containment arc says so, because the linkbase declares
+   Product and iPhone as *siblings* under one domain. What separates them is belonging to different
+   hypercubes, and the role is where that is written down.
 
    **A table is not shown twice, and twice is decided by the cells.** The dedupe compared member QNames in
    order, so Altria's segment schedule and its narrative — the same cells, members listed differently —
@@ -1835,27 +1841,30 @@ Nine rules, each learned the same way as the others here:
    was measured and rejected: it drops AES's regulated and non-regulated revenue in favour of its
    generation and distribution split, equal numbers on different rows. Nor by label, which per-table labels
    (rule 8) now make differ for the same member. The old key never hid a different table — every view it
-   dropped had the same cells as the one it kept. 3. **A member is a subtotal when the linkbase says the
-   table already contains its children.** UnitedHealth files `TotalOptum` beside Optum Health, Optum
-   Insight and OptumRx; Caterpillar files the standard
-   `ReportableSegmentAggregationBeforeOtherOperatingSegment` beside the four segments inside it. As rows
-   they doubled both companies — UNH to $891.6bn against $447.6bn, CAT to $136.4bn against $67.6bn.
-   Matching the word "Total" is what rule 10 exists to warn against, and unnecessary: `unh:TotalOptumMember
-   → unh:OptumhealthMember` says it outright. The test is **containment of members actually present**, not
-   "has children anywhere" — deciding it on the linkbase alone removed real segments, taking Chubb's
-   premium base from $53.0bn to $37.3bn, and left Chevron with a single $0.6bn "all other" row against a
-   $184bn company because its aggregation member is the only row carrying revenue at all. 4. **Deduplicate
-   facts by (tag, context).** Inline XBRL tags a figure everywhere it appears in the document, so the
-   extracted instance carries the same fact once per occurrence. Apple's services revenue is on the face of
-   the income statement and again in the revenue footnote — identical tag, identical context, two elements.
-   Summed as filed, its product breakdown came to **$525.3bn against a $416.2bn company**, the extra
-   $109.1bn being services counted twice. A duplicate is one fact seen twice, and nothing downstream can
-   tell the difference. 5. **A concept allow-list, and members are not required to end in "Member".** Every
-   table in a filing that touches one of these axes becomes a candidate, and most are disclosures nobody
-   models — goodwill translation adjustments by segment, restructuring costs, a held-for-sale narrative.
-   Caterpillar produced thirteen. Separately, Apple's geographic rows are `country:US` and `country:CN`,
-   standard members with no such suffix; requiring it dropped the United States and China from a geographic
-   breakdown and left "Other countries" behind.
+   dropped had the same cells as the one it kept.
+
+3. **A member is a subtotal when the linkbase says the table already contains its children.**
+   UnitedHealth files `TotalOptum` beside Optum Health, Optum Insight and OptumRx; Caterpillar files
+   the standard `ReportableSegmentAggregationBeforeOtherOperatingSegment` beside the four segments
+   inside it. As rows they doubled both companies — UNH to $891.6bn against $447.6bn, CAT to $136.4bn
+   against $67.6bn. Matching the word "Total" is what rule 10 exists to warn against, and unnecessary:
+   `unh:TotalOptumMember → unh:OptumhealthMember` says it outright. The test is **containment of
+   members actually present**, not "has children anywhere" — deciding it on the linkbase alone removed
+   real segments, taking Chubb's premium base from $53.0bn to $37.3bn, and left Chevron with a single
+   $0.6bn "all other" row against a $184bn company because its aggregation member is the only row
+   carrying revenue at all.
+4. **Deduplicate facts by (tag, context).** Inline XBRL tags a figure everywhere it appears in the
+   document, so the extracted instance carries the same fact once per occurrence. Apple's services
+   revenue is on the face of the income statement and again in the revenue footnote — identical tag,
+   identical context, two elements. Summed as filed, its product breakdown came to **$525.3bn against
+   a $416.2bn company**, the extra $109.1bn being services counted twice. A duplicate is one fact seen
+   twice, and nothing downstream can tell the difference.
+5. **A concept allow-list, and members are not required to end in "Member".** Every table in a filing
+   that touches one of these axes becomes a candidate, and most are disclosures nobody models —
+   goodwill translation adjustments by segment, restructuring costs, a held-for-sale narrative.
+   Caterpillar produced thirteen. Separately, Apple's geographic rows are `country:US` and
+   `country:CN`, standard members with no such suffix; requiring it dropped the United States and
+   China from a geographic breakdown and left "Other countries" behind.
 
 6. **The reconciliation's own rows are rows, and they are not on the breakdown axis at all.**
    Corporate, intersegment eliminations and "all other" are filed with `srt:ConsolidationItemsAxis`
@@ -2006,26 +2015,32 @@ Nine rules, each learned the same way as the others here:
    filer's own total. Caught by looking at the page — the table was correct, complete and silent about
    what it was.
 
-Where nothing survives, the tab links the filing rather than showing a table it cannot stand behind, and
-says which of five things is true, from what the handler already holds — `empty.reason` in the payload.
-**The order is the safety.** **Did not reconcile** is read first, from the gate's own record: Verizon's
-segment revenue misses the company by 1.4%, Exelon's by 29.4%, **Realty Income's revenue by property type
-by 5.4%** ($5,437.3m against $5,749.4m in FY2025). Realty Income was described here as a one-segment
-company, and on its segment axis it is one — that was not why its tab was empty. **Nothing to reconcile
-against** is Blackstone. It reports its segments on fee-related earnings ($5,737.5m across four segments in
-FY2025), segment distributable earnings ($7,882.2m), base management fees and the rest of its own segment
-table, none of which it files as a figure for the company as a whole; the one allow-listed concept it
-breaks down, contract revenue by product ($9,053.8m), has no counterpart either, because its consolidated
-revenue is tagged `Revenues` ($14,450.3m). The standard concepts on its segment axis that do foot — the
-"three of its concepts" this paragraph used to cite — are a loss-contingency roll-forward and a geography
-percentage, outside the allow-list by rule 5 and never a table candidate. Saying Blackstone "did not add
-up" would be false, and a mutant that checks for a missing figure before reading the gate's record says
-exactly that about six filers the gate refused. Then **not a line this tab reads** (Moelis' investment
-banking revenue by geography), **a single row** (Hycroft), and **no breakdown filed** (thirteen, Edison
-International, Federal Realty and AvalonBay among them). Over 217 filers: 8, 1, 2, 2 and 13. NextEra, once
-the third case here, reconciles under rule 1's co-registrant exception. A sixth reason, `other`, has never
-occurred; the page prints the sentence that shipped before for it, and for any payload older than the
-field.
+Where nothing survives, the tab links the filing rather than showing a table it cannot stand behind, and says
+which of five things is true, from what the handler already holds — `empty.reason` in the payload. **The order
+is the safety.** **Did not reconcile** is read first, from the gate's own record: Verizon's segment revenue
+misses the company by 1.4%, Exelon's by 29.4%, **Realty Income's revenue by property type by 5.4%** ($5,437.3m
+against $5,749.4m in FY2025). Realty Income was described here as a one-segment company, and on its segment
+axis it is one — that was not why its tab was empty. **Nothing to reconcile against** is Blackstone, and it is
+said only of a filer's OWN measures — outside the allow-list, with no undimensioned figure under the same tag.
+Blackstone reports its segments on fee-related earnings ($5,737.5m across four segments in FY2025), segment
+distributable earnings ($7,882.2m), base management fees and eight more of its own measures that it files no
+figure for the company as a whole against. The one allow-listed concept it breaks down, contract revenue by
+product ($9,053.8m), has no same-tag figure either — its consolidated revenue is tagged `Revenues`
+($14,450.3m) — and that alone is not "nothing to reconcile against", because the company does file a revenue
+figure; a breakdown like that with nothing else beside it keeps the sentence that shipped before. Three
+concepts on Blackstone's segment axis do foot — fee-related performance revenues ($1,825.4m in FY2025),
+realized principal investment income ($419.7m) and a loss-contingency roll-forward ($806.3m) — and two more
+miss their company figure by 24.2% to 48.3%; all five are outside the allow-list by rule 5 and were never a
+table candidate. (Its geography percentage, cited here before, is not on the segment axis at all.) Saying
+Blackstone "did not add up" would be false, and reading the gate's record first keeps the opposite error off
+the eight filers the gate refused: a mutant that skips it tells Verizon, Qualcomm and COPT Defense there is
+nothing to reconcile against, tells Realty Income, iQSTEL and Exelon their breakdown is on a line this tab
+does not read while naming lines it does, and calls the other two a single row. Then **not a line this tab
+reads** (Moelis' investment banking revenue by geography), **a single row** (Hycroft), and **no breakdown
+filed** (thirteen, Edison International, Federal Realty and AvalonBay among them). Over 217 filers: 8, 1, 2, 2
+and 13. NextEra, once the third case here, reconciles under rule 1's co-registrant exception. A sixth reason,
+`other`, has not occurred over those 217 filers; the page prints the sentence that shipped before for it, and
+for any payload older than the field.
 
 Payloads come out at **0–17KB from instances of up to 17MB**. `t-seg.mjs` runs 11,717 assertions over
 the 30 filers, the load-bearing one being the reconciliation itself — **at the shipping tolerance, not
@@ -2037,12 +2052,16 @@ Goldman's Global Banking & Markets $11.0bn against $10.7bn. Both correct, both f
 assumed the parts are each smaller than the whole.
 
 `t-seg.mjs` needs an instance cache that lives in a session and has died with one before. What runs with
-`npm test` is **`test/t-seg-rules.mjs`**: twenty filings built by hand in the shapes named above — NextEra
-and the same filing with a different entity member, FirstEnergy's piece filed first beside its whole
-segment, DFIN's and Blackstone's embedded linkbases, Wells Fargo's other-name files, Prologis', MetLife's
-and AIG's labels, Brown & Brown, Altria, Apple, AES, and one filing per empty-tab reason — served through a
-stubbed `fetch` into the shipping handler. 68 assertions; 32 of 32 mutations caught, each by the witness
-written for it, among them every alternative measured and rejected above.
+`npm test` is **`test/t-seg-rules.mjs`**: 32 filings built by hand in the shapes named above — NextEra and the
+same filing with a different entity member, FirstEnergy's piece filed first beside its whole segment, DFIN's
+and Blackstone's embedded linkbases, Wells Fargo's other-name files, Prologis', MetLife's and AIG's labels,
+Brown & Brown, Altria (twice, the second naming a row two ways), Apple, AES, one filing per empty-tab reason,
+and the shapes the review of this change turned up: a company figure under a sibling tag, Blackstone without
+its product breakdown, an entity fact filed first at an entity-free slot, a refusal 0.1004% off, a member
+presented twice in one table, a listed companion answering 500 or never answering — served through a stubbed
+`fetch` into the shipping handler. 84 assertions; 47 of 47 mutations caught, each by the witness written for
+it, among them the entity, linkbase, label and dedupe alternatives measured and rejected above — the Sep 11
+audit's `.xsd`-on-404 fallback and a dedupe keyed by label included.
 
 ## Industry overlays
 

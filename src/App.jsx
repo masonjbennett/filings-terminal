@@ -1122,7 +1122,7 @@ function SegmentTables({ segs, S }) {
       // Why this tab is empty, from api/segments.js's `empty` (README Segments). Two of the reasons are opposites —
       // a breakdown checked against the company that failed, and one with nothing in the company's statements to
       // check it against — and the old single sentence said the first about both: it told a reader Blackstone's
-      // segments "do not add up" when Blackstone files no company-wide figure for them to add up to.
+      // segments "do not add up" when the measures its segment table leads with have no company-wide figure to add up to.
       //
       // A payload WITHOUT `empty` keeps the sentence that shipped before, and that branch is not dead code. The
       // payload lives only in this component's state, never in storage, so a tab left open across a deploy holds
@@ -1138,15 +1138,14 @@ function SegmentTables({ segs, S }) {
           {cs.length ? Math.min(...cs.map(c => c.offPct)) : "?"}% away — and a table that does not add up is not shown. Most
           often that is segment revenue that includes intersegment sales, or a reconciling line filed where this tab does not
           look. The footnote itself has the numbers.</>],
-        "no-consolidated-figure": ["Nothing to reconcile against", <>This company reports its segments on {names}
+        "no-consolidated-figure": ["Nothing to reconcile against", <>This company reports its breakdown on {names}
           {e.more ? ` and ${e.more} other measures` : ""} — its own measures, none of which the filing reports as a figure for
           the company as a whole. A table here is shown only when its rows add up to such a figure, so there is nothing to
-          check these against. The segment footnote reports them in full.</>],
+          check these against. The footnote itself reports them in full.</>],
         "outside-allow-list": ["Not a line this tab reads", <>This filer's breakdown is tagged on {names}, which this tab does
-          not read: it reads revenue and the standard profit, cost, asset and capital-spending lines, the ones a table can be
+          not read: it reads the standard revenue, profit, cost and capital-spending lines, the ones a table can be
           added up against. The footnote itself has the numbers.</>],
-        "one-member": ["A single row", <>Every breakdown this filer tags has one row — the company itself rather than a split
-          of it — so there is no table to add up.</>],
+        "one-member": ["A single row", <>Every breakdown this filer tags has one row, so there is no split to add up.</>],
         "no-breakdown": ["No breakdown filed", <>The latest 10-K tags no annual figure by segment, product line or geography
           that stands on its own, so there is no breakdown to show.</>],
       };

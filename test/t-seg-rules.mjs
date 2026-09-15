@@ -1,6 +1,7 @@
 // The Segments tab's Sep 15 2026 rules — the co-registrant entity axis (rule 1's exception), linkbases found
 // by the listing and read by href (including the ones DFIN embeds in the .xsd), a row's label taken per
-// table, a table not shown twice, and an empty tab that says which of five things is true. Measured before
+// table, a table not shown twice, an empty tab that says which of five things is true, and a payload built without
+// a companion file the listing named that says it is partial and is cached for five minutes. Measured before
 // they shipped over 217 filers through the segment instance cache (the private notes'
 // measure/audit4/item0, item1 and segments-impl): NextEra's segment table foots to the dollar and 216 other
 // payloads are unchanged by the entity rule; 53 filers gain their linkbases; 35 views that repeat another
@@ -18,10 +19,15 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SITE = new Map();
+// A URL in FAIL answers that status instead of its body; a URL in THROW never answers at all — SEC's two ways of
+// failing a request the listing says will succeed.
+const FAIL = new Map(), THROW = new Set();
 let hits = [];
 globalThis.fetch = async u => {
   u = String(u);
   hits.push(u);
+  if (THROW.has(u)) throw new Error("ECONNRESET");
+  if (FAIL.has(u)) return { ok: false, status: FAIL.get(u), text: async () => "", json: async () => ({}) };
   if (!SITE.has(u)) return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
   const body = SITE.get(u);
   return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body) };
@@ -100,11 +106,12 @@ function filing(o) {
     }
     labLink = `<link:labelLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">${labLink}</link:labelLink>`;
   }
+  // A member's preferred label, or an ARRAY of them for a role that presents the member more than once.
   const preLinks = Object.entries(o.pres || {}).map(([uri, prefs]) => {
     const L = namer();
     return `<link:presentationLink xlink:type="extended" xlink:role="${uri}"><link:loc xlink:type="locator" xlink:href="${href(LI)}" xlink:label="${L(LI)}"/>`
       + Object.entries(prefs).map(([q, pref]) => `<link:loc xlink:type="locator" xlink:href="${href(q)}" xlink:label="${L(q)}"/>`
-        + `<link:presentationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="${L(LI)}" xlink:to="${L(q)}" order="1"${pref ? ` preferredLabel="${ROLE(pref)}"` : ""}/>`).join("")
+        + [].concat(pref).map((p, n) => `<link:presentationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="${L(LI)}" xlink:to="${L(q)}" order="${n + 1}"${p ? ` preferredLabel="${ROLE(p)}"` : ""}/>`).join("")).join("")
       + `</link:presentationLink>`;
   }).join("");
   const lb = body => `<?xml version="1.0" encoding="utf-8"?>\n<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink">${body}</link:linkbase>\n`;
@@ -125,7 +132,7 @@ function filing(o) {
     form: ["10-Q", "10-K"], accessionNumber: [`${pc}-26-000002`, accn], reportDate: ["2026-03-31", "2025-12-31"], filingDate: ["2026-05-01", "2026-02-20"] } } }));
   SITE.set(`${dir}/index.json`, JSON.stringify({ directory: { item: [...files.keys()].sort().map(name => ({ name, size: String(files.get(name).length) })) } }));
   for (const [n, b] of files) SITE.set(`${dir}/${n}`, b);
-  return { cik, name: o.name };
+  return { cik, name: o.name, dir };
 }
 
 const runs = [];
@@ -200,6 +207,25 @@ const neeFacts = (entityOnFpl, entityAxis = ENT) => [
     eq(cell(segs[0], "fe:RegulatedDistributionMember", REV, 2), 7547 * M, "FE shape: Regulated Distribution is the whole segment, $7,547m, never JCP&L's $2,554m");
     ok(footsToTheDollar(b, segs[0], REV), "FE shape: revenue foots to the dollar");
   }
+}
+// The same slot filed twice under rule 1's exception: once with the entity axis EQUAL to the member, and once without
+// it, $5-7m apart, the entity form first in the document. Rule 7 keeps one fact per (member, view, concept, period),
+// and which one must not be decided by instance order: taken first-come, the row read $7,540m and the column $8,540m
+// against $8,547m — 0.08%, inside the gate, so a table $7m short was shown as footing (the review's P2).
+// MUTATION: letting the first fact keep the slot whatever carries it fails this block.
+{
+  const f = filing({ name: "entity form filed first at an entity-free slot", prefix: "p2", facts: [
+    ...each(REV, {}, [8000, 8300, 8547]),
+    ...each(REV, { [SEG]: "p2:DistMember", [ENT]: "p2:DistMember" }, [6995, 7295, 7540]),
+    ...each(REV, { [SEG]: "p2:DistMember" }, [7000, 7300, 7547]),
+    ...each(REV, { [SEG]: "p2:TransMember" }, [1000, 1000, 1000]),
+  ] });
+  const { body: b } = await call(f);
+  const segs = byAxis(b, "segment");
+  eq(segs.length ? cell(segs[0], "p2:DistMember", REV, 2) : null, 7547 * M, "entity form first: the entity-free fact takes the row — $7,547m, not the $7,540m filed first");
+  ok(segs.length === 1 && footsToTheDollar(b, segs[0], REV), "entity form first: and the table foots to the dollar in all three years, not merely inside 0.1%");
+  eq(segs.length ? segs[0].facts.map(x => `${segs[0].members[x.m].q.split(":")[1]}/${x.p}`).join(" ") : "",
+    "DistMember/0 TransMember/0 DistMember/1 TransMember/1 DistMember/2 TransMember/2", "entity form first: the table's facts keep the filing's order");
 }
 // MUTATION: matching the axis by suffix (/LegalEntityAxis$/) fails this block.
 {
@@ -303,6 +329,35 @@ const neeFacts = (entityOnFpl, entityAxis = ENT) => [
   eq(JSON.stringify(b.meta.linkbases), JSON.stringify({ definition: false, label: false, from: null }), "no linkbase: nothing found, and `from` is null rather than a guess");
   eq(byAxis(b, "segment").map(v => `${v.role}:${labelsOf(v).join(", ")}`).join(" | "), "null:Alpha, Beta", "no linkbase: one axis-wide table, rows named from their QNames");
 }
+// A companion the listing NAMES and SEC then fails to serve. The payload is still an answer — the request must not
+// fail for want of a label — but it is not the filing's answer: DFIN's two product tables merge without the .xsd
+// and the tab says "nothing reconciles, the nearest is 70% away" about tables that each foot to the dollar. Cached
+// for a day and served stale for a week, one 500 would say that for a fortnight. So a listed companion that fails
+// makes the payload `partial` and its cache five minutes; a companion the listing never named is not a failure.
+// MUTATIONS: the full cache on a partial payload; no `partial` flag; a failed fetch not recorded — each fails this block.
+{
+  const IS = "http://dfin.example/role/CONSOLIDATEDSTATEMENTSOFOPERATIONS", FN = "http://dfin.example/role/RevenueNetSalesDisaggregatedDetails";
+  const f = filing({ name: "DFIN embedded, the .xsd answering 500", prefix: "x", place: "xsd", conv: "dfin",
+    roles: [{ uri: IS, axis: PROD, members: ["us-gaap:ProductMember", "us-gaap:ServiceMember"], concepts: [RFC] },
+      { uri: FN, axis: PROD, members: ["x:IPhoneMember", "x:MacMember", "us-gaap:ServiceMember"], concepts: [RFC] }],
+    facts: [...each(RFC, {}, [100, 110, 120]), ...each(RFC, { [PROD]: "us-gaap:ProductMember" }, [70, 77, 84]), ...each(RFC, { [PROD]: "us-gaap:ServiceMember" }, [30, 33, 36]),
+      ...each(RFC, { [PROD]: "x:IPhoneMember" }, [50, 55, 60]), ...each(RFC, { [PROD]: "x:MacMember" }, [20, 22, 24])] });
+  FAIL.set(`${f.dir}/x-20251231.xsd`, 500);
+  const { status, body: b, headers } = await call(f);
+  eq(status, 200, "listed .xsd answering 500: still a 200 — a missing linkbase never fails the request");
+  eq(b.meta.linkbases.partial, true, "listed .xsd answering 500: the payload says it is partial");
+  eq(headers["cache-control"], "public, s-maxage=300", "listed .xsd answering 500: cached for five minutes, not a day plus a week");
+  const t = filing({ name: "separate linkbases, the _pre.xml never answering", prefix: "tp", place: "separate",
+    roles: [{ uri: "http://tp.example/role/SegmentDetails", axis: SEG, members: ["tp:AlphaMember", "tp:BetaMember"], concepts: [REV] }],
+    labels: { "tp:AlphaMember": { label: "Alpha" }, "tp:BetaMember": { label: "Beta" } },
+    pres: { "http://tp.example/role/SegmentDetails": { "tp:AlphaMember": null, "tp:BetaMember": null } },
+    facts: [...each(REV, {}, [3, 3, 3]), ...each(REV, { [SEG]: "tp:AlphaMember" }, [2, 2, 2]), ...each(REV, { [SEG]: "tp:BetaMember" }, [1, 1, 1])] });
+  THROW.add(`${t.dir}/tp-20251231_pre.xml`);
+  const r2 = await call(t);
+  ok(r2.body.meta.linkbases.partial === true && r2.headers["cache-control"] === "public, s-maxage=300",
+    `listed _pre.xml throwing: partial, five minutes — got ${JSON.stringify(r2.body.meta.linkbases)}, ${r2.headers["cache-control"]}`);
+  eq(byAxis(r2.body, "segment").length, 1, "listed _pre.xml throwing: and the table it can still build is shown");
+}
 
 // ── which label names a row is the table's choice ────────────────────────────────────────────────────────
 // Prologis: Other Americas carries a terseLabel "Europe" written for another table; the geography table's
@@ -328,6 +383,20 @@ const neeFacts = (entityOnFpl, entityAxis = ENT) => [
   const seg = byAxis(b, "segment").map(v => labelsOf(v));
   eq((seg[0] || [])[0], "Life insurance", "labels per table: the table's own wording, its trailing footnote marker dropped");
   eq((seg[0] || []).slice(1).join(", "), "Business in Run-Off, Elimination and consolidations", "labels per table: two rows the table names alike fall back to their own names");
+}
+// A role that presents the same member TWICE, asking for a different label each time: the FIRST arc names the row.
+// Measured, not assumed: over 217 filers 3,208 (role, concept) pairs are presented twice with different label roles
+// and none of them is a row a payload shows, so first-or-last changes no payload today (the private notes'
+// segments-impl/fixes/n8-arcs.txt); this pins the choice so it cannot flip unnoticed. MUTATION: the last arc wins (the review's R5) fails this block.
+{
+  const G = "http://twice.example/role/RevenueByRegionDetails";
+  const f = filing({ name: "a member presented twice", prefix: "tw", place: "separate",
+    roles: [{ uri: G, axis: GEO, members: ["tw:OtherAmericasMember", "tw:EuropeMember"], concepts: [REV] }],
+    labels: { "tw:OtherAmericasMember": { label: "Other Americas", terseLabel: "Americas ex-US" }, "tw:EuropeMember": { label: "Europe" } },
+    pres: { [G]: { "tw:OtherAmericasMember": [null, "terseLabel"], "tw:EuropeMember": null } },
+    facts: [...each(REV, {}, [100, 100, 100]), ...each(REV, { [GEO]: "tw:OtherAmericasMember" }, [30, 30, 30]), ...each(REV, { [GEO]: "tw:EuropeMember" }, [70, 70, 70])] });
+  const { body: b } = await call(f);
+  eq(byAxis(b, "geo").map(v => labelsOf(v).join(", ")).join(" | "), "Other Americas, Europe", "a member presented twice: the first arc's label names the row");
 }
 
 // ── a table is not shown twice, and twice is decided by the cells ────────────────────────────────────────
@@ -362,6 +431,21 @@ const neeFacts = (entityOnFpl, entityAxis = ENT) => [
     facts: [...each(REV, {}, [20, 21, 22]), ...each(REV, { [SEG]: "mo:SmokeableMember" }, [18, 19, 19]), ...each(REV, { [SEG]: "mo:OralMember" }, [2, 2, 3])] });
   const { body: b } = await call(f);
   eq(byAxis(b, "segment").map(v => v.source).join(" | "), "Segment Data Schedule", "MO shape: one table, and on a tie the one first in the filing");
+}
+// The same two Altria tables, the narrative naming a row by its terse label: rule 8 gives one member two names, and
+// the cells are still the same cells. MUTATION: keying a cell by the row's LABEL instead of its QName (measured and
+// rejected above: "Nor by label") fails this block — the narrative prints a second time.
+{
+  const S1 = "http://www.altria.example/role/SegmentDataScheduleDetails", S2 = "http://www.altria.example/role/SegmentsNarrativeDetails";
+  const f = filing({ name: "MO shape, a row named two ways", prefix: "mo", place: "separate",
+    roles: [{ uri: S1, axis: SEG, members: ["mo:SmokeableMember", "mo:OralMember"], concepts: [REV], short: "Segment Data Schedule" },
+      { uri: S2, axis: SEG, members: ["mo:OralMember", "mo:SmokeableMember"], concepts: [REV], short: "Segments (Narrative)" }],
+    labels: { "mo:SmokeableMember": { label: "Smokeable products", terseLabel: "Smokeable" }, "mo:OralMember": { label: "Oral tobacco products" } },
+    pres: { [S1]: { "mo:SmokeableMember": null, "mo:OralMember": null }, [S2]: { "mo:OralMember": null, "mo:SmokeableMember": "terseLabel" } },
+    facts: [...each(REV, {}, [20, 21, 22]), ...each(REV, { [SEG]: "mo:SmokeableMember" }, [18, 19, 19]), ...each(REV, { [SEG]: "mo:OralMember" }, [2, 2, 3])] });
+  const { body: b } = await call(f);
+  eq(byAxis(b, "segment").map(v => `${v.source}: ${labelsOf(v).join(", ")}`).join(" | "), "Segment Data Schedule: Smokeable products, Oral tobacco products",
+    "MO shape, a row named two ways: still one table — a cell is its member, not what one table calls it");
 }
 // Two genuinely different tables survive: Apple's income-statement split beside its footnote split (they
 // share the Services row), and AES's regulated/non-regulated revenue beside generation/distribution, whose
@@ -405,6 +489,17 @@ const bxFacts = [
   ok(cs.some(c => c.tag === "bx:FeeRelatedEarnings" && c.label === "Fee Related Earnings"), "BX shape: fee-related earnings is among them, by name");
   ok(cs.every(c => !("offPct" in c)), "BX shape: no miss percentage, because nothing was missed");
 }
+// Own measures on two axes: two segment measures and a product-axis measure filed more often (three members against
+// two). Blackstone's eleven are all on the segment axis, so its shape cannot tell whether the segment axis leads the
+// naming. MUTATION: dropping the segment axis from the ranking (most-filed first) fails this block.
+{
+  const { body: b } = await call(filing({ name: "own measures on two axes", prefix: "ax2", facts: [
+    ...each(REV, {}, [100, 100, 100]),
+    ...each("ax2:SegmentEarnings", { [SEG]: "ax2:EastMember" }, [5, 5, 5]), ...each("ax2:SegmentEarnings", { [SEG]: "ax2:WestMember" }, [4, 4, 4]),
+    ...each("ax2:ProductFees", { [PROD]: "ax2:AdvisoryMember" }, [3, 3, 3]), ...each("ax2:ProductFees", { [PROD]: "ax2:PlacementMember" }, [2, 2, 2]),
+    ...each("ax2:ProductFees", { [PROD]: "ax2:OtherFeesMember" }, [1, 1, 1])] }));
+  eq(((b.empty || {}).concepts || []).map(c => c.tag).join(" "), "ax2:SegmentEarnings ax2:ProductFees", "own measures on two axes: the segment axis's measure is named first, then the product axis's");
+}
 // The same Blackstone given ONE consolidated contract-revenue figure (FY2025, $9,500m): now the gate has
 // something to check the product rows ($9,064m) against, and they miss — so the tab must say so.
 // MUTATIONS: not recording the gate's refusal; reading the classifier without it (M1, "other"); reading a
@@ -413,6 +508,31 @@ const bxFacts = [
   const { body: b } = await call(filing({ name: "BX shape + consolidated contract revenue", prefix: "bx", facts: [...bxFacts, [RFC, {}, 2025, 9500 * M]] }));
   eq((b.empty || {}).reason, "unreconciled", "BX + one consolidated figure: a breakdown the gate refused is \"did not reconcile\", whatever else is true");
   eq(JSON.stringify(((b.empty || {}).concepts || []).map(c => [c.tag, c.offPct])), JSON.stringify([[RFC, 4.6]]), "BX + one consolidated figure: the miss is 4.6%");
+}
+// "Nothing to reconcile against" is a claim that the company files no figure, so it is made only about the filer's
+// OWN measures. Here the one breakdown is segment `Revenues` (60 + 40) and the company's revenue is filed, equal to
+// the dollar, as contract revenue — a sibling tag. The gate found no SAME-TAG figure; the filing still has one. None
+// of the five is true, so the page keeps the sentence that shipped before (the review's P1).
+// MUTATION: routing an allow-listed breakdown with no same-tag figure to no-consolidated-figure (the rule at 4c556b2) fails this block.
+{
+  const { body: b } = await call(filing({ name: "segment Revenues, company revenue as contract revenue", prefix: "p1", facts: [
+    ...each(RFC, {}, [100, 110, 120]), ...each(REV, { [SEG]: "p1:AlphaMember" }, [60, 66, 72]), ...each(REV, { [SEG]: "p1:BetaMember" }, [40, 44, 48])] }));
+  eq((b.empty || {}).reason, "other", "segment Revenues beside a company figure under a sibling tag: `other`, never \"none of which the filing reports as a figure for the company\"");
+}
+// Blackstone without the one allow-listed product breakdown it happens to carry: its own segment measures (no company
+// figure) beside a standard concept on the segment axis that DOES foot — a loss-contingency roll-forward, $676m + $130m
+// = $806m. The tab is empty because of the measures, and that is what it names (the review's P4).
+// MUTATION: the same 4c556b2 rule fails this block too ("Not a line this tab reads", naming the roll-forward).
+{
+  const LC = "us-gaap:LossContingencyAccrualCarryingValuePeriodIncreaseDecrease";
+  const { body: b } = await call(filing({ name: "BX shape without a KEEP breakdown", prefix: "p4", facts: [
+    ...each(REV, {}, [14000, 14200, 14450]),
+    ...each("p4:FeeRelatedEarnings", { [SEG]: "p4:RealEstateMember" }, [2000, 2100, 2211]), ...each("p4:FeeRelatedEarnings", { [SEG]: "p4:PrivateEquityMember" }, [1700, 1800, 1876]),
+    ...each("p4:SegmentDistributableEarnings", { [SEG]: "p4:RealEstateMember" }, [3000, 3100, 3200]), ...each("p4:SegmentDistributableEarnings", { [SEG]: "p4:PrivateEquityMember" }, [2000, 2100, 2200]),
+    ...each(LC, {}, [500, 500, 806]), ...each(LC, { [SEG]: "p4:RealEstateMember" }, [400, 400, 676]), ...each(LC, { [SEG]: "p4:PrivateEquityMember" }, [100, 100, 130])] }));
+  eq((b.empty || {}).reason, "no-consolidated-figure", "BX without its product breakdown: nothing to reconcile against — its segment measures have no company figure");
+  eq(((b.empty || {}).concepts || []).map(c => c.tag).sort().join(" "), "p4:FeeRelatedEarnings p4:SegmentDistributableEarnings",
+    "BX without its product breakdown: the copy names its own measures, and not the roll-forward that foots");
 }
 // Realty Income ($m): revenue by property type, refused at 5.4% short in FY2025; a net-income split refused
 // by more; and an extension measure with no counterpart beside them.
@@ -427,6 +547,15 @@ const bxFacts = [
   eq((b.empty || {}).reason, "unreconciled", "O shape: refused by the gate, so \"did not reconcile\" — not a one-segment company, not nothing to reconcile against");
   eq(JSON.stringify(((b.empty || {}).concepts || []).map(c => [c.tag, c.offPct])), JSON.stringify([[REV, 5.4], ["us-gaap:NetIncomeLoss", 30]]),
     "O shape: the nearest miss leads — revenue at 5.4%, then net income at 30%");
+}
+// A refusal just outside the tolerance: the rows come to $1,001,004m against $1,000,000m, 0.1004% off. Printed to one
+// decimal that read "the nearest is 0.1% away" beside a README giving the tolerance as 0.1%. Under 1% the miss is
+// rounded UP to two decimals, so a refused table never prints as inside the gate. MUTATION: one decimal everywhere fails this block.
+{
+  const { body: b } = await call(filing({ name: "refused at 0.1004%", prefix: "tol", facts: [
+    ...each(REV, {}, [1000000, 1000000, 1000000]), ...each(REV, { [SEG]: "tol:AlphaMember" }, [600000, 600000, 600000]),
+    ...each(REV, { [SEG]: "tol:BetaMember" }, [401004, 401004, 401004])] }));
+  eq(JSON.stringify(((b.empty || {}).concepts || []).map(c => c.offPct)), "[0.11]", "refused at 0.1004%: the miss prints as 0.11%, never as the 0.1% tolerance itself");
 }
 // Moelis: a breakdown only on a line the tab does not read, which DOES have a consolidated figure.
 {
@@ -480,6 +609,12 @@ const bxFacts = [
 {
   const bx = runs.find(r => r.name === "BX shape");
   ok(bx && /^public, s-maxage=86400/.test(bx.headers["cache-control"] || ""), "an empty tab's 200 carries the shared cache header — a 10-K's answer changes once a year");
+  // Every companion served, or never listed (the no-linkbase filing lists only an .xsd without one; the numbered
+  // filing lists an .xsd it has no need to fetch): the full cache, and no `partial` key at all.
+  const PARTIAL = new Set(["DFIN embedded, the .xsd answering 500", "separate linkbases, the _pre.xml never answering"]);
+  const full = runs.filter(r => !PARTIAL.has(r.name));
+  eq(full.filter(r => r.headers["cache-control"] !== "public, s-maxage=86400, stale-while-revalidate=604800" || "partial" in r.body.meta.linkbases).map(r => r.name).join(", "), "",
+    `every filing whose listed companions all answered carries the full cache and no \`partial\` — ${full.length} of them, WFC's three separate linkbases and the no-linkbase filing among them`);
   const err = console.error; console.error = () => {};
   globalThis.fetch = async () => { throw new Error("ECONNRESET"); };
   let out = null;
