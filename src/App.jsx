@@ -1118,14 +1118,46 @@ function SegmentTables({ segs, S }) {
       without them would be leaving out the part that makes it add up.
     </p>
 
-    {!segs.views.length && <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, padding: "16px 18px", background: "#f6eee180" }}>
-      <span style={{ ...S.label, color: C.bronze }}>Nothing that reconciles</span>
-      <p style={{ fontSize: 12, color: C.mute, margin: "8px 0 0", lineHeight: 1.6 }}>
-        This filer tags no breakdown that adds up to its own consolidated figures — most often because its
-        segment revenue includes intersegment sales, or because the top line by segment is a company-specific
-        tag rather than a standard one. The footnote itself has the numbers.
-      </p>
-    </div>}
+    {!segs.views.length && (() => {
+      // Why this tab is empty, from api/segments.js's `empty` (README Segments). Two of the reasons are opposites —
+      // a breakdown checked against the company that failed, and one with nothing in the company's statements to
+      // check it against — and the old single sentence said the first about both: it told a reader Blackstone's
+      // segments "do not add up" when Blackstone files no company-wide figure for them to add up to.
+      //
+      // A payload WITHOUT `empty` keeps the sentence that shipped before, and that branch is not dead code. The
+      // payload lives only in this component's state, never in storage, so a tab left open across a deploy holds
+      // the old shape until the next company loads; and an instant rollback serves the old deployment, whose
+      // payloads never carry the field. Measured Sep 15 2026 on production: the browser receives
+      // `Cache-Control: public` with no max-age and no Last-Modified (Vercel strips s-maxage), so a browser has no
+      // stale copy of its own to serve. Do not add one: a persisted payload is how yesterday's shape outlives a deploy.
+      const e = segs.empty || {}, cs = e.concepts || [];
+      const names = <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink2 }}>{cs.map(c => c.label).join(" · ")}</span>;
+      const COPY = {
+        "unreconciled": ["Nothing that reconciles", <>This filer tags a breakdown of {names}{e.more ? ` and ${e.more} more` : ""}, but
+          its rows do not add up to the consolidated figure in the same filing — the nearest is{" "}
+          {cs.length ? Math.min(...cs.map(c => c.offPct)) : "?"}% away — and a table that does not add up is not shown. Most
+          often that is segment revenue that includes intersegment sales, or a reconciling line filed where this tab does not
+          look. The footnote itself has the numbers.</>],
+        "no-consolidated-figure": ["Nothing to reconcile against", <>This company reports its segments on {names}
+          {e.more ? ` and ${e.more} other measures` : ""} — its own measures, none of which the filing reports as a figure for
+          the company as a whole. A table here is shown only when its rows add up to such a figure, so there is nothing to
+          check these against. The segment footnote reports them in full.</>],
+        "outside-allow-list": ["Not a line this tab reads", <>This filer's breakdown is tagged on {names}, which this tab does
+          not read: it reads revenue and the standard profit, cost, asset and capital-spending lines, the ones a table can be
+          added up against. The footnote itself has the numbers.</>],
+        "one-member": ["A single row", <>Every breakdown this filer tags has one row — the company itself rather than a split
+          of it — so there is no table to add up.</>],
+        "no-breakdown": ["No breakdown filed", <>The latest 10-K tags no annual figure by segment, product line or geography
+          that stands on its own, so there is no breakdown to show.</>],
+      };
+      const [head, body] = COPY[e.reason] || ["Nothing that reconciles", <>This filer tags no breakdown that adds up to its
+        own consolidated figures — most often because its segment revenue includes intersegment sales, or because the top
+        line by segment is a company-specific tag rather than a standard one. The footnote itself has the numbers.</>];
+      return <div style={{ border: `1px solid ${C.hair}`, borderRadius: 10, padding: "16px 18px", background: "#f6eee180" }}>
+        <span style={{ ...S.label, color: C.bronze }}>{head}</span>
+        <p style={{ fontSize: 12, color: C.mute, margin: "8px 0 0", lineHeight: 1.6 }}>{body}</p>
+      </div>;
+    })()}
 
     {segs.views.map((v, vi) => <div key={vi} style={{ marginBottom: 26 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 7 }}>

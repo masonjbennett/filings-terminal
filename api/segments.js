@@ -8,12 +8,15 @@
 // instance out of the inline-XBRL 10-K as a standalone `<stem>_htm.xml`, 1.4MB for Apple and 14.9MB
 // for JPMorgan.
 //
-// Three companion files, three fetches, and each earns its place:
+// The companion files, and each earns its place:
 //   index.json  — names the instance. SEC's convention is `<primary doc stem>_htm.xml`, but the
 //                 convention only holds for the inline-XBRL era and the directory listing is
 //                 authoritative and small.
 //   _def.xml    — the definition linkbase, which is the only honest way to spot a SUBTOTAL member.
 //   _lab.xml    — the label linkbase, so a segment reads "OptumRx" rather than "Optumrx".
+//   _pre.xml    — the presentation linkbase, which says which of a member's labels each TABLE uses.
+// All three are taken by the names the listing gives them, and where it gives none they are inside the
+// filing's one `.xsd` — see the fetch block in the handler for why the instance's name cannot be trusted.
 //
 // Scope is the newest 10-K, deliberately. A segment footnote presents three years, so one filing is
 // three columns; reaching eight would mean three more instances and 45MB to add two stale years of a
@@ -72,6 +75,26 @@ const QUAL_RANK = q => (!q ? 0 : /^(?:[\w-]+:)?OperatingSegmentsMember$/.test(q)
 // segments", so it is the subtotal the table already contains, and 14 of the 30 filers swept file
 // one. Adding it doubles them.
 const SEGMENT_TOTAL = /^(?:[\w-]+:)?OperatingSegments(?:ExcludingIntersegmentElimination)?Member$/;
+
+// A co-registrant's entity axis is the one other axis that may ride along, and only when its member IS the
+// row's member: the registrant is the segment, so the axis says whose statement the figure is rather than
+// subdividing it. NextEra's FPL rows carry it; Duke's and FirstEnergy's per-subsidiary pieces of a segment
+// carry a DIFFERENT member and stay out, which is the whole rule (README rule 1).
+//
+// Measured over 217 filers (Sep 15 2026): the equal-member form occurs at NextEra alone — 3 contexts, 27
+// facts, none also filed at the same coordinates without the axis — and its segment revenue and net income
+// then foot to the dollar in all three years, where refused it reconciled $9.15bn against $27.41bn and the
+// tab showed nothing. 216 other payloads are byte-identical. Admitting the axis with ANY member was measured
+// and rejected: FirstEnergy files Regulated Distribution under JCP&L at $2.6bn of a $7.5bn segment at the
+// same coordinates as the whole, and that form loses FirstEnergy's table and swaps Ameren's filed one for a
+// rule-9 reconstruction. The exact QName, not a suffix: the only other `…LegalEntityAxis` in the population
+// is FinancialSupportToNonconsolidatedLegalEntityAxis, which is not a registrant.
+const ENTITY = "dei:LegalEntityAxis";
+// One breakdown axis per fact (rule 1), the qualifier permitted and the entity axis on its own row. ONE
+// predicate, used by the table build AND by the empty-tab classifier, because a second copy of it that did
+// not know about the entity axis would call NextEra's breakdown invisible.
+const alone = (c, axis) => Object.keys(c.dims)
+  .every(d => d === axis || d === QUALIFIER || (d === ENTITY && c.dims[d] === c.dims[axis]));
 
 // The concepts a segment build is made of, and nothing else — the same allow-list discipline
 // api/facts.js uses, for the same reason. Every table in a filing that touches one of these axes
@@ -220,13 +243,23 @@ function parseRoles(xml) {
   const roles = [];
   for (const blk of xml.matchAll(/<link:definitionLink[^>]*xlink:role="([^"]+)"[^>]*>([\s\S]*?)<\/link:definitionLink>/g)) {
     const body = blk[2], axes = new Set(), members = [], kids = new Map(), domains = new Set();
-    for (const m of body.matchAll(/<link:definitionArc[^>]*hypercube-dimension[^>]*xlink:to="([^"]+)"/g)) axes.add(qname(m[1]));
-    for (const m of body.matchAll(/<link:definitionArc[^>]*dimension-domain[^>]*xlink:to="([^"]+)"/g)) domains.add(qname(m[1]));
+    // An arc names its ends by LOCATOR label, and the locator's href fragment is the concept. The label
+    // is only conventionally derived from it: DFIN's embedded linkbases add `_default` and `_2` tails and
+    // Blackstone's add a number (`loc_us-gaap_StatementBusinessSegmentsAxis_501700`), so 3,099 of the
+    // 36,138 locators in the 28 embedded linkbases name the wrong concept when read from the label.
+    const loc = new Map();
+    for (const l of body.matchAll(/<link:loc\b[^>]*>/g)) {
+      const lab = attr(l[0], X_LABEL), id = attr(l[0], X_HREF);
+      if (lab && id) loc.set(lab, id.replace(/_/, ":"));
+    }
+    const qn = s => loc.get(s) || qname(s);
+    for (const m of body.matchAll(/<link:definitionArc[^>]*hypercube-dimension[^>]*xlink:to="([^"]+)"/g)) axes.add(qn(m[1]));
+    for (const m of body.matchAll(/<link:definitionArc[^>]*dimension-domain[^>]*xlink:to="([^"]+)"/g)) domains.add(qn(m[1]));
     // Arc order is the filer's own presentation order, which is the order the footnote prints.
     const arcs = [...body.matchAll(/<link:definitionArc[^>]*domain-member[^>]*>/g)].map(m => m[0]);
     for (const a of arcs) {
-      const from = qname((a.match(/xlink:from="([^"]+)"/) || [])[1] || "");
-      const to = qname((a.match(/xlink:to="([^"]+)"/) || [])[1] || "");
+      const from = qn((a.match(/xlink:from="([^"]+)"/) || [])[1] || "");
+      const to = qn((a.match(/xlink:to="([^"]+)"/) || [])[1] || "");
       if (!from || !to || from === to || domains.has(to)) continue;
       if (!members.includes(to)) members.push(to);
       if (!kids.has(from)) kids.set(from, new Set());
@@ -243,15 +276,59 @@ function parseRoles(xml) {
 }
 
 // `terseLabel` is the filer's own short name — "Americas" where the standard label is the verbose
-// "Americas Segment [Member]". The linkbase's `xlink:label` is derivable straight from the QName, so
-// no locator chasing is needed.
-function parseLabels(xml) {
+// "Americas Segment [Member]".
+//
+// Which concept a label belongs to is read from the LOCATOR its arc starts at — the href's fragment is the
+// element id, `<prefix>_<Name>` — and never from the label resource's own name, because that name is a
+// convention and there are three of them. Workiva writes `lab_us-gaap_Revenues`; DFIN, which embeds the
+// linkbase inside the .xsd, writes `us-gaap_Revenues_lbl`; Blackstone's writes `lab_<q>` with the role
+// attribute FIRST, which a pattern expecting the reverse order never matches. Deriving from the name read
+// 452,417 of the 453,019 label resources in 164 separate label linkbases correctly and 0 of the 69,994 in
+// the 28 embedded ones (census, Sep 15 2026). Arcs are scoped to their own labelLink.
+const X_LABEL = /\sxlink:label="([^"]+)"/, X_HREF = /\sxlink:href="[^"#]*#([^"]+)"/, X_FROM = /\sxlink:from="([^"]+)"/, X_TO = /\sxlink:to="([^"]+)"/;
+const attr = (tag, re) => (tag.match(re) || [])[1];
+function parseLabels(xml, byRole) {
   const out = {};
-  for (const m of xml.matchAll(/<link:label[^>]*xlink:label="lab_([^"]+)"[^>]*xlink:role="[^"]*\/(terseLabel|label)"[^>]*>([\s\S]*?)<\/link:label>/g)) {
-    const q = m[1].replace(/_/, ":"), role = m[2];
-    const text = unent(m[3]).replace(/\s*\[Member\]\s*$/, "").trim();
-    if (!text) continue;
-    if (role === "terseLabel" || !out[q]) out[q] = text;      // terse wins where both exist
+  for (const link of xml.matchAll(/<link:labelLink\b[^>]*>([\s\S]*?)<\/link:labelLink>/g)) {
+    const at = new Map(), of = new Map();
+    for (const l of link[1].matchAll(/<link:loc\b[^>]*>/g)) {
+      const id = attr(l[0], X_HREF);
+      if (id) at.set(attr(l[0], X_LABEL), id.replace(/_/, ":"));
+    }
+    for (const a of link[1].matchAll(/<link:labelArc\b[^>]*>/g)) {
+      const q = at.get(attr(a[0], X_FROM)), to = attr(a[0], X_TO);
+      if (q && to) (of.get(to) || of.set(to, []).get(to)).push(q);
+    }
+    for (const m of link[1].matchAll(/<link:label\b([^>]*)>([\s\S]*?)<\/link:label>/g)) {
+      const role = (m[1].match(/\sxlink:role="[^"]*\/(\w+)"/) || [])[1];
+      const qs = of.get(attr(m[1], X_LABEL));
+      if (!role || !qs) continue;
+      const text = unent(m[2]).replace(/\s*\[Member\]\s*$/, "").trim();
+      if (!text) continue;
+      if (byRole) for (const q of qs) { const r = byRole.get(q) || byRole.set(q, {}).get(q); if (!r[role]) r[role] = text; }
+      if (role !== "terseLabel" && role !== "label") continue;
+      for (const q of qs) if (role === "terseLabel" || !out[q]) out[q] = text;      // terse wins where both exist
+    }
+  }
+  return out;
+}
+
+// Which label a TABLE uses for a member is written in the presentation linkbase, per extended-link role: an
+// arc's preferredLabel (absent = the standard label). A label linkbase is global and a terse label is written
+// for one table, so a global pick names rows from other footnotes — Caterpillar's United States row reads
+// "U.S. Pension Benefits", Prologis' Other Americas reads "Europe", MGE Energy's Electric segment reads
+// "Corporate And Other Member". Read per role, each row is named the way the filing's own table names it.
+function parsePreferred(xml) {
+  const out = new Map();
+  for (const blk of xml.matchAll(/<link:presentationLink\b[^>]*xlink:role="([^"]+)"[^>]*>([\s\S]*?)<\/link:presentationLink>/g)) {
+    const loc = new Map(), pref = out.get(blk[1]) || new Map();
+    for (const l of blk[2].matchAll(/<link:loc\b[^>]*>/g)) { const lab = attr(l[0], X_LABEL), id = attr(l[0], X_HREF); if (lab && id) loc.set(lab, id.replace(/_/, ":")); }
+    for (const a of blk[2].matchAll(/<link:presentationArc\b[^>]*>/g)) {
+      const q = loc.get(attr(a[0], X_TO));
+      if (!q || pref.has(q)) continue;
+      pref.set(q, (a[0].match(/\spreferredLabel="[^"]*\/(\w+)"/) || [])[1] || "label");
+    }
+    out.set(blk[1], pref);
   }
   return out;
 }
@@ -279,8 +356,12 @@ const TAXONOMY_LABEL = {
 export default async function handler(req, res) {
   const cik = String(req.query.cik || "").replace(/\D/g, "");
   if (!cik || cik.length > 10) return res.status(400).json({ error: "cik must be digits" });
-  // A 10-K changes once a year. The long shared cache is what keeps a segment lookup — three fetches
-  // and up to 20MB of parsing — from being repeated for every reader.
+  // A 10-K changes once a year. The long shared cache is what keeps a segment lookup — seven fetches where
+  // the linkbases are separate files, five where they sit in the .xsd, and up to 20MB of parsing — from
+  // being repeated for every reader. An empty tab's `empty` is part of that answer and is cached with it.
+  // A deploy should not serve yesterday's shape: Vercel's CDN cache key carries the deployment, so a new
+  // deployment's first request per CIK runs this function. That is its purge documentation, read Sep 15
+  // 2026, and it is to be confirmed on production (x-vercel-cache: MISS on the first call), not assumed.
   // Success path only — see api/facts.js. A cached 404 here means "no 10-K on file" or "no XBRL
   // instance" survives a day plus a week of stale-while-revalidate, for a filer that has both.
   const CACHE_OK = "public, s-maxage=86400, stale-while-revalidate=604800";
@@ -297,22 +378,35 @@ export default async function handler(req, res) {
     const inst = items.find(x => /\.xml$/.test(x.name) && !/^(R\d|FilingSummary|MetaLinks)/.test(x.name)
       && !/_(cal|def|lab|pre)\.xml$/.test(x.name));
     if (!inst) return res.status(404).json({ error: "that filing carries no XBRL instance" });
-    const stem = inst.name.replace(/\.xml$/, "").replace(/_htm$/, "");
-
+    // The linkbases are found by the LISTING, never derived from the instance's name, and where the listing
+    // names none they are inside the schema. Measured over 217 filers (README Segments, Sep 15 2026): 164
+    // name them <stem>_def.xml / <stem>_lab.xml; 25 file them under a name the instance stem cannot produce
+    // — Wells Fargo's instance is wfc-20251231_d2_htm.xml and its linkbase wfc-20251231_def.xml, Blackstone's
+    // instance is d48618d10k_htm.xml against bx-20251231.xsd — and 28 file no separate linkbase at all,
+    // because DFIN embeds every one of them inside the .xsd. Every listing names exactly one .xsd.
+    //
     // The label linkbase and FilingSummary are nice-to-have and must never fail the request: without
     // them the members render from their QNames and a view is titled by its axis. The DEFINITION
-    // linkbase is different — without it there are no roles, so the axis-wide fallback runs and the
-    // page says which of the two it is looking at.
-    const [xml, defXml, labXml, sumXml] = await Promise.all([
+    // linkbase is different — without it there are no roles, so the axis-wide fallback runs.
+    const listed = re => (items.find(x => re.test(x.name)) || {}).name;
+    const defName = listed(/_def\.xml$/), labName = listed(/_lab\.xml$/), xsdName = listed(/\.xsd$/), preName = listed(/_pre\.xml$/);
+    const [xml, defSep, labSep, sumXml, xsd, preSep] = await Promise.all([
       get(`${dir}/${inst.name}`),
-      get(`${dir}/${stem}_def.xml`).catch(() => ""),
-      get(`${dir}/${stem}_lab.xml`).catch(() => ""),
+      defName ? get(`${dir}/${defName}`).catch(() => "") : "",
+      labName ? get(`${dir}/${labName}`).catch(() => "") : "",
       get(`${dir}/FilingSummary.xml`).catch(() => ""),
+      (!defName || !labName) && xsdName ? get(`${dir}/${xsdName}`).catch(() => "") : "",
+      preName ? get(`${dir}/${preName}`).catch(() => "") : "",
     ]);
+    const preXml = preSep || (/<link:presentationLink\b/.test(xsd) ? xsd : "");
+    const defXml = defSep || (/<link:definitionLink\b/.test(xsd) ? xsd : "");
+    const labXml = labSep || (/<link:label\b/.test(xsd) ? xsd : "");
 
     const ctxs = parseContexts(xml);
     const roles = defXml ? parseRoles(defXml) : [];
-    const labels = labXml ? parseLabels(labXml) : {};
+    const roleLabels = new Map();
+    const labels = labXml ? parseLabels(labXml, roleLabels) : {};
+    const preferred = preXml ? parsePreferred(preXml) : new Map();
     // SEC's own rendering names every table it generates, and that name is the one in the filing's
     // index — "Segment Information and Geographic Data - Information by Reportable Segment (Details)".
     // Deriving a title from the role URI instead gives the same words run together without spaces.
@@ -359,8 +453,12 @@ export default async function handler(req, res) {
 
     const views = [];
     const wantedTags = new Set();
-    const nameOf = q => TAXONOMY_LABEL[labels[q]]
-      || labels[q] || unent(q.split(":").pop().replace(/Member$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+    const nameOf = (q, role) => {
+      const pref = role && preferred.has(role) && preferred.get(role).get(q);
+      const own = pref && (roleLabels.get(q) || {})[pref];
+      const text = (own && own.replace(/\s*\(\d\)$/, "")) || labels[q];
+      return TAXONOMY_LABEL[text] || text || unent(q.split(":").pop().replace(/Member$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+    };
     // A group's line items, where the role declares any. Applied to a reconciling row for the same
     // reason it is applied to a segment row: a role that declares its concepts is saying which table
     // this is, and a fact for a different one belongs to a different table.
@@ -442,12 +540,13 @@ export default async function handler(req, res) {
     };
 
     for (const v of VIEWS) {
-      // Contexts on this axis, one breakdown axis only, with the qualifier permitted.
+      // Contexts on this axis, one breakdown axis only, with the qualifier permitted — and the entity axis
+      // where its member is this row's own (rule 1).
       const keep = new Map();
       for (const [id, c] of ctxs) {
         if (!c.dims[v.axis] || c.instant || !periods.includes(c.end)) continue;
         if (!c.start || days(c.start, c.end) < ANNUAL_MIN || days(c.start, c.end) > ANNUAL_MAX) continue;
-        if (!Object.keys(c.dims).every(d => d === v.axis || d === QUALIFIER)) continue;
+        if (!alone(c, v.axis)) continue;
         keep.set(id, c);
       }
       const sources = [];
@@ -496,11 +595,13 @@ export default async function handler(req, res) {
           return inside && [...inside].some(c => inGroup.has(c));
         });
         const drop = new Set(subtotals);
-        const segMembers = g.members.filter(m => !drop.has(m)).map(q => ({ q, label: nameOf(q) }));
+        const segMembers = g.members.filter(m => !drop.has(m)).map(q => ({ q, label: nameOf(q, g.role) }));
         if (!segMembers.length) continue;
         // Reconciling rows go UNDER the segments, which is where the footnote prints them.
         const members = segMembers.concat(g.recons.map(q => ({ q, recon: true,
-          label: nameOf(q) })));
+          label: nameOf(q, g.role) })));
+        for (const m of members) if (members.some(o => o.q !== m.q && o.label === m.label)) m.clash = true;
+        for (const m of members) if (m.clash) { m.label = nameOf(m.q); delete m.clash; }
         const mi = new Map(members.map((m, n) => [m.q, n]));
 
         // One member, one concept, one period is ONE row, and a filer may have filed several views of
@@ -617,7 +718,7 @@ export default async function handler(req, res) {
         for (const f of out) wantedTags.add(f.t);
         views.push({ id: v.id, axis: v.axis, role: g.role, collapsedAlong: along,
           title: v.title, source: g.role ? (roleNames[g.role] || null) : null,
-          members, facts: out, subtotals: subtotals.map(nameOf),
+          members, facts: out, subtotals: subtotals.map(q => nameOf(q, g.role)),
           otherViews: [...otherViews].filter(Boolean).map(q => q.split(":").pop().replace(/Member$/, "")) });
       }
     }
@@ -636,9 +737,15 @@ export default async function handler(req, res) {
     // equal the whole. Both failures break it and no correct table does, so it is the rule rather
     // than a filter — every concept is tested against the consolidated figure for the same period in
     // the same filing, and one that does not reconcile is dropped. A table left with nothing goes
-    // too. This DOES drop real tables, Microsoft's product disaggregation among them; that is the
-    // trade this file keeps making, because "we do not show this" is recoverable and a segment table
-    // reading 142% of the company is not.
+    // too. This DOES drop real tables; that is the trade this file keeps making, because "we do not
+    // show this" is recoverable and a segment table reading 142% of the company is not. Microsoft's
+    // product disaggregation was the example here for a year, and it was the linkbase rather than the
+    // gate: its definition linkbase is inside the .xsd, so its two product hypercubes merged on the axis
+    // and read twice the company. Found by listing, it is two tables and both foot (Sep 15 2026).
+    //
+    // What the gate refused, kept so an empty tab can say so: concept -> the closest any view came. This is
+    // the classifier's first question and nothing later overrules it (see `empty` below).
+    const refused = new Map();
     const reconciles = (view, tag) => {
       let tested = 0;
       for (let p = periods.length - 1; p >= 0; p--) {
@@ -647,7 +754,8 @@ export default async function handler(req, res) {
         const rows = view.facts.filter(f => f.t === tag && f.p === p);
         if (!rows.length) continue;
         tested++;
-        if (Math.abs(rows.reduce((n, f) => n + f.v, 0) / con - 1) > TOL) return false;
+        const off = Math.abs(rows.reduce((n, f) => n + f.v, 0) / con - 1);
+        if (off > TOL) { refused.set(tag, Math.min(refused.has(tag) ? refused.get(tag) : Infinity, off)); return false; }
       }
       return tested > 0;
     };
@@ -672,28 +780,99 @@ export default async function handler(req, res) {
     const filed = new Set(gated.filter(v => !v.collapsedAlong).map(v => v.axis));
     const ranked = gated.filter(v => !v.collapsedAlong || !filed.has(v.axis));
 
-    // Two tables can survive the gate with the same members and the same concepts — the same
-    // breakdown reached through two roles. Keep the first, which is the filing's own order.
-    const seenView = new Set(), out = [];
-    for (const v of ranked) {
-      const key = `${v.axis}|${v.members.map(m => m.q).join(",")}|${v.concepts.join(",")}`;
-      if (seenView.has(key)) continue;
-      seenView.add(key);
-      out.push(v);
-    }
+    // The same numbers can survive the gate twice, and a table is not shown twice. A view is dropped when
+    // every one of its cells is printed in ANOTHER view on the same axis that has more cells — or as many,
+    // and comes first in the filing. Same breakdown reached through two roles (Altria's segment schedule
+    // and its narrative, member order differing), or a table whose figures all sit inside a fuller one
+    // (Wells Fargo's revenue by segment inside its Operating Segments table). The larger table wins
+    // because it shows everything; a tie keeps the filing's own order.
+    //
+    // A cell is (concept, period, member, value) — by QName and never by label, because per-role labels
+    // name the same member differently in two tables. A RECONCILING cell matches by value alone: Brown &
+    // Brown files its $87m of other revenue under MaterialReconcilingItems in the revenue note and under
+    // CorporateNonSegment in the segment note, and those are one row. Segment members are never matched
+    // by value — equal numbers on different members are different rows (AES's regulated/non-regulated
+    // revenue against generation/distribution). Measured over 217 filers: 35 views go, every one of their
+    // cells still on the page (README Segments, Sep 15 2026).
+    const cellsOf = v => v.facts.map(f => v.members[f.m].recon ? `${f.t}|${f.p}||${f.v}` : `${f.t}|${f.p}|${v.members[f.m].q}|${f.v}`);
+    const within = (v, o) => {
+      const a = cellsOf(v), b = cellsOf(o);
+      if (a.length > b.length || (a.length === b.length && ranked.indexOf(o) > ranked.indexOf(v))) return false;
+      const pool = new Map();
+      for (const x of b) pool.set(x, (pool.get(x) || 0) + 1);
+      return a.every(x => { const n = pool.get(x); if (!n) return false; pool.set(x, n - 1); return true; });
+    };
+    const out = ranked.filter(v => !ranked.some(o => o !== v && o.axis === v.axis && within(v, o)));
     views.length = 0;
     views.push(...out);
     for (const t of Object.keys(consolidated)) if (!views.some(v => v.concepts.includes(t))) delete consolidated[t];
+
+    // ── An empty tab says WHY, from what the handler already holds ─────────────────────────────────
+    //
+    // "Nothing reconciles" was one sentence for five different situations, and two of them are opposites:
+    // a breakdown that was checked against the company and failed, and a breakdown with nothing in the
+    // company's statements to check it against. Blackstone is the second — its segments are reported on
+    // fee-related earnings and distributable earnings, which no consolidated statement carries — and
+    // saying it "did not add up" would be false. So the order below is the safety: a refusal by the gate
+    // is decided FIRST, from the gate's own record, and nothing later can overrule it.
+    //   unreconciled            an allow-listed concept had a consolidated figure and the rows missed it
+    //   no-consolidated-figure  the breakdown's measures have no undimensioned counterpart in the filing
+    //   outside-allow-list      the breakdown is on concepts the tab does not read, which DO have one
+    //   one-member              every breakdown is a single row
+    //   no-breakdown            no annual fact on a breakdown axis stands on its own
+    //   other                   none of the above (never seen over 217 filers; the page keeps the old copy)
+    let empty;
+    if (!views.length) {
+      const nameOfTag = t => LABEL[t.split(":").pop()] || (roleLabels.get(t) || {}).label || labels[t] || t.split(":").pop().replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+      if (refused.size) {
+        const worst = [...refused].sort((a, b) => a[1] - b[1]);
+        empty = { reason: "unreconciled", concepts: worst.slice(0, 3).map(([t, off]) => ({ tag: t, label: nameOfTag(t), offPct: +(off * 100).toFixed(1) })),
+          more: Math.max(0, worst.length - 3) };
+      } else {
+        const one = new Map(), plainIds = new Set();
+        for (const [id, c] of ctxs) {
+          if (c.instant || !c.start || !periods.includes(c.end)) continue;
+          if (days(c.start, c.end) < ANNUAL_MIN || days(c.start, c.end) > ANNUAL_MAX) continue;
+          if (!c.n) { plainIds.add(id); continue; }
+          const ax = Object.keys(c.dims).filter(d => axisSet.has(d));
+          if (ax.length === 1 && alone(c, ax[0])) one.set(id, c.dims[ax[0]]);
+        }
+        const byTag = new Map(), withCon = new Set(), seenFact = new Set();
+        for (const m of xml.matchAll(/<([\w-]+:[A-Za-z0-9_]+)\s([^>]*?)contextRef="([^"]+)"([^>]*)>([^<]*)<\//g)) {
+          if (!/^-?\d+(\.\d+)?$/.test(m[5].trim()) || seenFact.has(`${m[1]} ${m[3]}`)) continue;
+          seenFact.add(`${m[1]} ${m[3]}`);
+          if (plainIds.has(m[3])) { withCon.add(`${m[1]}|${ctxs.get(m[3]).end}`); continue; }
+          if (!one.has(m[3])) continue;
+          const c = ctxs.get(m[3]), x = byTag.get(m[1]) || byTag.set(m[1], { tag: m[1], n: 0, members: new Set(), ends: new Set(), segment: false }).get(m[1]);
+          x.n++; x.members.add(one.get(m[3])); x.ends.add(c.end);
+          if (c.dims[VIEWS[0].axis]) x.segment = true;
+        }
+        const all = [...byTag.values()].map(x => ({ ...x, con: [...x.ends].some(e => withCon.has(`${x.tag}|${e}`)), keep: KEEP.has(x.tag.split(":").pop()) }));
+        const multi = all.filter(x => x.members.size > 1);
+        const totals = new Set();
+        for (const m of preferred.values()) for (const [q, r] of m) if (r === "totalLabel") totals.add(q);
+        // Which measures to name: the reportable-segment axis first, then the ones the filer's own table
+        // presents as TOTALS, then the most-filed. Blackstone's segment table totals are fee-related
+        // earnings and segment distributable earnings, which is what its footnote leads with.
+        const rank = xs => xs.sort((a, b) => (b.segment - a.segment) || (totals.has(b.tag) - totals.has(a.tag)) || (b.n - a.n));
+        const name = xs => ({ concepts: xs.slice(0, 4).map(x => ({ tag: x.tag, label: nameOfTag(x.tag) })), more: Math.max(0, xs.length - 4) });
+        if (!all.length) empty = { reason: "no-breakdown" };
+        else if (!multi.length) empty = { reason: "one-member", ...name(rank(all)) };
+        else if (multi.some(x => x.keep && x.con)) empty = { reason: "other" };
+        else if (multi.some(x => x.keep) || !multi.some(x => x.con)) empty = { reason: "no-consolidated-figure", ...name(rank(multi.filter(x => !x.con))) };
+        else empty = { reason: "outside-allow-list", ...name(rank(multi.filter(x => x.con))) };
+      }
+    }
 
     res.setHeader("Cache-Control", CACHE_OK);
     return res.status(200).json({
       cik, name: sub.name, accn, period: r.reportDate ? r.reportDate[i] : null, filed: r.filingDate[i],
       filingUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${bare}/${accn}-index.htm`,
-      periods, views, consolidated,
+      periods, views, consolidated, ...(empty ? { empty } : {}),
       conceptLabels: Object.fromEntries([...new Set(views.flatMap(v => v.concepts))]
         .map(t => [t, LABEL[t.split(":").pop()] || labels[t] || t.split(":").pop()])),
       meta: { instance: inst.name, bytes: Number(inst.size) || xml.length, contexts: ctxs.size,
-        linkbases: { definition: !!defXml, label: !!labXml } },
+        linkbases: { definition: !!defXml, label: !!labXml, from: defSep ? "separate" : defXml ? "xsd" : null } },
     });
   } catch (e) {
     if (e.status === 404) return res.status(404).json({ error: "SEC has no such filing on file" });
