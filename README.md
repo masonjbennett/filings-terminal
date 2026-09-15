@@ -2702,6 +2702,80 @@ the column closes on OppFi's own balance sheet.
 Everything the frame measured is in the private notes' `measure/frame/` directory: the harvest, the
 screen, the sweep, the leg-conflict census with its remedy, and the R-files fetched for the five worst.
 
+### The auditor-change frame: a successor re-presents nothing, and the cash-flow statement had never been checked
+
+The ninth frame, drawn Sep 15 2026, varies two things no frame had: filers that **changed auditor**, and the
+**statement of cash flows**, which no sweep check read. From EDGAR's full-text search, every primary 8-K 2022–2026
+carrying Item 4.01 — *"Certifying Accountant"* (4,909 hits) and *"Item 4.01"* (6,885), both fully paged, 3,931
+distinct filings; the exact caption finds only 315, because filers type its apostrophe several ways. Joined to
+`tickers.json` on CIK (rule 10), 1,727; listed, not a SPAC, an annual report since 2024, and the change at least a
+year before the newest annual period so a successor has signed a 10-K: 774, less 7 on the cache and 12 in the
+material-weakness frame. The first 24 by `tickers.json` row and a stride of 60 through the rest: **36 filers across
+26 industries**, reproducible without a seed, 36 MB of fixtures through the shipping `api/facts.js`. Twelve of the 36
+each stand for about sixty filers, so a count on the frame is a yield from that draw, not a population rate.
+
+**The hypothesis failed, and the reason is accounting.** A successor audits the new year; the predecessor's report on
+the comparatives is reissued, so nothing is re-audited and nothing re-presented because of the change. Of the
+comparatives an earlier filing had already stated, the successor's first 10-K moved **4.3% of cash-flow, 6.9% of
+income-statement and 5.8% of balance-sheet figures, against 5.4%, 5.3% and 5.2%** in every other annual report in the
+frame — once three filers are set aside whose auditor changed because the entity did (two de-SPACs and a merger).
+With them, 5.9%, 9.2% and 11.6%. (The screen's first cut picked the wrong report as "the successor's first" for six
+filers — the predecessor's last for Fastenal, Carnival, Everest and CACI, the successor's second for Super Micro and
+Addentax — and the rates above are re-pointed; the rejection does not depend on it.) The successor reports show no
+excess of cash-flow reclassifications between operating, investing and financing, and the 8-K text does not stratify
+either: the four "disagreement" matches are the successor paragraph's boilerplate, and the frame discloses none.
+
+**What the cash-flow checks found.** The sweep now tests operating + investing + financing + FX against the change in
+cash, to 0.5% of gross flows — the FX line and the change read from XBRL frames, because KEEP carries neither. On the
+cache it fires on **25 of 1,203 checkable columns, and 24 are the check's own missing legs**: FX under an extension, a
+spelling or a filing the frames lookup missed (Brown & Brown; MetLife's under the disposal-group spelling beside
+held-for-sale cash, its last two years inferred rather than read), no USD frame for a non-USD or pre-2009 year, cash
+held for sale reconciled below the totals (Prudential, 3M, UnitedHealth), discontinued cash, a change struck before
+translation (SLB), and AIOS's re-presentation. The 25th is real: **AMD's FY2023 10-K tags FY2021's investing and
+financing totals with the wrong sign** (+$686m, +$1,895m, against −$686m and −$1,895m in two older 10-Ks), and the
+sheet printed them. On the frame, 3 real in 264 columns:
+- **U-Haul's successor's first 10-K tags investing positive for all three years** it presents. The next 10-K
+  corrected two; nothing newer presents FY2022, so rule 2 keeps **+$1,867m** for good. With the outflow sign the year
+  closes to the dollar, FX (2,089) included; with the tagged sign it misses by $3,734m.
+- **FG Financial Group's FY2020 10-K prints FY2019 investing as (19,684) directly beneath its own components, +16,990
+  and +2,694** — a filing that disagrees with itself, taken whole by rule 2. −20,638 + 19,684 − 1,439 = −2,393, the
+  printed change.
+- **Q/C Technologies' FY2020 is two companies.** Akers Biosciences filed the year (investing −$8.8m); after the reverse
+  merger MyMD re-presented it as the accounting acquirer's, with no investing line at all. Rule 2 took operating and
+  financing from MyMD and, the newer filing having nothing to win with, investing from Akers. Rule 32's two-registrant
+  column, on the one statement rule 32 does not reach.
+
+All four sign errors on a total across 252 filers sit in a column the identity leaves open, and each closes on the
+older sign — so where the identity decides, rule 17's vote is not needed, and elsewhere it would be wrong: AMD's
+FY2024 10-K reverses a deferred-tax sign against two older 10-Ks and is right (current 1,383, deferred (1,505),
+expense −122). Capex above the investing outflow (265 columns), acquisitions filed negative (25, all net of cash
+acquired) and cash-flow tag switches (75) are censuses, not defects; the cash-flow D&A check cannot fire, because
+its tags are the D&A row's first two.
+
+**Three more from the frame, none of them cash.** **RB Global misses by exactly $482.0m in three years**: its Series A
+senior preferred is `TemporaryEquityCarryingAmountAttributableToParent`, its redeemable NCI
+`RedeemableNoncontrollingInterestEquityCarryingAmount`, there is no all-in figure, and the mezzanine row lists the two
+as alternatives, so it prints the $12.6m NCI as the whole — rule 7's partial-as-whole (R5: 12,143.0 = 6,075.3 + 482.0
++ 12.6 + 5,573.1). Rule 38 does not reach it, because a total already resolves; and summing is not the fix on its
+own, since KKR tags one figure under both names at 27 filing-dates. **Cumberland Pharmaceuticals** tagged total revenue
+`Revenues` and product revenue the ASC 606 concept until its successor's first 10-K re-tagged the 606 concept as the
+total; rule 21's pin carries it back, so FY2018–21 print the product slice and FY2022's growth reads **+19.9% against
+the filer's +16.7%**. And **rule 37's door refuses 16 LTM cells** — Lightwave Logic here, Hubbell, Core Scientific and
+Southwest Gas on the eighth frame, none on the cache — that the rule's own heading and rationale admit. Its operative
+sentence says the prior leg's *newest version*, and the code does exactly that; but next year's 10-Q always repeats a
+restated figure, so the newest version always postdates the annual leg that followed the restatement. Lightwave's
+10-Q/A restated H1 2025 in January, the 10-K followed in March, and the Q2 2026 10-Q's comparative shut the door. The
+fix — the filing where the prior leg last MOVED — amends that sentence as well as the code.
+
+**`fy`/`fp`, read at last.** All 70,147 reported cells on the cache matched to their facts. Nearly all of it is
+labelling — `fy` is the filing's year, so comparatives sit one and two behind — but **5 cells on 2 filers were filed
+before the period they claim had ended**: Interactive Brokers' FY2018–20 amortisation is its FY2017 10-K's schedule of
+expected amortisation, and RadNet's FY2018–19 NOL its FY2013 10-K's expiry table, both tagged undimensioned on future
+periods. A figure filed before its period ends cannot be a reported one.
+
+None of it is a rule yet; each is in Next with the measurement that decides it. Everything the frame measured, and the
+adversarial re-check that corrected seven details of this text, is in the private notes' `measure/audit4/item4/`.
+
 ### Bottom-up EBIT: tested against 422 filer-years, and rejected
 
 The obvious repair is to build EBIT as **pre-tax + interest expense − interest income**, which is what
@@ -2884,8 +2958,9 @@ stale years of a structure that has usually changed). Sep 14 2026: that list's i
 leg conflict, shipped as rule 32, and its item 4 was re-read against the filings and rewritten as item 3
 below. Later the same day the audit's three findings shipped as rules 33, 34 and 35; of the five
 measurements they left open, (a) shipped as rule 36, (e) as rule 37, and (c) and (d) were measured and
-rejected, and (b), the REIT capex row, was decided: the family is n/a for REITs (rule 27). What is
-left is below, with what would settle each.
+rejected, and (b), the REIT capex row, was decided: the family is n/a for REITs (rule 27). Sep 15 2026: items
+0 and 1 shipped in the Segments tab, 2 as rule 38, 5 closed, 8 as rule 39, 3 measured and held, 4 swept as the
+auditor-change frame, and 7 and 9 found along the way. What is left is below, with what would settle each.
 
 0. **Blackstone's segments — closed (Sep 15 2026).** Mason's call: no table, and the tab says why. The
    empty tab now distinguishes nothing-to-reconcile-against from did-not-reconcile from the gate's own
@@ -2964,14 +3039,27 @@ left is below, with what would settle each.
    long-term row resolves `LongTermDebt` at $25,676m**, a figure its debt table does not print, leaving total
    debt 32.7% under the balance sheet — unread in the instance. The private notes' `measure/audit4/item3/`.
 
-4. **The next sampling frame.** Eight are swept now — mega, small/mid, foreign issuers, transition
-   reports, restatements, Chapter 11, spin-offs, material-weakness restatements — and the last of them
-   paid off in a class no earlier frame could reach. Two things the frames have not varied: the
-   **statement of cash flows** (nothing has been drawn on how a filer tags its cash flow, and rule 25's
-   census of 159 working-capital tags suggests it is the least standardised statement), and **filers
-   that changed auditor**, which EDGAR's full-text search can find and which is the other population a
-   restatement frame would want. The trick that found rule 20 is still available too: read something
-   carried alongside every value that nothing has inspected — `frame`, or the `fy`/`fp` pair.
+4. **What the auditor-change frame left (measured Sep 15 2026; rules held for review).** The frame is exhausted —
+   the change re-presents nothing (*The auditor-change frame*) — and six findings wait on a rule, each with the
+   measurement that decides it. (a) *A cash-flow total that differs from every older filing only in sign, in a column
+   that closes on the older sign and not the newest, takes the older sign* — U-Haul FY2022, FG FY2019, AMD FY2021, 4
+   cells, all closing; decided by the census over every open column with an opposite-sign witness and a full-diff, and
+   it needs the change in cash and the FX line (four spellings seen) readable from the fixture, with KEEP's byte cost
+   measured. (b) *Rule 32 on the cash-flow statement* — Q/C Technologies FY2020, 1 of 1,709 columns; decided by the
+   mixed-filing columns it would touch that already close, which must be 0. (c) *The mezzanine's two parts summed only
+   where the balance sheet closes on the sum* — RB Global; 70 pairs, 43 close on the sum and KKR's 27 on one name, so
+   the gate is the rule. (d) *The revenue pin does not carry a concept into years where the same filing tags a larger
+   `Revenues`* — Cumberland; decided against the face on revenue-slice's 10 columns, without reaching Interactive
+   Brokers' net-of-interest choice. (e) *A value filed before its period ends is not reported* — 5 of 70,147 cells, all
+   real; decided by the census over every KEEP concept. (f) *Rule 37's door compares with the filing where the prior leg
+   last moved* — 16 cells on 4 filers, 0 on the cache; the rule's operative sentence changes with the code, and a
+   full-diff should show exactly those 16. The sweep's `cf-identity` and `filed-before-period-end` checks become
+   standing when (a)'s legs are in the fixture; U-Haul, Q/C Technologies, RB Global, Cumberland and Lightwave Logic are
+   the regression filers to add. **The next frame** should draw on what this one found by accident: a CIK whose ENTITY
+   changed — reverse mergers and de-SPACs, where the accounting acquirer's history replaces the registrant's (8-K Items
+   2.01 with 5.06, or a `formerNames` change beside a re-presented year). Three of the 36 auditor changes were that, and
+   Q/C Technologies' two-company cash-flow column is the class; the screen's "successor's first report" should read the
+   8-K's fiscal-year language first, because it picked the wrong report for six filers.
 
 5. **A sweep gap the frame exposed in the sweep itself — closed Sep 14 2026.** Re-counted at `77fda65` it
    was 22 on the cache, not 23 (rule 34 summed GE Vernova's amortisation into its FY2023 D&A and EBITDA went
@@ -3018,6 +3106,14 @@ left is below, with what would settle each.
    two debt multiples read n/m over a loss: 226 cells on 26 filers, 31 of them positive multiples on net cash.
    EV/EBITDA over a loss (13 newest columns at a price of 100) is the same shape on a valuation row and was
    not part of the decision.
+
+9. **Debt that turns current under a concept no row asks for (found Sep 15 2026; measuring).** Shopify's FY2024 10-K
+   tags `ConvertibleDebtNoncurrent` = 0 once its notes fell due within a year and puts the **$918m** under
+   `ConvertibleDebtCurrent`, which no debt row asks for — so the sheet prints total debt **$0** and total debt/EBITDA
+   0.00x. The rough census over the wide companion: 14 such `…Current` debt concepts, and 220 annual columns on 42
+   filers where one exceeds twice the sheet's current legs — an overcount, because `DebtCurrent` is often an all-in
+   current total and `NotesPayableCurrent` can repeat a leg the sheet already has (rule 16's shape). Which occurrences
+   are a missing component is the filer's arithmetic to settle, not the concept's name; that census is running.
 
 ## A note on how this got built
 
