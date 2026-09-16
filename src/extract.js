@@ -1045,8 +1045,10 @@ export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDe
 // Shopify tags `ConvertibleDebtNoncurrent` = 0 at FY2024 and its $918m of convertible notes under
 // `ConvertibleDebtCurrent`, which no row asks for. The sheet printed total debt $0 and total
 // debt/EBITDA 0.00x for a company with $918m of notes due inside a year. Thermo Fisher was $578m
-// short in FY2018 and $2.63bn in FY2020; Sanmina printed $14.3m against a filed $607.7m; 3M's eight
-// annual columns were each $12m to $2.8bn light.
+// short in FY2018 and $2.63bn in FY2020; Sanmina printed $14.3m against a filed $607.7m; and FIVE of
+// 3M's eight annual columns were $12m to $2.8bn light - FY2018 $1,211m, FY2019 $2,795m, FY2020 $12m,
+// FY2021 $16m, FY2023 $1,795m. The other three (FY2022, FY2024 and FY2025) do not move; FY2022's
+// $15,939m is already the filed total.
 //
 // The repair is NOT a tag. Adding the thirteen measured current spellings to the `ltdCur` row as last
 // alternatives corrects 5 columns of the 180-filer cache, creates 7 NEW double counts (Capstone's term
@@ -1056,12 +1058,21 @@ export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDe
 // What decides it is an identity the FILER tags, in rule 23's shape — with one caveat that must be
 // said plainly, because the suite is built from this sentence: at 6 of the 18 class-(i) cells the
 // concept IS `DebtCurrent` and the identity is arithmetic (`DebtCurrent = curLegs + (DebtCurrent −
-// curLegs)` is true whatever the filer meant). Those six rest on the same premise as variant D below —
-// a `DebtCurrent` above the legs under a non-current long-term leg — and the faces read for them
-// (Air Industries FY2020/21, Nuo Xu FY2019) say their corrected totals are right anyway. The other
-// twelve are real evidence. Where the long-term leg resolved a concept that excludes current
+// curLegs)` is true whatever the filer meant). Those six cells are four columns — Air Industries
+// FY2020, FY2021 and one LTM column, and Nuo Xu FY2019 — and all four rest on the same premise as
+// variant D below: a `DebtCurrent` above the legs under a non-current long-term leg. TWO of the four
+// were read against the filed face, Air Industries FY2020 and FY2021 (0001213900-22-015031 R2), and
+// their corrected totals close on it exactly. The other two were NOT read: no Nuo Xu statement was
+// read at any point in this rule's measurement, and the Air Industries LTM column has no filed face
+// of its own, so both rest on the premise alone. The other twelve cells are real evidence.
+// Where the long-term leg resolved a concept that excludes current
 // maturities (`NONCURRENT_DEBT`, or this filer's own convention for that tag) and the concept equals
 // neither current leg, the total gains it only if one of the filer's own totals closes over it:
+// (CAVEAT on that parenthesis: the `excludes` half of the convention is UNEXERCISED — 0 columns of
+// either population reach an identity through it, every one having a long-term leg whose tag is in
+// `NONCURRENT_DEBT` or none at all. The `includes` half IS load-bearing, in the other direction: it
+// is what keeps a concept already inside the long-term figure out of the total, and it has no
+// magnitude test — the limit recorded in README rule 40 and Next item 10.)
 //   I1  `DebtCurrent` = the current legs + it (+ at most two other unasked current concepts)
 //   I2  an all-in total = the three-way sum + it
 //   I3  an inclusive long-term total = the long-term leg + the current maturities + it
@@ -1077,7 +1088,15 @@ export const NONCURRENT_DEBT = new Set(["LongTermDebtNoncurrent", "ConvertibleDe
 //       of $4,858k: a $35k gap that two units of 1e3 cannot see and 1% of the residual can. That guard
 //       is the reason `CapitalLeaseObligationsCurrent` is in api/facts.js's KEEP though no row asks for
 //       it — it is the pre-ASC-842 spelling, it is what 24 filers of the cache tag, and without it in
-//       the payload this rule would have added Lam's finance-lease slice to its debt.
+//       the payload this rule would have added Lam's finance-lease slice to its debt. THE GUARD DOES
+//       NOT RUN WHERE THE SHEET HAS NO CURRENT LEG: `curLegs > 0` gates it, and 15 of the 21
+//       corrected cache columns have no current leg at all (12 of the frame's 14). So 3M FY2018 and
+//       FY2019 gain the whole $1,211m / $2,795m
+//       with the filer's own $17m and $21m of finance-lease current inside them (0.1% and 0.75%),
+//       and Air Industries' face line is "Notes Payable AND FINANCE LEASE OBLIGATIONS — Current
+//       Portion", so its corrected totals are lease-inclusive on BOTH legs — internally consistent,
+//       since its long-term leg is the matching lease-inclusive line, but the row below is "Total
+//       debt incl. leases" and this is where the two overlap.
 //   (3) the closing total must be a claim about the filer's WHOLE debt, not a family: Sanmina's
 //       `OtherNotesPayable` $17,667k = long-term $14,346k + $3,321k settles the other-notes family and
 //       says nothing about the $593,321k of current debt beside it. So a witness must be large enough
@@ -1278,7 +1297,7 @@ export function currentDebtOutside(facts, sections, ccy, cols, ltmCols) {
       for (const m of ms) {
         if (k !== "DebtCurrent" && r40Nz(w("DebtCurrent"))) for (const s of r40Subsets(comps, 2)) {
           const extra = s.reduce((a, [, v]) => a + v, 0);
-          if (r40Eq(w("DebtCurrent"), curLegs + m + extra, curLegs, m, ...s.map(([, v]) => v))) { hit = { id: "I1", mPrime: w("DebtCurrent") - curLegs }; break; }
+          if (r40Eq(w("DebtCurrent"), curLegs + m + extra, curLegs, m, ...s.map(([, v]) => v))) { hit = { id: "I1", mPrime: w("DebtCurrent") - curLegs, triv: s.length === 0 && r40Eq(w("DebtCurrent"), X, curLegs) }; break; }
         }
         if (hit) break;
         for (const A of R40_ALLIN_TOTALS) if (A !== ltTag && r40Nz(w(A)) && r40Eq(w(A), corpSum + m, st, cu, lt, m)) { hit = { id: "I2", mPrime: w(A) - corpSum }; break; }
@@ -1306,7 +1325,16 @@ export function currentDebtOutside(facts, sections, ccy, cols, ltmCols) {
       }
       // Guard (1)'s sign test, and the requirement that the long-term leg be one the concept can sit
       // outside of. An identity that closes on a leg that may already contain it proves nothing.
-      if (hit && ltOutside && hit.mPrime > 0) { row.cls = "i"; row.mPrime = hit.mPrime; row.id = hit.id; }
+      // An identity that closes over NOTHING but the concept itself proves nothing: at 6 of the 18
+      // class-(i) cells the concept EQUALS `DebtCurrent`, so I1 reduces to `DebtCurrent = curLegs +
+      // (DebtCurrent − curLegs)` — true whatever the filer meant, whichever of the two readings of the
+      // amount closed it. The column is still admitted, because what actually carries it is variant
+      // D's premise (a `DebtCurrent` above the legs under a non-current long-term leg) and the filed
+      // faces read for Air Industries FY2020/21 say the corrected totals are right. But the flag
+      // travels to the row note, so the sentence a reader sees does not claim a witness there is none.
+      if (hit && ltOutside && hit.mPrime > 0) {
+        row.cls = "i"; row.mPrime = hit.mPrime; row.id = hit.id; row.trivial = hit.triv === true;
+      }
     }
     return { rows, ltOutside, curLegs, TD };
   };
@@ -1327,7 +1355,11 @@ export function currentDebtOutside(facts, sections, ccy, cols, ltmCols) {
     let best = null;
     for (const r of inf.rows) {
       const m = r.cls === "i" ? r.mPrime : r.cls === "iv" && proved.has(r.concept) ? r.X - inf.curLegs : null;
-      if (m != null && (!best || m > best.add)) best = { add: m, concept: r.concept, identity: r.cls === "i" };
+      // `tagged` is the figure the filer carries under that concept; `add` is what the total gains,
+      // which is the closing total less the legs the sheet already counts (guard 1) and is a DIFFERENT
+      // number wherever the rows above already carry part of it. The row note prints both, because a
+      // note that reports one as the other makes a false claim about the filing (rules 15 and 16).
+      if (m != null && (!best || m > best.add)) best = { add: m, concept: r.concept, identity: r.cls === "i", tagged: r.X, legs: inf.curLegs, trivial: r.cls === "i" && r.trivial === true };
     }
     if (best && best.add > 0) out.set(c, best);
   }
@@ -1338,7 +1370,7 @@ export function currentDebtOutside(facts, sections, ccy, cols, ltmCols) {
     const inf = info.get(c);
     if (!inf.rows.length || inf.TD == null) continue;
     const open = inf.rows.find(r => r.cls === "iv" && r.X - inf.curLegs > 2 * r40Unit(r.X));
-    if (open) out.set(c, { refuse: true, concept: open.concept, excess: open.X - inf.curLegs });
+    if (open) out.set(c, { refuse: true, concept: open.concept, excess: open.X - inf.curLegs, tagged: open.X, legs: inf.curLegs });
   }
   return out.size ? out : null;
 }

@@ -73,7 +73,19 @@ const noteOn = (col, k) => totalDebtLine.flagNote[k](col);
   eq(c19.v.ltDebt, 3406000, "the long-term row itself still shows what the filer filed — only the TOTAL is refused");
   eq(c19.v.stDebt, null, "and nothing else about the column changed");
   ok(/2019-12-31 is refused/.test(noteOn(c19, "unplaced")) && /15\.7m/.test(noteOn(c19, "unplaced")), `the row's note names the column and the figure: ${noteOn(c19, "unplaced").slice(0, 90)}`);
-  ok(/19\.3m/.test(noteOn(c18, "outsideTotal")) && /NotesPayableCurrent/.test(noteOn(c18, "outsideTotal")), `and the corrected column's note names the amount and the concept: ${noteOn(c18, "outsideTotal").slice(0, 90)}`);
+  // The note has to carry TWO figures and keep them apart: the filer tags 16,793 of notes payable,
+  // and the total gains 19,345, which is the `DebtCurrent` that covers the related-party notes too.
+  // The first draft printed the ADDED amount as the tagged one ("Includes 19.3m this filer tags as
+  // NotesPayableCurrent"), which is false here and at 6 more of the 21 corrected cache columns, and
+  // states guard (1) backwards. MUTATION: printing `add` where `tagged` belongs fails all three.
+  const n18 = noteOn(c18, "outsideTotal");
+  ok(/tags 16\.8m of NotesPayableCurrent/.test(n18), `the note names the figure the FILER tags, 16,793: ${n18.slice(0, 80)}`);
+  ok(/gains 19\.3m, more than the tagged figure/.test(n18), `and names the amount the total gains as a different number, 19,345: ${n18.slice(60, 170)}`);
+  ok(!/tags 19\.3m/.test(n18) && !/tags 19,345/.test(n18), "and never says the filer tags the added amount — the sentence this note shipped with");
+  ok((c20.meta.totalDebt.outsideTotal || {}).trivial === true, "FY2020's identity is ARITHMETIC: the filer's own DebtCurrent equals the concept, so I1 reads DebtCurrent = 0 + (DebtCurrent − 0)");
+  ok(/arithmetic rather than a second witness/.test(noteOn(c20, "outsideTotal")), "and the note says so rather than claiming the filer's totals close over it — what carries that column is the long-term leg's scope, not the identity");
+  ok((c18.meta.totalDebt.outsideTotal || {}).trivial === false, "FY2018's is not: its DebtCurrent is 19,345 against a concept of 16,793, so the equation says something");
+  ok(/tags 15\.7m of NotesPayableCurrent/.test(noteOn(c19, "unplaced")), "and the refused column's note names the TAGGED figure too, not the excess over legs that do not exist here");
 }
 
 // ── I2 and I3, and the amount that is NOT the concept: Thermo Fisher FY2018 ──────────────────────
@@ -94,6 +106,12 @@ const noteOn = (col, k) => totalDebtLine.flagNote[k](col);
   const c = at(g, "2018-12-31");
   eq(c.v.totalDebt, 18990 * M, "total debt is the filer's own 18,990 — the sum's 18,412 plus the 578 it was short, not 19,683");
   eq(c.v.stDebt, 693 * M, "the commercial paper is still on its own row, counted once");
+  // And the row note has to say both numbers, because they are different numbers: 1,271 is what the
+  // filer tags, 578 is what the total gains, and the 693 between them is already on the row above.
+  const nt = noteOn(c, "outsideTotal");
+  ok(/tags 1\.27bn of DebtCurrent/.test(nt), `the note names the tagged figure, 1,271: ${nt.slice(0, 70)}`);
+  ok(/gains 578\.0m of it/.test(nt) && /rows above already carry 693\.0m/.test(nt), `and the added amount with the reason it is smaller: ${nt.slice(60, 200)}`);
+  ok(!/tags 578/.test(nt), "and does not attribute the residual to the filer as a tagged figure");
   const withAllIn = at(sheet({
     Revenues: years(["2018-12-31"], 24358 * M),
     ShortTermBorrowings: tagOf([inst("2018-12-31", 693 * M, "2019-02-27")]),
@@ -236,7 +254,13 @@ const noteOn = (col, k) => totalDebtLine.flagNote[k](col);
   eq(at(g, "2018-12-31").v.totalDebt, 14622 * M, "FY2018 has no identity of its own and gains the same shape: 13,411 + 1,211, the filed face");
   eq(at(g, "2019-12-31").v.totalDebt, 20313 * M, "and FY2019: 17,518 + 2,795");
   eq((at(g, "2018-12-31").meta.totalDebt.outsideTotal || {}).identity, false, "the extended columns say so on the cell — they inherited the filer's convention rather than proving it");
-  ok(/the same shape it closed an identity on in another column/.test(noteOn(at(g, "2018-12-31"), "outsideTotal")), "and the note says so rather than claiming this column's own arithmetic");
+  ok(/closes no identity of its own/.test(noteOn(at(g, "2018-12-31"), "outsideTotal")), "and the note says so rather than claiming this column's own arithmetic");
+  // The other half of the note's job: at this column the tagged figure and the added amount ARE the
+  // same 806, because the sheet has no current debt row for any of it to be inside. The note says it
+  // once and does not invent a second figure. TMO FY2018 above is the same test where they differ.
+  const n20 = noteOn(at(g, "2020-12-31"), "outsideTotal");
+  ok(/tags 806\.0m of DebtCurrent/.test(n20) && /gains that figure in full/.test(n20), `tagged and gained are one number here, and the note prints it once: ${n20.slice(0, 120)}`);
+  ok(/tags 1\.21bn of DebtCurrent/.test(noteOn(at(g, "2018-12-31"), "outsideTotal")), "and the extended column names its own tagged figure, not the one from the column that closed the identity");
 }
 
 // ── A filer that proves nothing is not touched ───────────────────────────────────────────────────

@@ -1452,22 +1452,33 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     `ConvertibleDebtNoncurrent` = 0 at FY2024 and its **$918m** of convertible notes under
     `ConvertibleDebtCurrent`, which no row asks for, so the sheet printed total debt **$0** and total
     debt/EBITDA 0.00x for a company with $918m of notes due inside a year. Thermo Fisher was $578m short at
-    FY2018 and $2.63bn at FY2020; Sanmina printed $14.3m against a filed $607.7m; 3M's eight annual columns
-    were each $12m to $2.8bn light. **The repair is not a tag.** Adding the thirteen measured current
+    FY2018 and $2.63bn at FY2020; Sanmina printed $14.3m against a filed $607.7m; and FIVE of 3M's eight
+    annual columns were $12m to $2.8bn light — FY2018 $1,211m, FY2019 $2,795m, FY2020 $12m, FY2021 $16m,
+    FY2023 $1,795m. (The other three, FY2022, FY2024 and FY2025, do not move; FY2022's $15,939m is
+    already the filed total. An earlier draft of this paragraph said all eight, which the same paragraph
+    then contradicted two screens down.) **The repair is not a tag.** Adding the thirteen measured current
     spellings to the current-maturities row as last alternatives corrects 5 columns of the cache, creates
     **7 new double counts** (Capstone's term note twice, $50.9m to $101.9m) and blanks 6 more through rule
     7 — a current portion may only be added to a long-term figure that EXCLUDES it, which is rule 15's
     whole subject. What decides it is an identity in rule 23's shape: where the long-term leg resolved a
     concept that excludes current maturities (`NONCURRENT_DEBT`, or this filer's own convention for that
-    tag) and the concept equals neither current leg, the total gains it only if one of the filer's own
+    tag — **but that half of the parenthesis is UNEXERCISED: 0 columns of either population reach an
+    identity through the `excludes` convention**, every one having a long-term leg whose tag is in
+    `NONCURRENT_DEBT` or none at all. The `includes` half is load-bearing in the other direction, and
+    the named limit below is about it) and the concept equals neither current leg, the total gains it
+    only if one of the filer's own
     totals closes over it — `DebtCurrent` = the current legs + it (I1), an all-in total = the three-way sum
     + it (I2), an inclusive long-term total = the long-term leg + the current maturities + it (I3), or the
     non-current leg's drop equals the concept's rise (I4, Shopify's reclassification). **Said plainly,
     because the suite is built from that sentence: at 6 of the 18 class-(i) cells the concept IS
     `DebtCurrent` and the identity is arithmetic** — `DebtCurrent = curLegs + (DebtCurrent − curLegs)` is
-    true whatever the filer meant. Those six (Air Industries FY2020/21 and an LTM column, Nuo Xu's FY2019)
-    rest on the premise of variant D below, and the faces read for them say their corrected totals are
-    right anyway; the other twelve are real evidence.
+    true whatever the filer meant. Those six cells are four columns — Air Industries FY2020, FY2021 and
+    one LTM column, and Nuo Xu FY2019 — and all four rest on the premise of variant D below. **Two of the
+    four were read against the filed face** (Air Industries FY2020 and FY2021, 0001213900-22-015031 R2)
+    and close on it exactly; **the other two were not read at all.** No Nuo Xu statement was opened at any
+    point in this rule's measurement, and the Air Industries LTM column has no filed face of its own, so
+    both rest on the premise alone. The other twelve cells are real evidence. The row note says which of
+    the two a column is (below).
 
     **Four guards bound it, each measured on its own.** (1) The amount is the closing total less every leg
     the sheet already counts, never the concept itself, and it must be POSITIVE: Thermo Fisher FY2018's
@@ -1476,7 +1487,16 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     −$9.6m on a $3,573 coincidence. (2) A current-maturities concept that carries FINANCE LEASES exceeds
     the debt legs by the lease, and the comparison is proportionate — 1% of the residual, or two reporting
     units, whichever is larger: Lam Research FY2019's residual is $4,823k against a
-    `CapitalLeaseObligationsCurrent` of $4,858k, a $35k gap that two units of 1e3 cannot see. (3) A witness
+    `CapitalLeaseObligationsCurrent` of $4,858k, a $35k gap that two units of 1e3 cannot see. **That guard
+    does not run where the sheet has no current leg** — `curLegs > 0` gates it, and **15 of the 21
+    corrected cache columns have no current leg at all** (12 of the frame's 14; the review that found this
+    said 12 of 23, counting the offline simulation's column set rather than the columns the shipping
+    engine actually flags). So 3M FY2018 and FY2019 gain the whole $1,211m / $2,795m with the filer's own
+    $17m and $21m of finance-lease current inside them (0.1% and 0.75%), and Air Industries, whose face
+    line is *"Notes Payable **and Finance Lease Obligations** — Current Portion"*, has corrected totals
+    that are lease-inclusive on BOTH legs. Internally consistent, since its long-term leg is the matching
+    lease-inclusive line — but the row below is "Total debt incl. leases", which is where the two overlap.
+    (3) A witness
     must be a claim about the filer's WHOLE debt, not a family: Sanmina's `OtherNotesPayable` $17,667k =
     long-term $14,346k + $3,321k settles the other-notes family and says nothing about the $593,321k of
     current debt beside it, so a witness must be large enough to hold the long-term leg and the largest
@@ -1511,6 +1531,40 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     and are left printing because their filer never closed an identity, several of them worse (RLX FY2023
     $0 against $157m, Repligen FY2022 $0 against $284.6m). Blanking those is a larger decision (Next item 10).
 
+    **The note on a corrected column prints TWO figures and does not conflate them**: the amount the filer
+    tags under that concept, and the amount the total gains — the closing total less every leg the sheet
+    already counts, which is guard (1). They are the same number at **28 of the 35 corrected columns** and
+    different at **7**: six by the current debt the rows above already show (Thermo Fisher FY2018 tags
+    $1,271m, the short-term row already carries $693m of it, the total gains $578m), and one — Air
+    Industries FY2018 — where the total that closes covers a second unasked concept, so the gain
+    ($19,345k) is LARGER than the figure tagged ($16,793k of notes payable, plus $2,552k of related-party
+    notes). The note names the case in those words. **The first version printed the added amount as the
+    figure the filer tags**, which was false at those 7 and states guard (1) backwards at the sharpest of
+    them; `test/t-r40.mjs` now pins a column where the two differ and one where they are equal. And where
+    the identity that admits a column is the arithmetic one (`DebtCurrent = curLegs + (DebtCurrent −
+    curLegs)`, the vacuous cells above), the note says THAT rather than claiming the filer's totals close
+    over it.
+
+    **The named limit of this rule: the containment path has no magnitude test.** Before any identity
+    runs, a concept is set aside as already counted if it sits inside the long-term leg — either because
+    the filer tags a non-current balance that leaves exactly it as the difference, or because this
+    filer's own convention for that tag reads `includes`. **The convention path tests no magnitude**, so a
+    leg far too small to hold the concept still counts as containing it. Nuo Xu's `LongTermDebt`
+    convention reads `includes` off FY2023/24/25, where `LongTermDebt` = `LongTermDebtNoncurrent` +
+    `LongTermDebtCurrent` exactly ($8,471,701 = $143,657 + $8,328,044) — and is then believed at FY2020,
+    where the "inclusive" leg is **$214,795** against a `DebtCurrent` of **$4,642,646** and an
+    `OtherLongTermDebtCurrent` of **$4,631,921**, twenty-one times smaller than the figure it is said to
+    contain. So that row reads FY2018 **$3,389,986** (corrected), FY2019 **$8,260,866** (corrected),
+    FY2020 **$214,795** (untouched, a 95.6% understatement), FY2021 **$7,969,847** (corrected): the mixed
+    series this form was chosen over the per-column one to avoid, on one nano-cap filer. The refusal
+    cannot reach it — the column is set aside as already counted, not left undecided — and the asymmetry
+    is worth seeing: Air Industries FY2019 BLANKS because its convention is unreadable, while Nuo Xu
+    FY2020 PRINTS because the same filer's convention happened to be readable in a later year. Guard (3)
+    applies exactly this sanity test to a witness ("large enough to hold the long-term leg and the largest
+    current debt figure"); the containment test has no equivalent. **Recorded, not fixed**: a magnitude
+    test on the convention path changes the diff and needs a measurement of its own, and it belongs with
+    the reclassification test Next item 10 already names.
+
     **This form is variant D gated at filer level, and the gate is not a reclassification test.** Of its 23
     cache columns, D — "where the long-term leg is non-current and the filer tags `DebtCurrent` above the
     current legs, replace the legs with `DebtCurrent`" — moves **19 by an identical amount and differs at
@@ -1533,8 +1587,10 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     FY2022 does not move ($15,939m is already the filed total) and Deere does not move at all. Shopify
     FY2024 $0 → $918m (0.00x → 0.83x), Thermo Fisher to $18.99bn / $17.75bn / $21.74bn, Sanmina FY2018
     $14.3m → $607.7m, Lyft FY2024 $604.9m → $995.0m, AMD FY2018 net cash becomes net debt. `test/t-r40.mjs`
-    — 121 assertions on the cache, 66 on the frame, 51 with no cache at all — **9 of 9 mutations caught**,
-    and the run produced two findings of its own: the sign test is enforced twice (classification and
+    — **132 assertions on the cache, 77 on the frame, 62 with no cache at all** — and **11 of 11
+    mutations caught** (nine before the review, two added with its fixes: the row note conflating its two
+    figures, and the vacuous identity not disclaimed).
+    The run produced two findings of its own: the sign test is enforced twice (classification and
     series) and either half carries Nuo Xu alone, so the mutation removes both; and three mutations first
     made the suite CRASH rather than fail, which reports "failed undefined assertions" — those
     dereferences are guarded so every mutation names the sentence it broke.
@@ -3021,8 +3077,10 @@ node scripts/build-fixtures.mjs --tickers AAPL,JPM # → one or two
 FILINGS_FIXTURES=/path/to/cache npm test           # → point the suites at a copy
 ```
 
-**Measured, now that it has been built: 180 filers, 199 MB, about two and a half minutes** (197 MB
-before the four tags rules 34 and 35 added to KEEP; **202 MB** after rule 40's twenty; a KEEP change
+**Measured, now that it has been built: 180 filers, 201.2 MB, about two and a half minutes** — the sum of
+the 180 fixture JSONs, decimal MB, which is 191.8 MiB as the OS reports the folder (an earlier "199 MB"
+here resolved to no run on disk). Rule 40's twenty KEEP concepts take that to **202.2 MB / 192.8 MiB**
+on the rebuilt cache: **+1.0 MB**, measured on both folders the same way. A KEEP change
 means a rebuild, because a fixture built before it cannot see the tag — and a rule whose GUARD reads a
 concept is a rebuild too, not just one whose rows do: rule 40's lease guard fails open on a cache built
 without `CapitalLeaseObligationsCurrent`, which is a green suite and a wrong number). The Sep 14 measurements that needed concepts KEEP does not carry
@@ -3239,7 +3297,15 @@ Chevron's long-term row losing to alternative order. What is left is below, with
     reaches. The same item owns the other half: **196 cache columns on 40 filers meet rule 40's refusal condition
     and keep printing** (RLX FY2023 $0 against $157m, AIOS FY2022 $870k against $40.5m, Repligen FY2022 $0 against
     $284.6m). Blanking those is a data-quality decision about 197 columns, not the row-consistency one rule 40
-    makes about one.
+    makes about one. **And the magnitude test the same work needs, named by rule 40's own open case:** the
+    containment path that sets a concept aside as already inside the long-term leg believes a filer's
+    `includes` convention with no test of size, so Nuo Xu FY2020 prints **$214,795** against a `DebtCurrent`
+    of **$4,642,646** and an `OtherLongTermDebtCurrent` of **$4,631,921** — a 95.6% understatement sitting
+    between a corrected FY2019 ($8,260,866) and a corrected FY2021 ($7,969,847), because the convention was
+    readable at FY2023/24/25 where `LongTermDebt` really is the two legs summed. A leg 21x smaller than the
+    concept cannot contain it, and saying so is the same class of test as the reclassification one above:
+    both ask whether a figure is really inside another. Measuring it is a diff change, which is why rule 40
+    ships without it and records it as its named limit.
 
 11. **A long-term row that beat the filer's own face line — Chevron's total debt understated 32.7% (found Sep 16
     2026 while reading item 9's counter-population, open).** At FY2020 Chevron's face reads short-term debt

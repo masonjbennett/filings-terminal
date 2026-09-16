@@ -764,8 +764,13 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
       // that read $0, and Air Industries' FY2019, refused with $22,544k of current debt (15,682 +
       // 6,862 on its face) above legs that resolved nothing. One column cannot be both, but the probe
       // is a column that carries every flag at once — the notes are read one at a time.
-      totalDebt: { status: "computed", outsideTotal: { add: 918e6, concept: "ConvertibleDebtCurrent", identity: true },
-        unplaced: { concept: "DebtCurrent", excess: 22544000 } },
+      // `tagged` is the figure the filer carries under the concept and `add` is what the total
+      // gained; at Shopify they are the same 918 because no current debt row stands against it.
+      // They are DIFFERENT numbers at 7 of the 21 corrected cache columns, which is why both are
+      // on the cell and why the note is built to print the pair (t-r40 pins Thermo Fisher FY2018,
+      // where the filer tags 1,271 and the total gains 578).
+      totalDebt: { status: "computed", outsideTotal: { add: 918e6, tagged: 918e6, legs: 0, concept: "ConvertibleDebtCurrent", identity: true, trivial: false },
+        unplaced: { concept: "DebtCurrent", excess: 22544000, tagged: 22544000, legs: 0 } },
       epsDil: { status: "split-adjusted", splitFactor: 40, splitMark: "÷40", filedValue: 6.63, splits: [{ K: 4, forward: true, newFrom: "2021-08-20" }, { K: 10, forward: true, newFrom: "2024-08-28" }] },
       // Rule 32's probe: Allstate's FY2020, the legs read from the 10-K filed 2022-02-18 and the equity
       // leg displacing the −$298m the 10-K filed 2024-02-21 carried.
@@ -792,8 +797,8 @@ eq(rows.find(r => r.line.k === "pb").sec.id, "ev", "`pb` is in the ev section, s
     else if (k === "bsAligned") ok(/read from the 10-K filed 2022-02-18/.test(out) && /total equity incl\. NCI −298\.0m in the 10-K filed 2024-02-21 against 30\.22bn here/.test(out) && /2024-12-31/.test(out) && !/total assets/.test(out), `and it names the filing the legs were read from, the leg that moved with the figure its own newest filing carried, and the date — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else if (k === "levNegEbitda") ok(/EBITDA is a loss of 1\.35bn in FY2024/.test(out) && /n\/m/.test(out), `and it names the loss with the filer's figure and the column, and says what the row reads — ${r.id}/${k}: ${out.slice(0, 110)}`);
     else if (k === "mezzSummed") ok(/preferred 120\.5m plus other 143\.8m/.test(out) && /10-K filed 2019-03-01/.test(out) && /closes/.test(out), `and it names both classes with the filer's figures, the filing, and the condition it was taken on — ${r.id}/${k}: ${out.slice(0, 120)}`);
-    else if (k === "outsideTotal") ok(/918\.0m/.test(out) && /ConvertibleDebtCurrent/.test(out) && /2024-12-31/.test(out) && /own totals close over it/.test(out), `and it names the amount, the concept and the column, and says whether that column closed an identity of its own — ${r.id}/${k}: ${out.slice(0, 120)}`);
-    else if (k === "unplaced") ok(/2024-12-31 is refused/.test(out) && /22\.5m/.test(out) && /DebtCurrent/.test(out) && /invent a fall/.test(out), `and it names the column, the figure it could not place and why a short figure would be worse than none — ${r.id}/${k}: ${out.slice(0, 120)}`);
+    else if (k === "outsideTotal") ok(/tags 918\.0m of ConvertibleDebtCurrent at 2024-12-31/.test(out) && /gains that figure in full/.test(out) && /own totals close over it/.test(out), `and it names the figure the FILER tags, what the total gained, the concept, the column, and whether that column closed an identity of its own — ${r.id}/${k}: ${out.slice(0, 120)}`);
+    else if (k === "unplaced") ok(/2024-12-31 is refused/.test(out) && /tags 22\.5m of DebtCurrent/.test(out) && /invent a fall/.test(out), `and it names the column, the figure it could not place and why a short figure would be worse than none — ${r.id}/${k}: ${out.slice(0, 120)}`);
     else ok(false, `${r.id}/${k} is a function-valued flagNote with no expectation of its own here — add one, or a wrong sentence passes as a sentence`);
     // Every `col.v.<name>` the body reads has to be a row, or the note is one rename from NaN.
     for (const m of stripComments(text.toString()).matchAll(/col\s*\.\s*v\s*\.\s*(\w+)/g))
