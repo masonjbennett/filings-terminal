@@ -473,7 +473,27 @@ export const SECTIONS = [
   { k: "taxRate", label: "Effective tax rate", how: "computed", formula: "tax / pretax" },
 ]},
 { id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", lines: [
-  { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt" },
+  // Rule 40's two obligations, and both are the one rules 15 and 16 took on: a column whose visible
+  // rows do not add up to the total printed on this line has to say why, and a blank has to say what
+  // kind of blank it is. Keyed to the column carrying the flag rather than the newest — rule 16's
+  // lesson, where three filers went silent because their flagged column was not the last one.
+  { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt",
+    flagNote: {
+      outsideTotal: col => {
+        const d = (col.meta.totalDebt || {}).outsideTotal, m = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(1) + "m" : (x / 1e3).toFixed(1) + "k");
+        if (!d) return "";
+        return `Includes ${m(d.add)} this filer tags as ${d.concept} for ${col.period.end} and no row above asks for — `
+          + (d.identity ? `its own totals close over it (the long-term figure excludes current maturities), ` : `the same shape it closed an identity on in another column, `)
+          + `so it is debt due inside a year that the rows above do not show. Every column of this filer with that shape carries it.`;
+      },
+      unplaced: col => {
+        const d = (col.meta.totalDebt || {}).unplaced, m = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(1) + "m" : (x / 1e3).toFixed(1) + "k");
+        if (!d) return "";
+        return `${col.period.end} is refused rather than printed short: this filer tags ${m(d.excess)} of ${d.concept} above the current debt rows, `
+          + `and the concept its long-term row resolved for that date gives no way to tell whether that figure is already inside it. `
+          + `The columns beside it carry the same figure, so printing this one without it would invent a fall.`;
+      },
+    } },
   { k: "totalDebtLeases", label: "Total debt incl. leases", how: "computed", formula: "totalDebt + olCur + olNon + flCur + flNon", note: "Lenders increasingly capitalise leases" },
   { k: "netDebt", label: "Net debt", how: "computed", formula: "totalDebt - cash - sti" },
   { k: "netLev", label: "Net debt / EBITDA", how: "computed", formula: "netDebt / ebitda", note: "The covenant that actually gets tested", flagNote: { levNegEbitda: LEV_NM_NOTE } },
