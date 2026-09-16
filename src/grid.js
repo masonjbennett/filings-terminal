@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, LEV_ROWS, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, LEV_ROWS, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS, currentDebtOutside, CURRENT_DEBT_UNPLACED } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -69,7 +69,7 @@ export function hasAnnualPeriods(d) {
 // the same column. `get` is the only thing that differs between a fiscal year and a trailing twelve
 // months — everything after it, the derivations and the industry blanking, has to be identical or
 // the LTM column would be a second engine with its own bugs.
-function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
+function fillCol(facts, sections, industry, get, scopeOf, pinned, align, r40) {
   const v = {}, meta = {};
   for (const sec of sections) for (const line of sec.lines) {
     if (line.how !== "fetched" || !line.tags) continue;
@@ -162,7 +162,19 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align) {
   promoteWorkingCapital(v, meta);
   const derivations = { ...DERIVED, ...(DERIVED_BY_INDUSTRY[industry] || {}) };
   for (const [k, fn] of Object.entries(derivations)) {
-    const out = fn(v);
+    let out = fn(v);
+    // Rule 40, applied HERE rather than after the loop, and to the derivation rather than to the cell:
+    // every row below total debt — the leases total, net debt, the bridge, debt/equity, debt/capital,
+    // invested capital, ROIC and the two leverage multiples — reads `v.totalDebt`, so correcting or
+    // refusing it at the moment it is computed is what keeps a derivation from running on a stale
+    // total, with no list of dependent rows to maintain. `totalDebt` is the key in every industry's
+    // derivation table as well as the corporate one, so an override is covered by the same line.
+    // Only onto a total that already prints (rule 7): a blank total has nothing to correct, and the
+    // decision above already required one before refusing.
+    if (k === "totalDebt" && r40 && out != null) {
+      if (r40.refuse) { v[k] = null; meta[k] = { status: CURRENT_DEBT_UNPLACED, unplaced: r40 }; continue; }
+      v[k] = out + r40.add; meta[k] = { status: "computed", outsideTotal: r40 }; continue;
+    }
     if (out != null) { v[k] = out; meta[k] = { status: "computed" }; } else if (!(k in v)) { v[k] = null; meta[k] = { status: "computed" }; }
   }
   // Lines a filer of this type does not have are blanked outright, so a derived value can never be
@@ -389,11 +401,12 @@ export function buildGrid(data, quote, limit = 8) {
     .filter(f => /^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(f.form)).map(f => f.filed).sort().pop() || null;
   const latestOpts = line => (line.mustBeCurrent ? { mustBeCurrent: true, notBefore: newestFiledDate } : undefined);
 
-  const cols = periods.map(p => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
+  // One annual column, built to order — the same call twice where rule 40 has something to say about
+  // it, so the correction runs through this engine rather than beside it.
+  const annualCol = (p, r40) => ({ period: p, ...fillCol(facts, sections, industry, (line, inst) =>
     line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickFact(facts, [t], p, { ccy }), p.end)
-    : line.latest ? latestFact(facts, line.tags, latestOpts(line)) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned, alignAt(p.end)) }));
-  crossColumn(cols);
-  applyQuote(cols[cols.length - 1], industry, quote, ccy);
+    : line.latest ? latestFact(facts, line.tags, latestOpts(line)) : pickFact(facts, line.tags, inst ? { end: p.end } : p, { ccy, preferNonZero: line.preferNonZero }), scopeOf, pinned, alignAt(p.end), r40) });
+  const cols = periods.map(p => annualCol(p, null));
 
   // ── The trailing-twelve-month columns ────────────────────────────────────────────────────────
   // Built off the SAME sections, derivations and blanking, so an industry rule cannot hold on the
@@ -403,15 +416,39 @@ export function buildGrid(data, quote, limit = 8) {
   // meaningless. That also makes net debt, and therefore enterprise value, as of the latest quarter
   // rather than as of a year-end that may be eleven months old.
   const wins = ltmWindows(facts, periodTags, desc, LTM_DEPTH);
-  const ltmCols = wins.slice().reverse().map(w => ({
+  const ltmCol = (w, r40) => ({
     period: { end: w.end, fy: Number(w.end.slice(0, 4)), ltm: true, through: w.end, fyEnd: w.fy.end, weeks53: w.days >= WEEKS53_MIN_DAYS,
       basis: `FY to ${w.fy.end} + ${w.cur.start}→${w.cur.end} − ${w.prior.start}→${w.prior.end}` },
     ...fillCol(facts, sections, industry, (line, inst) =>
       line.wcAggregate ? changeInWorkingCapital(facts, ccy, t => pickLtm(facts, [t], w, ccy), w.end)
       : line.latest ? latestFact(facts, line.tags, latestOpts(line))
       : inst ? pickFact(facts, line.tags, { end: w.end }, { ccy, preferNonZero: line.preferNonZero })
-      : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned, alignAt(w.end)),
-  }));
+      : pickLtm(facts, line.tags, w, ccy), scopeOf, pinned, alignAt(w.end), r40),
+  });
+  const ltmWinsOldestFirst = wins.slice().reverse();
+  const ltmCols = ltmWinsOldestFirst.map(w => ltmCol(w, null));
+
+  // ── Rule 40 ─────────────────────────────────────────────────────────────────────────────────────
+  // Decided for the FILER, from the columns as they came out: the legs the sum actually used, the tag
+  // the long-term row resolved and the total it printed only exist once `fillCol` has run. It needs
+  // BOTH column sets before it can decide — 3M's only two columns that close an identity of their own
+  // are trailing-twelve-month ones, and they license five annual corrections — so it sits between the
+  // two builds and the cross-column pass. The affected columns are then rebuilt through the SAME
+  // `fillCol`, which is what keeps the correction from being a second engine: nothing here knows how
+  // total debt is derived, and every row below it is recomputed rather than patched.
+  const r40 = currentDebtOutside(facts, sections, ccy, cols, ltmCols);
+  if (r40) {
+    // A refused total blanks every row derived from it, and rule 5 says a blank must say which kind.
+    // Which rows those are is not a list to keep in step — it is whatever went from a figure to a
+    // blank between the two builds of the same column.
+    const markRefused = (before, after) => {
+      for (const k of Object.keys(after.v)) if (typeof before.v[k] === "number" && after.v[k] == null) after.meta[k] = { status: CURRENT_DEBT_UNPLACED, unplaced: after.meta.totalDebt.unplaced };
+    };
+    cols.forEach((c, i) => { const d = r40.get(c); if (!d) return; cols[i] = annualCol(c.period, d); if (d.refuse) markRefused(c, cols[i]); });
+    ltmCols.forEach((c, i) => { const d = r40.get(c); if (!d) return; ltmCols[i] = ltmCol(ltmWinsOldestFirst[i], d); if (d.refuse) markRefused(c, ltmCols[i]); });
+  }
+  crossColumn(cols);
+  applyQuote(cols[cols.length - 1], industry, quote, ccy);
   crossColumn(ltmCols);
   applyQuote(ltmCols[ltmCols.length - 1], industry, quote, ccy);
 

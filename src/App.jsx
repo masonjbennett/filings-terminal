@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
-import { describeSplits, describeAligned } from "./extract.js";
+import { describeSplits, describeAligned, CURRENT_DEBT_UNPLACED } from "./extract.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
@@ -1534,9 +1534,15 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
               own figure instead of asserting a category. The near-cancelled-equity mark needs that:
               its threshold is a judgement rather than a reading, so the threshold decides only when to
               speak and the number the reader is shown is Colgate's actual 0.33%. */}
+          {/* A flag is usually a fact about the COLUMN and lives in `v`. Rule 40's two are facts about
+              this ROW in that column — what total debt gained, and which column it refused — so they
+              travel on the row's own cell instead. They must not be in `v`: the full-diff compares
+              cells as [value, status, tag, form, accession], so a new key there would have counted as
+              21 flag changes or 21 cells appearing, and "0 flags, 0 appeared" is the measurement the
+              README quotes for this rule. A note is not a cell. */}
           {line.flagNote && Object.entries(line.flagNote).map(([k, text]) => {
             let hit = null;
-            for (const c of grid.cols) if (c.v[k]) hit = c;
+            for (const c of grid.cols) if (c.v[k] || (c.meta[line.k] || {})[k]) hit = c;
             return hit ? <div key={k} style={NOTE_STYLE}>{typeof text === "function" ? text(hit) : text}</div> : null;
           })}
         </td>
@@ -1551,7 +1557,12 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
             title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
-              : (shown || (x.m.status === "not-meaningful" ? "n/m" : "—"))}
+              /* Rule 40's refusal is the one blank on this page that is a DECISION about a column
+                 rather than an absence, and it sits beside seven columns that print a figure — so an
+                 em dash would read as "nothing filed here". It says the word, in the colour the row
+                 labels use for a blank that has a reason, and the row's note names the column. */
+              : (shown || (x.m.status === "not-meaningful" ? "n/m"
+                : x.m.status === CURRENT_DEBT_UNPLACED ? <span style={{ fontSize: 10, color: C.bronze, letterSpacing: .4 }}>refused</span> : "—"))}
             {/* Rule 31: a figure carried to today's share basis is marked ON THE CELL, not only in the
                 tooltip, because a phone has no hover and the header says every figure is as filed. The
                 marker is what was done to this number; the row's note says why and names the split. */}

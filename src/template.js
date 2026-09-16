@@ -473,7 +473,49 @@ export const SECTIONS = [
   { k: "taxRate", label: "Effective tax rate", how: "computed", formula: "tax / pretax" },
 ]},
 { id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", lines: [
-  { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt" },
+  // Rule 40's two obligations, and both are the one rules 15 and 16 took on: a column whose visible
+  // rows do not add up to the total printed on this line has to say why, and a blank has to say what
+  // kind of blank it is. Keyed to the column carrying the flag rather than the newest — rule 16's
+  // lesson, where three filers went silent because their flagged column was not the last one.
+  { k: "totalDebt", label: "Total debt", how: "computed", formula: "stDebt + ltdCur + ltDebt",
+    flagNote: {
+      // TWO figures, and they are not the same number: `tagged` is what the filer carries under that
+      // concept, `add` is what the total gains — the closing total less the legs the sheet already
+      // counts, which is guard (1)'s whole doctrine. The first draft of this note printed `add` as the
+      // figure the filer tags, which was false at 7 of the 21 corrected cache columns and states the
+      // doctrine backwards at the sharpest of them (Thermo Fisher FY2018 tags $1,271m and the total
+      // gains $578m, because the $693m of commercial paper inside it is already on the row above).
+      // A note that makes a false claim about the filing is worse than no note — rules 15 and 16.
+      outsideTotal: col => {
+        const d = (col.meta.totalDebt || {}).outsideTotal, m = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(1) + "m" : (x / 1e3).toFixed(1) + "k");
+        if (!d) return "";
+        const same = Math.abs(d.add - d.tagged) < 1, byLegs = !same && d.legs > 0 && Math.abs(d.add - (d.tagged - d.legs)) < 1;
+        // The two figures and the relation between them, stated as the CASE that applies rather than
+        // as a disjunction: 28 of the 35 corrected columns gain the tagged figure whole, 6 gain it less
+        // the current debt the rows above already show (Thermo Fisher FY2018: $1,271m tagged, $693m of
+        // commercial paper already on the short-term row, $578m added), and one gains MORE than it,
+        // because the total that closes over it covers a second unasked concept as well (Air Industries
+        // FY2018: `DebtCurrent` 19,345 = notes payable 16,793 + related-party notes 2,552).
+        const amount = same ? `The total gains that figure in full. `
+          : byLegs ? `The total gains ${m(d.add)} of it: the current debt rows above already carry ${m(d.legs)}, and taking the tagged figure whole would count that twice. `
+          : d.add > d.tagged ? `The total gains ${m(d.add)}, more than the tagged figure: the total this filer closes over covers a second concept no row asks for either. `
+          : `The total gains ${m(d.add)} — the total this filer closes over, less every leg the sheet already counts, which is not the tagged figure itself. `;
+        const why = d.trivial
+          ? `What admits this column is arithmetic rather than a second witness: the filer tags a whole current-debt total equal to this figure, so the identity reads true whatever it meant. What carries it is the rest — the concept the long-term row resolved excludes current maturities, and no row of this sheet asks for the one that holds the figure. `
+          : d.identity ? `This filer's own totals close over it here, and the concept the long-term row resolved excludes current maturities. `
+          : `This column closes no identity of its own: it is the same shape this filer closed an identity on in another column, and a line is a series. `;
+        return `This filer tags ${m(d.tagged)} of ${d.concept} at ${col.period.end}, and no row above asks for it. ` + amount + why
+          + `Every column of this filer with that shape carries it.`;
+      },
+      unplaced: col => {
+        const d = (col.meta.totalDebt || {}).unplaced, m = x => (Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "bn" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(1) + "m" : (x / 1e3).toFixed(1) + "k");
+        if (!d) return "";
+        return `${col.period.end} is refused rather than printed short: this filer tags ${m(d.tagged)} of ${d.concept} at that date, `
+          + (d.legs > 0 ? `${m(d.excess)} of it above the current debt rows, ` : `with no current debt row carrying any of it, `)
+          + `and the concept its long-term row resolved for that date gives no way to tell whether that figure is already inside it. `
+          + `The columns beside it carry the same figure, so printing this one without it would invent a fall.`;
+      },
+    } },
   { k: "totalDebtLeases", label: "Total debt incl. leases", how: "computed", formula: "totalDebt + olCur + olNon + flCur + flNon", note: "Lenders increasingly capitalise leases" },
   { k: "netDebt", label: "Net debt", how: "computed", formula: "totalDebt - cash - sti" },
   { k: "netLev", label: "Net debt / EBITDA", how: "computed", formula: "netDebt / ebitda", note: "The covenant that actually gets tested", flagNote: { levNegEbitda: LEV_NM_NOTE } },
