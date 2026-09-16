@@ -1512,7 +1512,12 @@ export const DERIVED = {
   // one of the most leveraged names in the sector. Blank instead.
   totalDebt: v => { const a = allIn(v.debtAllIn, v); return a != null ? a : corpDebt(v); },
   debtLikeTotal: v => sum(v.olCur, v.olNon, v.flCur, v.flNon, v.pensionUnderfunded, v.deferredComp, v.assetRetirement),
-  totalDebtLeases: v => sum(v.totalDebt, v.olCur, v.olNon, v.flCur, v.flNon),
+  // Rule 7 again, on a row nobody had looked at: `sum` treats a missing input as zero, so where total debt is
+  // blank this printed the LEASE liabilities alone under the label "Total debt incl. leases" — 109 cells on 24
+  // filers of the cache and 70 on 15 of the material-weakness frame (Axon, Anterix, AIOS…), a lease total read
+  // as a debt total. The leases are an ADDITION to the debt figure, so without it the row has nothing to add to.
+  // Found by item 9's measurement of the current-debt concepts (the private notes' measure/audit4/item9-current-debt).
+  totalDebtLeases: v => (v.totalDebt == null ? null : sum(v.totalDebt, v.olCur, v.olNon, v.flCur, v.flNon)),
   netDebt: v => (v.totalDebt == null ? null : v.totalDebt - (v.cash || 0) - (v.sti || 0)),
   // The DCF tab's equity-bridge restatement of the row above. The SAME quantity by construction — the
   // template declares this row's formula as `netDebt` and that is exactly what it returns — and it

@@ -158,7 +158,13 @@ Each was learned by probing real filings, and each fails **silently** if broken:
    prefer their own all-in debt tag, and every combined-ratio input is null-checked explicitly. The
    same rule blanks EBITDA without a real EBIT (VICI reported its $4m of D&A as EBITDA and a
    4,041x Net debt/EBITDA) and blanks total debt when only the *current portion* of long-term debt
-   resolved (Equinix: $1.3bn against $33.8bn of real estate).
+   resolved (Equinix: $1.3bn against $33.8bn of real estate). **And once more on a row nobody had looked
+   at (Sep 16 2026):** "Total debt incl. leases" is `totalDebt + the four lease liabilities` through the
+   same `sum`, so wherever total debt was blank it printed the LEASE total alone under a debt label —
+   **109 cells on 24 filers of the cache and 70 on 15 of the material-weakness frame** (Axon, Anterix,
+   AIOS). The leases are an addition to the debt figure; without one there is nothing to add to, and the
+   row now blanks. Full-diff: 24 filers, 0 values changed, 109 cells vanish, nothing else. Found by item
+   9's census of the current-debt concepts, which was measuring something else.
 8. **A subtotal that looks derivable usually is not.** Deriving a missing EBIT as
    revenue − `CostsAndExpenses` was written, tested and removed: that tag is "total costs **and
    expenses**" and for most filers includes interest, so the difference is pre-tax income, not

@@ -117,6 +117,26 @@ const M = 1e6;
   eq(debtScope(conflict, T), null, "genuinely conflicting years (T = NC in one, T = NC + cur in another, both informative) still decide nothing");
 }
 
+// ── Rule 7 on the leases row: no total debt, nothing to add the leases to ───────────────────────
+// `sum` treats a missing input as zero, so "Total debt incl. leases" printed the LEASE liabilities alone
+// wherever total debt was blank — 109 cells on 24 filers of the cache, 70 on 15 of the material-weakness
+// frame. The row is an addition to the debt figure; without one it has nothing to add to.
+// MUTATION: dropping the null check prints 2.0m below.
+{
+  const ends = ["2019-12-31", "2020-12-31"];
+  const facts = {
+    Revenues: tagOf(ends.map(e => dur(`${e.slice(0, 4)}-01-01`, e, 40 * M, `${+e.slice(0, 4) + 1}-02-20`))),
+    OperatingLeaseLiabilityCurrent: tagOf(ends.map(e => inst(e, 0.8 * M, `${+e.slice(0, 4) + 1}-02-20`))),
+    OperatingLeaseLiabilityNoncurrent: tagOf(ends.map(e => inst(e, 1.2 * M, `${+e.slice(0, 4) + 1}-02-20`))),
+  };
+  const c = sheet(facts).cols.pop();
+  eq(c.v.totalDebt, null, "a filer that tags no debt at all has no total debt (the Anterix shape)");
+  eq(c.v.totalDebtLeases, null, "and its lease liabilities are not printed as a debt total");
+  const withDebt = sheet({ ...facts, LongTermDebtNoncurrent: tagOf(ends.map(e => inst(e, 5 * M, `${+e.slice(0, 4) + 1}-02-20`))) }).cols.pop();
+  eq(withDebt.v.totalDebt, 5 * M, "with debt tagged the total prints");
+  eq(withDebt.v.totalDebtLeases, 7 * M, "and the leases are added to it: 5.0m + 0.8m + 1.2m");
+}
+
 // ── The rows that opted in, and the ones that must not ──────────────────────────────────────────
 {
   const lines = [...SECTIONS.flatMap(s => s.lines), ...Object.values(OVERLAY_SECTIONS).flatMap(ss => ss.flatMap(s => s.lines))];
