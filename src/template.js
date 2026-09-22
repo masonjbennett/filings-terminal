@@ -34,10 +34,24 @@ export const EQUITY_DENOMINATED = new Set(["roe", "debtEquity", "pb"]);
 // them outright for a filer whose statements are not in the price's currency.
 export const CURRENCY_DENOMINATED = new Set(["revenue", "ebitda", "netIncome", "netDebt"]);
 
-// The 53-week note, shared by the growth and CAGR rows. Static text on purpose: the column that IS
-// the 53-week year is marked in its own header, and a growth row's job is to say what the extra week
-// does to a rate, which is the same sentence whichever year it was.
-const WEEKS53_NOTE = "A 53-week fiscal year is on this sheet, marked under its column header. Growth into that year carries an extra week of trading, about +1.9 points, and growth out of it the reverse; a CAGR ending on it moves by about 0.6 points. Both years are genuine fiscal years, so the rates are shown as reported, not adjusted.";
+// The 53-week note, on the growth and CAGR rows. Two versions of it, and the split is the point: five
+// rows carry this flag, and before Sep 22 2026 all five printed the SAME 300-character paragraph, so
+// a reader on AutoZone's Ratios tab met it five times down one screen. Read five times it stops being
+// a caveat and becomes furniture. The explanation now sits once, on the first growth row a reader
+// reaches, and the other four say the fact and point at it.
+//
+// The text leads with "shown as reported" because that is the question a reader actually has in front
+// of an odd-looking growth rate — is this number wrong? — and the old note answered it in its final
+// clause. It then says why a 53rd week exists at all, which is the piece that makes the rest make
+// sense and which the old note assumed you already knew.
+//
+// STATIC, and the year is deliberately NOT named. Naming it was tried and does not survive the data:
+// the note is handed one column by the renderer, and a sheet can carry TWO 53-week years — AutoZone
+// shows FY2019 and FY2024 — so a note that names one would be quietly wrong about the other. The
+// column header marks each of them, which is where a reader looks anyway. Marking the affected growth
+// CELLS instead, the way a split-rebased figure is marked, is the way to name them and is not built.
+const WEEKS53_FULL = "Shown as reported, not adjusted \u2014 every year here is a real fiscal year. One of them has 53 weeks instead of 52, marked in its column header: the week a company adds every five or six years so that its year keeps ending on the same weekday. That extra week adds about 1.9 points to the growth rate into it and takes about the same off the year after; a 3-year CAGR ending on it carries about 0.6.";
+const WEEKS53_SHORT = "A 53-week fiscal year is on this sheet, marked in its column header \u2014 see the note on Revenue growth, YoY.";
 
 // Rule 31's note, shared by the five rows a split can rebase. A function of the column, so it names
 // the filer's own factor and the filing that first carried the new basis; it reads the meta of
@@ -465,11 +479,11 @@ export const SECTIONS = [
   // comparing a 370-day year with a 363-day one is owed the size of the effect, because on a filer
   // growing slowly it is the whole sign: Kroger's FY2024 revenue grew 1.20% as printed and shrank
   // 0.71% per week. One note, keyed to the sheet rather than the column, on the five rows it reaches.
-  { k: "revGrowth", label: "Revenue growth, YoY", how: "computed", formula: "revenue / revenue[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
-  { k: "ebitdaGrowth", label: "EBITDA growth, YoY", how: "computed", formula: "ebitda / ebitda[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
-  { k: "epsGrowth", label: "EPS growth, YoY", how: "computed", formula: "epsDil / epsDil[-1] - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
-  { k: "revCagr3", label: "Revenue CAGR, 3yr", how: "computed", formula: "(revenue / revenue[-3])^(1/3) - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
-  { k: "revCagr5", label: "Revenue CAGR, 5yr", how: "computed", formula: "(revenue / revenue[-5])^(1/5) - 1", flagNote: { week53Sheet: WEEKS53_NOTE } },
+  { k: "revGrowth", label: "Revenue growth, YoY", how: "computed", formula: "revenue / revenue[-1] - 1", flagNote: { week53Sheet: WEEKS53_FULL } },
+  { k: "ebitdaGrowth", label: "EBITDA growth, YoY", how: "computed", formula: "ebitda / ebitda[-1] - 1", flagNote: { week53Sheet: WEEKS53_SHORT } },
+  { k: "epsGrowth", label: "EPS growth, YoY", how: "computed", formula: "epsDil / epsDil[-1] - 1", flagNote: { week53Sheet: WEEKS53_SHORT } },
+  { k: "revCagr3", label: "Revenue CAGR, 3yr", how: "computed", formula: "(revenue / revenue[-3])^(1/3) - 1", flagNote: { week53Sheet: WEEKS53_SHORT } },
+  { k: "revCagr5", label: "Revenue CAGR, 5yr", how: "computed", formula: "(revenue / revenue[-5])^(1/5) - 1", flagNote: { week53Sheet: WEEKS53_SHORT } },
   { k: "taxRate", label: "Effective tax rate", how: "computed", formula: "tax / pretax" },
 ]},
 { id: "credit", title: "Credit & Leverage", feeds: "LBO · Debt schedule", lines: [
