@@ -300,6 +300,136 @@ const LTM_DEPTH = 4;
 // The shortest period that is a 53-week year rather than a 52-week or calendar one — see `weeks53`.
 export const WEEKS53_MIN_DAYS = 369;
 
+// Shared by the period loop below and by `announcedSince`. It was a closure-local const declared
+// inside buildGrid, fourteen lines after the early return the announcement check now sits in front
+// of, so reading it from there would have been a temporal-dead-zone ReferenceError — and this repo
+// has no error boundary anywhere (src/main.jsx renders <App /> bare), so that throw blanks the whole
+// terminal for as long as the payload that caused it stays cached.
+const dayGap = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+
+// The forms a figure on this sheet can come from. Character-identical to periodic() in extract.js
+// and to the filter in api/facts.js; test/t-announced.mjs asserts all three still agree, because the
+// one time they drifted an entire class of filer — transition reports — went invisible.
+const PERIODIC = /^(10-K|10-Q|20-F|40-F)T?(\/A)?$/;
+const ISODATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// ── A later filing that this sheet does not read ───────────────────────────────────────────────
+// Rule 13 keeps 8-K figures out of the data path, and it is right to: an 8-K's numbers are a press
+// release's, and pairing Essential Utilities' 8-K operating income with its 10-K revenue printed an
+// EBITDA above revenue for three straight years. But the rule leaves a gap the reader feels. Between
+// a company announcing a quarter and filing the 10-Q for it, this page shows the quarter before and
+// says nothing at all about the newer filing sitting on EDGAR.
+//
+// This closes it by LINKING instead of importing. The trigger is SEC's own items field on the
+// submissions index — a code the filer selects on a cover page, carried as structured data — so
+// nothing untagged enters the data path and the page can point at a filing it has never opened.
+//
+// What it must never do is describe the DOCUMENT. Item 2.02 is a heading, not a promise about the
+// contents: Tesla files its quarterly production and delivery counts under it (vehicle units and
+// GWh, no revenue figure anywhere), Apollo a one-line preliminary estimate whose own text says it
+// precedes the earnings release, GRAIL a J.P. Morgan conference deck, Erasca a cash balance that
+// says it "is not a comprehensive statement of our financial results". 44 filings this rule reaches
+// were fetched and read: 27 were results and 17 were not. So the banner names the HEADING, says the
+// page has not opened the document, and claims nothing else. Its job is to be true, not to classify.
+//
+// LAG_MIN is the one threshold and it is arithmetic rather than calibration. The lag is days from
+// the newest period any periodic report covers to the 8-K's own event date. A release about a NEW
+// period cannot exist until a fiscal boundary has fallen — one quarter, about 91 days — plus the
+// time it takes to close the books. Measured on those 44 documents, every one of the 27 results
+// releases has a lag of 100 or more and every one of the 17 below 100 is a pre-announcement, a
+// conference deck, an operating-metrics release or a restatement; the adjacent pair at the boundary
+// is Netflix's Q1 shareholder letter at exactly 100 against an AbbVie guidance table at 99 whose own
+// text says the results "have not been finalized". Below 91 no boundary has fallen at all, which is
+// why all nine episodes there report a period the sheet ALREADY covers — the one state that would
+// make this banner flatly false. Read 100 as somewhere in 98-102, not a knife edge.
+//
+// The lag is measured from the newest period COVERED, never from the newest report FILED, and the
+// difference is load-bearing. Tesla files a Part III 10-K/A every April, which outranks its own
+// later 10-Q on filing date; measured from that amendment its July production release has a lag of
+// 183 and clears any floor, and measured from the period the sheet actually shows it is 93 and is
+// cut. Tesla is a complete single-filer census: four production releases at 92-94 and four real
+// earnings 8-Ks at 112-120, separated perfectly by this rule and not at all by the other one.
+//
+// Deterministic by construction — no clock is read here, for the reason newestFiledDate gives below:
+// a cached payload must build the same sheet tomorrow as it does today, and a test must be able to
+// assert it without freezing time. Staleness is a separate question, asked once at the render by
+// announcedIsCurrent.
+export const LAG_MIN = 100;
+
+export function announcedSince(filings) {
+  const rows = Array.isArray(filings) ? filings : [];   // a cached payload whose shape has moved
+
+  // Two filers of 180 have no periodic report inside the payload's 120-row window at all, and one of
+  // them has live item-2.02 8-Ks. Held out explicitly rather than by a date comparison against
+  // undefined, which works today only because '2025-11-07' > undefined coerces to NaN, and stops
+  // working the moment somebody normalises a missing date to "".
+  const per = rows.filter(f => f && PERIODIC.test(String(f.form)) && ISODATE.test(String(f.filed)));
+  if (!per.length) return null;
+
+  // The ORDERING row — newest FILED, the same row newestFiledDate resolves to below, so the two can
+  // never disagree about which report is the latest. It decides only whether the 8-K came after.
+  const pFiled = per.reduce((a, f) =>
+    !a || f.filed > a.filed || (f.filed === a.filed && String(f.accn) > String(a.accn)) ? f : a, null);
+
+  // The COVERAGE row — the newest period any periodic covers. The lag is measured from this and the
+  // banner prints this. 19 same-day pairs of periodic filings exist across 17 filers, so the
+  // accession tie-break is real; it is descending on both reduces, which makes the answer independent
+  // of the order SEC happens to return the list in.
+  const dated = per.filter(f => ISODATE.test(String(f.period)));
+  if (!dated.length) return null;
+  const pMax = dated.reduce((a, f) =>
+    f.period > a.period || (f.period === a.period && String(f.accn) > String(a.accn)) ? f : a);
+
+  // Exact form and exact token. 33 filings across 24 filers carry item 2.02 on an 8-K/A, and an
+  // amendment is by definition about a period already announced; api/facts.js excludes them one layer
+  // earlier and this is belt and braces for the day that regex widens for another reason. Splitting
+  // on the comma rather than testing for a substring costs nothing and does not rest on SEC never
+  // issuing an item code with "2.02" inside a longer one.
+  const ann = rows.filter(f => f && String(f.form) === "8-K"
+    && String(f.items ?? "").split(",").map(s => s.trim()).includes("2.02")
+    && ISODATE.test(String(f.filed)));
+  if (!ann.length) return null;   // also where a payload built before items existed lands
+  const e = ann.reduce((a, f) =>
+    !a || f.filed > a.filed || (f.filed === a.filed && String(f.accn) > String(a.accn)) ? f : a, null);
+  // The 8-K's EVENT date, not its filing date, because the lag is about the period it can be
+  // reporting on. No fallback to an older 8-K: that puts a link to the wrong filing on the page.
+  if (!ISODATE.test(String(e.period)) || !e.accn) return null;
+
+  // Strictly after, and the census here is smaller than it first looks. 1,261 item-2.02 8-Ks across
+  // the 180 cached filers were filed on a date that also carries a periodic report, but the lag gate
+  // already cuts all but ONE of them: a company filing its results release beside the 10-K for the
+  // same year announces a period the sheet is about to cover, so the lag is ~30 days. The one that
+  // needs this comparison is Datacentrex, which filed its FY2025 10-K and its FY2025 results release
+  // on 2026-04-13 at a lag of 103 — with >= the banner would appear on the very day the report
+  // covering it landed. Apple is the other direction: its release lands the day BEFORE the 10-Q, so
+  // it speaks for one day and stops. filingDate carries no time, so a release furnished later on the
+  // same day is invisible until tomorrow; one day of silence is the trade, taken deliberately.
+  if (!(e.filed > pFiled.filed)) return null;
+  if (!(dayGap(pMax.period, e.period) >= LAG_MIN)) return null;
+
+  return { form: pMax.form, filed: pMax.filed, period: pMax.period, annFiled: e.filed,
+           annEvent: e.period, annAccn: e.accn };
+}
+
+// How old the announcement may be before the banner stops speaking, in days from the 8-K's event
+// date. This is the ONE place a clock is read, and it is read at the render with today passed in, so
+// the grid stays deterministic and a test can pin any date it likes.
+//
+// It exists because the predicate above has no way to notice that a filer has STOPPED. FS Specialty
+// Lending Fund's last periodic report is a 10-Q filed 2025-08-14; its newest item-2.02 8-K is dated
+// 2025-10-15, a lag of 107, and on 2026-09-22 that 8-K is 342 days old and the banner has been on
+// screen for eleven months saying a later filing exists. It does — but the sheet is not "behind" in
+// any sense a reader would recognise, the filer is delinquent, and a banner that never goes away is
+// the stale-content trap this site is built to avoid.
+//
+// 120 rather than something tighter: across all 363 episodes in a 366-day replay of 180 filers, the
+// oldest an announcement ever gets before the next periodic report lands is 50 days (median 6, p90
+// 21). A ceiling of 90 would already cut none of them; 120 is that with room for a non-accelerated
+// filer that takes the full 90 days for a 10-K and then files late.
+export const ANNOUNCED_MAX_AGE = 120;
+export const announcedIsCurrent = (ann, today) =>
+  !!(ann && ISODATE.test(String(today)) && dayGap(ann.annEvent, today) <= ANNOUNCED_MAX_AGE);
+
 export function buildGrid(data, quote, limit = 8) {
   if (!data) return null;
   const industry = INDUSTRY(data.sicCode);
@@ -316,7 +446,10 @@ export function buildGrid(data, quote, limit = 8) {
   // Excel export) inherits the right order rather than each fixing it separately.
   const desc = annualPeriods(facts, periodTags, limit);
   const periods = desc.slice().reverse();
-  if (!periods.length) return { industry, sections, periods: [], rows: [], empty: true };
+  // Computed before the empty-grid return, not after it: a filer with no annual XBRL periods still
+  // has a filing list, and "a later filing exists" is the one thing such a page can honestly say.
+  const announced = announcedSince(data.filings);
+  if (!periods.length) return { industry, sections, periods: [], rows: [], empty: true, announced };
 
   // The overlap rule in `annualPeriods` made the calendar honest; it did not make it CONTINUOUS. A
   // filer that changes its fiscal year end leaves a stub between two columns that is not twelve months
@@ -330,7 +463,6 @@ export function buildGrid(data, quote, limit = 8) {
   // Recorded on the period so the growth pass can refuse the comparison and the column header can say
   // why once, rather than every affected row explaining it separately. A day's slack because filers
   // differ on whether the next period starts on the previous end date or the day after.
-  const dayGap = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
   periods.forEach((p, i) => {
     const prev = periods[i - 1];
     p.gapBefore = prev && p.start && dayGap(prev.end, p.start) > 1 ? dayGap(prev.end, p.start) : 0;
@@ -489,5 +621,5 @@ export function buildGrid(data, quote, limit = 8) {
   const newestLtm = ltmCols.length ? ltmCols[ltmCols.length - 1]
     : carry ? { period: { ...last.period, ltm: true, through: last.period.end, fyEnd: last.period.end }, v: { ...last.v }, meta: { ...last.meta } }
     : null;
-  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, ccy, splits };
+  return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, announced, ccy, splits };
 }

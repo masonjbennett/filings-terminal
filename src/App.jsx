@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
 import { describeSplits, describeAligned, CURRENT_DEBT_UNPLACED } from "./extract.js";
-import { buildGrid, sectionsFor, hasAnnualPeriods } from "./grid.js";
+import { buildGrid, sectionsFor, hasAnnualPeriods, announcedIsCurrent } from "./grid.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
 import { NOT_APPLICABLE } from "./template.js";
@@ -267,7 +267,7 @@ export default function App() {
           if (qr.ok) quote = qj;
         } catch {}
         // Whether this filer files quarterly reports at all decides what a carried LTM column can
-        // honestly say about itself: "nothing filed since the year end" promises a 10-Q that a 20-F
+        // honestly say about itself: "no quarterly report since the year end" promises a 10-Q that a 20-F
         // filer will never file. Nine of the 180 cached filers have never filed one.
         entry = { ticker: t, title: d.name || row[2], grid: buildGrid(d, quote), quote, interim: (d.filings || []).some(f => /^10-Q/.test(f.form)) };
       }
@@ -674,6 +674,59 @@ export default function App() {
           </div>;
         })()}
 
+        {/* ── A later filing this sheet does not read ──────────────────────────────────────────────
+            The sibling of the banner above, and the opposite case. That one fires when an annual
+            report exists for a period these columns do not cover; this one fires when the company
+            has ANNOUNCED a period — filed an 8-K carrying SEC's item 2.02 — and the periodic report
+            for it has not landed. Between those two events the sheet is the quarter behind and said
+            nothing about it, which is the gap rule 13 leaves when it keeps 8-K figures out of the
+            numbers. See `announcedSince` in grid.js for the predicate and its census.
+
+            EVERY SENTENCE HERE IS ABOUT THE COVER PAGE, never the document. Item 2.02 is a code the
+            filer ticks: Tesla files its quarterly vehicle production counts under it, Apollo a
+            preliminary estimate that precedes its own earnings release, GRAIL a conference deck. Of
+            44 of these filings fetched and read, 27 were results and 17 were not. So the banner says
+            an 8-K carrying that item was filed, quotes the item's official heading as a heading, and
+            states that this page has not opened it. It must never say "results", "earnings",
+            "announced" or "the newest word" — each of those describes contents nothing here can see,
+            and on a page whose argument is that every figure traces to an accession number, that is
+            the expensive kind of false sentence.
+
+            The first sentence is scoped to REPORTED figures — the page's own word, defined in the
+            legend below as a filed value — and not to every number on the page. An earlier draft
+            said "every figure below", which the valuation card 40px underneath falsifies: its market
+            capitalisation, enterprise value and EV/EBITDA are a live share price divided into filed
+            figures, and no filing contains them.
+
+            The freshness ceiling is the one clock this feature reads, and it is read here rather
+            than in the grid so the grid stays deterministic. Without it the banner never goes away
+            for a filer that has STOPPED: FS Specialty Lending Fund's newest item-2.02 8-K is 342
+            days old today because it has filed no periodic report since August 2025. */}
+        {grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10)) && (() => {
+          const a = grid.announced;
+          return <div style={{ border: `1px solid ${C.bronze}55`, background: "#b0741e0d", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+            <span style={{ ...S.label, color: C.bronze }}>A later filing exists{grid.empty ? "" : " and nothing below reads it"}</span>
+            <p style={{ fontSize: 12.5, color: C.ink2, margin: "7px 0 0", lineHeight: 1.65 }}>
+              {/* On an empty sheet there is no "below" to be about, so the two sentences that are
+                  about the sheet are dropped and the banner is about the filing list alone — which
+                  is the only thing that page has. */}
+              {!grid.empty && <>The reported figures below are read from this company&rsquo;s periodic reports — a
+                10-K, a 10-Q or a foreign equivalent — and from no other filing on EDGAR.{" "}</>}
+              The newest period any periodic report on this company&rsquo;s filing list covers
+              is <b>{a.period}</b>, filed <b>{a.filed}</b> on Form <b>{a.form}</b>. On <b>{a.annFiled}</b> the
+              company filed an 8-K carrying <b>Item 2.02</b>, SEC&rsquo;s heading
+              for <i>Results of Operations and Financial Condition</i>. An item number is selected on the
+              filing&rsquo;s cover page and says nothing about what the document contains{grid.empty
+                ? <>, and this page has not opened it.{" "}</>
+                : <>; this page has not opened it, and no figure below comes from it.{" "}</>}
+              {!grid.empty && <>What is below is what the company reported in its periodic reports, and it is
+                correct for them.{" "}</>}
+              <a href={secFilingUrl(data.cik, a.annAccn)}
+                target="_blank" rel="noopener noreferrer" style={{ color: C.teal }}>open the 8-K filed {a.annFiled} ↗</a>
+            </p>
+          </div>;
+        })()}
+
         {/* The valuation summary rides above every tab on purpose. It is four numbers a banker reads
             first — EV, the multiple, the price it came from — and burying it one click deep would
             make the headline of the page something you have to go looking for. */}
@@ -924,7 +977,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
         // What each column IS, on the LTM basis, since the columns do not share one: stitched, or the
         // fiscal year carried because nothing has been filed since, or carried because the filer never
         // files a quarterly report. The page says this under each ticker; the workbook leaves the page.
-        ...(basis === "ltm" ? [[{ v: "Basis", s: XF.MUTED }, ...cols.map(c => ({ v: c.grid.ltmStitched ? "stitched" : c.interim ? `reported FY${colOf(c).period.fy}, nothing filed since` : `reported FY${colOf(c).period.fy}, no quarterly report on file`, s: XF.MUTED }))]] : []),
+        ...(basis === "ltm" ? [[{ v: "Basis", s: XF.MUTED }, ...cols.map(c => ({ v: c.grid.ltmStitched ? "stitched" : c.interim ? `reported FY${colOf(c).period.fy}, no quarterly report since` : `reported FY${colOf(c).period.fy}, no quarterly report on file`, s: XF.MUTED }))]] : []),
         // A set is the one place two currencies sit side by side, and the single sheet's "All figures
         // in EUR" line has no equivalent here because the figures are not all in anything. Per column,
         // and only when the set is mixed — one currency throughout needs no marking, as on the page.
@@ -1002,7 +1055,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
                   closed has nothing to stitch, so its LTM IS that fiscal year — true, and a different
                   statement from the eight companies beside it. */}
               {col && basis === "ltm" && !c.grid.ltmStitched &&
-                <div style={{ color: C.bronze }}>= FY{col.period.fy}, {c.interim ? "nothing filed since" : "no quarterly report on file"}</div>}
+                <div style={{ color: C.bronze }}>= FY{col.period.fy}, {c.interim ? "no quarterly report since" : "no quarterly report on file"}</div>}
               {/* Same mark the single sheet's header carries, on the one column a set compares. A
                   53-week window is 1.9% longer than the ones beside it, and a growth rate built on
                   it is not like-for-like with the next column's. */}
@@ -1080,7 +1133,7 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
       </span>}
       {basis === "ltm" && <><br />An LTM line is the last full year plus this year to date less last year to the same date,
       all three from the same tag the annual column used, with the balance sheet read at the quarter end rather than summed.
-      {carried.some(c => c.interim) && ` ${carried.filter(c => c.interim).map(c => c.ticker).join(", ")} ${carried.filter(c => c.interim).length > 1 ? "have" : "has"} nothing filed since the year end, so the fiscal year is the trailing twelve months.`}
+      {carried.some(c => c.interim) && ` ${carried.filter(c => c.interim).map(c => c.ticker).join(", ")} ${carried.filter(c => c.interim).length > 1 ? "have" : "has"} filed no quarterly report since the year end, so the fiscal year is the trailing twelve months.`}
       {carried.some(c => !c.interim) && ` ${carried.filter(c => !c.interim).map(c => c.ticker).join(", ")} ${carried.filter(c => !c.interim).length > 1 ? "file" : "files"} no quarterly report, so the fiscal year is the only twelve months on file.`}
       {Object.entries(gaps).map(([st, byTicker]) => <span key={st} style={{ color: C.bronze }}>
         {" "}{Object.entries(byTicker).map(([tic, labels]) => GAP[st](tic, labels.join(" and ").toLowerCase())).join("; ")} — open the sheet for the reported year.

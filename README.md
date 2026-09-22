@@ -1595,6 +1595,109 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     made the suite CRASH rather than fail, which reports "failed undefined assertions" — those
     dereferences are guarded so every mutation names the sentence it broke.
 
+41. **A results announcement the sheet does not read gets a line and a link, never a description
+    (Sep 22 2026).** Rule 13 keeps 8-K figures out of the data path and is right to — Essential
+    Utilities' 8-K operating income paired with its 10-K revenue printed an EBITDA above revenue for
+    three straight years — but it leaves a gap the reader feels: between a company announcing a
+    quarter and filing the 10-Q for it, the sheet shows the quarter before and said nothing about the
+    newer filing. `announcedSince` in src/grid.js closes it by LINKING rather than importing. The
+    trigger is SEC's own `items` field on the submissions index, the comma-separated cover-page codes
+    a filer selects ("2.02,9.01"), which api/facts.js now carries on every kept row at a measured cost
+    of +1.5KB on a mean 1,097KB payload. Nothing is parsed, no document is opened, no request is added.
+
+    **The banner names the HEADING, never the contents, and that is the whole rule.** Item 2.02 is a
+    box the filer ticks, not a promise. 44 of the filings this rule reaches were fetched and read:
+    **27 were results and 17 were not** — Tesla files its quarterly vehicle production and delivery
+    counts under item 2.02 (units and GWh, no revenue figure anywhere), Apollo a one-line preliminary
+    estimate whose own text says it precedes the earnings release, GRAIL a J.P. Morgan conference
+    deck, Erasca a cash balance that says it "is not a comprehensive statement of our financial
+    results". So the copy says an 8-K carrying item 2.02 was filed, quotes SEC's official heading as a
+    heading, and states that this page has not opened it. It must never say "results were announced",
+    "earnings", "press release" or "the newest word": each describes contents nothing here can see,
+    and `test/t-announced.mjs` fails on any of those strings appearing in the block. Weighted by
+    on-screen days rather than episodes, an estimated **21% of what it points at is not an earnings
+    release at all** (95% CI 0-42% on 44 draws) — which the wording survives and a description would
+    not.
+
+    **LAG_MIN = 100 is arithmetic, not calibration.** The lag is days from the newest period any
+    periodic report COVERS to the 8-K's event date. A release about a new period cannot exist until a
+    fiscal boundary has fallen — one quarter, about 91 days — plus book-closing time. On the 44 read
+    documents every one of the 27 results releases sits at 100 or more and every one of the 17 below
+    is a pre-announcement, a conference deck, an operating-metrics release or a restatement; the
+    adjacent pair at the boundary is **Netflix's Q1 shareholder letter at exactly 100 against an
+    AbbVie guidance table at 99** whose own text says the results "have not been finalized". Below 91
+    nothing has closed, which is why **all nine episodes there report a period the sheet ALREADY
+    covers** — the one state that makes this banner flatly false. Read 100 as somewhere in 98-102. A
+    gap gate was measured and REJECTED: `lag >= 100` alone and `lag >= 100 AND gap >= 15` keep the
+    same 363 episodes and 3,554 reader-days, so the second knob removes nothing.
+
+    **The lag is measured from the period covered, never the report last filed.** Tesla files a Part
+    III 10-K/A every April, which outranks its own later 10-Q on filing date; measured from that
+    amendment its 2 Jul production release reads a lag of 183 and clears any floor, and measured from
+    the quarter the sheet actually shows it reads 93 and is cut. Tesla is a complete single-filer
+    census — four production releases at 92-94 and four real earnings 8-Ks at 112-120 — separated
+    perfectly by the period basis and not at all by the filing basis.
+
+    **Strictly after, on one filer in 1,261.** 1,261 item-2.02 8-Ks across the 180 cached filers were
+    filed on a date that also carries a periodic report, and the lag gate already cuts all but one:
+    a results release filed beside the annual report for the same year has a lag of about 30 days.
+    The one that needs the strict comparison is **Datacentrex, which filed its FY2025 10-K and its
+    FY2025 results release on 2026-04-13 at a lag of 103** — with `>=` the banner would appear on the
+    very day the report covering it landed. Apple is the other direction: its release lands the day
+    BEFORE its 10-Q, so the banner speaks for one day and stops. `filingDate` carries no time, so a
+    release furnished later on the same day is invisible until tomorrow; one day of silence, taken.
+
+    **The freshness ceiling is the only clock, and it is read at the render.** The predicate is
+    deterministic — a cached payload must build the same sheet tomorrow as today — so staleness is
+    asked separately by `announcedIsCurrent(ann, today)`. It exists because the filing list cannot see
+    that a filer has STOPPED: **FS Specialty Lending Fund's newest item-2.02 8-K is 342 days old**
+    (last periodic a 10-Q filed 2025-08-14, 8-K dated 2025-10-15, lag 107), and without a ceiling the
+    banner is permanent on a delinquent fund — the stale-content trap this site exists to avoid.
+    ANNOUNCED_MAX_AGE = 120 days against a measured worst case of **50** across all 363 episodes
+    (median 6, p90 21); 90 would already cut none of them. Confirmed on the running site: FSSL shows
+    no banner.
+
+    **Reach**, replayed daily over 2025-09-22..2026-09-22 across 180 filers (65,880 filer-days): 363
+    episodes, **3,554 firing reader-days of 4,649 (76.4%)**, 122 of 180 filers firing at least once,
+    median 3 filers a day, peak 64, and **0 on 2026-09-22** — it is an earnings-season mark. Episode
+    length min 1, median 7, p90 22, max 50. The basis form prints literally: 10-Q on 85% of days,
+    10-K on 14%, 10-K/A on 0.5%. **api/facts.js's Cache-Control is now decided on the way out** for
+    the same reason: at six hours of s-maxage behind a day of stale-while-revalidate a reader could be
+    served a payload 30 hours old, which gets this banner wrong on 362 of 3,554 firing reader-days
+    (10.2%). `hasLaterAnn` drops to a 30-minute tier for the 7.1% of filer-days where a 2.02 8-K
+    post-dates the newest periodic; it is deliberately CRUDER than the rule (no lag gate, no ceiling)
+    so containment is provable rather than measured, and must never become a second copy of it.
+
+    **The EBITDA half of the same idea was measured and REFUSED.** Linking the EBITDA row to the
+    filer's own non-GAAP reconciliation, labelled as its definition rather than the sheet's, was the
+    proposal's second half; the README's existing decision that computed lines are not linked was not
+    what killed it. **101 of 161 newest item-2.02 releases contain the word EBITDA zero times —
+    62.7%** (Apple, Amazon, Microsoft, Nvidia, JPMorgan, Exxon, Walmart, Disney and 70 more), so the
+    label would be false for a clear majority of filers and would fail hardest on the mega-caps a
+    reader looks up first. Of the 60 that mention it, 50 say "Adjusted EBITDA", 5 "EBITDAre", 2
+    "EBITDAC" and 3 the bare word — **truthful for 3 of 161, 1.9%**. Where both exist the numbers
+    disagree, including a sign flip (SNAP −$124m against $250m; AMT $1,783m against $1,808m, close
+    enough that a reader would assume the link explains the sheet's figure). And nothing structured
+    names a reconciliation: FilingSummary.xml for an item-2.02 8-K is cover-page-only on all 12
+    probed (`isOnlyDei="true"`, "reconcil" absent, Apple's 1,748 bytes) because the exhibit carries no
+    XBRL, EDGAR's exhibit description is the type echoed back in 131 of 161, and 49 of 161 filings
+    carry more than one EX-99. The only remaining route is a regex over untagged prose at request
+    time, which is the thing "nothing untagged enters the data path" is about. Mason's call, Sep 22
+    2026. The EBITDA row's note is unchanged.
+
+    **Known limit, not a defect.** Where App.jsx's PREDECESSOR redirect fires (XOM, DMRC, NVRI, CBAT,
+    FSSL) the whole payload — facts, cik and filing list — is the predecessor's, so this banner reads
+    the predecessor's filings and is structurally blind to any 8-K the successor files. **NOT built:**
+    any reading of the document, any claim about what it contains, 6-K for foreign issuers (9 of 180
+    file 20-F/40-F and none carries item 2.02), and 8-K/A, which 33 filings across 24 filers use for
+    2.02 and which is by definition about a period already announced.
+
+    `test/t-announced.mjs` — **277 assertions**, and **16 of 16 mutations caught** by
+    `test/_mutate-announced.mjs`. Two survived the first pass and both were real: the same-day
+    assertion was masked by the lag gate until the Datacentrex rows were added, and the regex-lockstep
+    check passed for the wrong reason because grid.js carries the periodic pattern twice and a
+    file-wide `includes()` matched the other copy.
+
 ### A number that is correct and reads as broken
 
 Rule 5 says a blank is not one thing. This is its mirror: **a populated cell is not one thing either**,

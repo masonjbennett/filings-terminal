@@ -122,6 +122,15 @@ const KEEP = new Set(["RevenueFromContractWithCustomerExcludingAssessedTax","Rev
 
 const pad = c => String(c).padStart(10, "0");
 
+// Steps 1-4 of `announcedSince` with both gates removed — see the Cache-Control note below. It
+// answers "could this payload's freshness matter to the page?", never "should the banner speak".
+const hasLaterAnn = rows => {
+  const per = rows.filter(f => /^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(f.form)).map(f => f.filed).sort().pop();
+  const ann = rows.filter(f => f.form === "8-K"
+    && String(f.items || "").split(",").map(x => x.trim()).includes("2.02")).map(f => f.filed).sort().pop();
+  return !!(per && ann && ann > per);
+};
+
 export default async function handler(req, res) {
   const cik = String(req.query.cik || "").replace(/\D/g, "");
   if (!cik || cik.length > 10) return res.status(400).json({ error: "cik must be digits" });
@@ -135,6 +144,7 @@ export default async function handler(req, res) {
   // nothing retrying because the CDN is answering. A failure is the one response that must not be
   // cached: it is the one most likely to be wrong a second later.
   const CACHE_OK = "public, s-maxage=21600, stale-while-revalidate=86400";
+  const CACHE_FRESH = "public, s-maxage=1800, stale-while-revalidate=300";
   try {
     const [factsRes, subRes] = await Promise.all([
       fetch(`${SEC}/api/xbrl/companyfacts/CIK${pad(cik)}.json`, { headers: UA }),
@@ -173,10 +183,36 @@ export default async function handler(req, res) {
     const filings = [];
     for (let i = 0; i < r.form.length; i++) {
       if (!/^(10-K|10-Q|20-F|40-F)T?(\/A)?$|^8-K$/.test(r.form[i])) continue;
-      filings.push({ form: r.form[i], filed: r.filingDate[i], accn: r.accessionNumber[i], doc: r.primaryDocument[i], period: r.reportDate ? r.reportDate[i] : null });
+      // `items` is SEC's own list of the cover-page item codes on an 8-K, e.g. "2.02,9.01". It is
+      // what `announcedSince` in src/grid.js reads to find a results announcement the sheet does not
+      // cover, and it is the reason that rule needs no document parsed and no new request made.
+      // Carried verbatim on EVERY kept row rather than pre-filtered to the 8-Ks that carry 2.02: a
+      // field that is absent because this handler dropped it cannot be told from one absent because
+      // SEC had none, and rule 5's discipline is that a blank means one thing. Measured cost: +1.5KB
+      // on a mean payload of 1,097KB, 0.14%.
+      filings.push({ form: r.form[i], filed: r.filingDate[i], accn: r.accessionNumber[i], doc: r.primaryDocument[i], period: r.reportDate ? r.reportDate[i] : null, items: r.items ? r.items[i] : null });
       if (filings.length >= 120) break;
     }
-    res.setHeader("Cache-Control", CACHE_OK);
+    // A payload can sit on the edge for six hours with a day of stale-while-revalidate behind it,
+    // so a reader can be served one up to thirty hours old. That was harmless while everything here
+    // was eight years of annual figures. It stops being harmless the moment the page carries a line
+    // whose whole job is to say a LATER filing exists: measured over a year's replay of 180 filers,
+    // a payload 24 hours stale gets that line wrong on 362 of 3,554 firing reader-days (10.2%) —
+    // 350 of them a banner that should have gone once the 10-Q landed, 12 a link to an 8-K a newer
+    // one has superseded.
+    //
+    // So the header is decided from the filing list rather than being one constant. `hasLaterAnn`
+    // is deliberately CRUDER than the rule in grid.js and must never become a second copy of it: it
+    // asks only whether this filer has any item-2.02 8-K filed after any periodic report, with no
+    // lag gate and no freshness ceiling. That makes it a strict relaxation, so the banner cannot
+    // fire where this is false — containment is provable rather than measured. It is true on 7.1% of
+    // filer-days and on 37% of the corpus on the busiest filing day of the year.
+    //
+    // The short tier keeps a small stale-while-revalidate on purpose. Dropping it would put a
+    // 10-15MB SEC companyfacts fetch on a reader's critical path every half hour for a third of the
+    // corpus in earnings season, and SEC answers 503 often enough that this session's own census hit
+    // one. 300 seconds cannot span a filing; the freshness is bought by s-maxage.
+    res.setHeader("Cache-Control", hasLaterAnn(filings) ? CACHE_FRESH : CACHE_OK);
     return res.status(200).json({
       // The NUMERIC sic is what industry detection keys off. The description is prose that varies
       // ("State Commercial Banks", "National Commercial Banks"), whereas the code is a range you
