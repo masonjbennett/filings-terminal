@@ -1,9 +1,10 @@
 // THE EXTRACTION TEMPLATE — filings.masonjbennett.com
 //
 // Organised by the tab it feeds in a real model, because that is how the numbers get used: the
-// section names below mirror the Jagex build (Historicals, EV Bridge, DCF, LBO, CCA, PTA, Source
-// Log). Grounded in the standard IB/PE structure — Mergers & Inquisitions' 3-statement model,
-// Wall Street Prep's LBO build, and standard equity-research practice.
+// section names below mirror my Jagex student reconstruction, graduate coursework rather than
+// deal-team work (Historicals, EV Bridge, DCF, LBO, CCA, PTA, Source Log). Grounded in the
+// standard IB/PE structure — Mergers & Inquisitions' 3-statement model, Wall Street Prep's LBO
+// build, and standard equity-research practice.
 //
 // Every line declares HOW it is obtained, and that is the load-bearing part of the design:
 //   fetched  — a us-gaap tag in the filing. Exact reported value, traceable to an accession number.
@@ -641,15 +642,17 @@ export const SECTIONS = [
   { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "taxesPaid / pretax" },
   { k: "currentTaxRate", label: "Current tax rate", how: "computed", formula: "(tax - deferredTax) / pretax", note: "Current tax expense — the accrual less the deferred line — over pre-tax income; the cash rate above is what was paid" },
   { k: "netDebtBridge", label: "Net debt (equity bridge)", how: "computed", formula: "netDebt" },
-  // The EA build discounted a separate NOL/tax-asset stream, mirroring the Goldman fairness
-  // opinion. Carryforwards ARE tagged, so that input can be fetched rather than hunted.
+  // My EA student reconstruction discounted a separate NOL/tax-asset stream, mirroring the
+  // Goldman fairness opinion. Carryforwards ARE tagged, so that input can be fetched rather
+  // than hunted.
   { k: "nol", label: "NOL carryforwards", how: "fetched", tags: ["OperatingLossCarryforwards","DeferredTaxAssetsOperatingLossCarryforwards"] },
   { k: "taxCredits", label: "Tax credit carryforwards", how: "fetched", tags: ["TaxCreditCarryforwardAmount","DeferredTaxAssetsTaxCreditCarryforwards"] },
   { k: "wacc", label: "WACC", how: "manual", note: "Beta, ERP and cost of debt are judgement — never auto-filled" },
   { k: "terminalGrowth", label: "Terminal growth", how: "manual" },
 ]},
 // The equity-value bridge in a buyout is not just shares × price: vested options and unvested RSUs
-// get cashed out, and the EA sources & uses carried both. Award counts are tagged.
+// get cashed out, and the sources & uses in my EA student reconstruction carried both. Award
+// counts are tagged.
 { id: "dilution", title: "Dilution & Equity Awards", feeds: "LBO Sources & Uses · Future Share Price", lines: [
   { k: "optionsOut", label: "Options outstanding", how: "fetched", tags: ["ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingNumber"] },
   { k: "optionsStrike", label: "Weighted avg exercise price", how: "fetched", tags: ["ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingWeightedAverageExercisePrice"] },
@@ -662,8 +665,9 @@ export const SECTIONS = [
   // card that was lifted out of the grid for exactly that reason. The four rows above are its inputs
   // and stay here, where a reader comparing them to the diluted count wants them. Sep 12 2026.
 ]},
-// The EA build carried a Premia Paid tab off the undisturbed price. Both inputs are market data,
-// not filings — but the announcement 8-K that sets the "undisturbed" date IS findable.
+// My EA student reconstruction carried a Premia Paid tab off the undisturbed price. Both inputs
+// are market data, not filings — but the announcement 8-K that sets the "undisturbed" date IS
+// findable.
 { id: "premia", title: "Premia Paid", feeds: "Premia Paid · Deal Summary", lines: [
   // `manual`, not `market`. `market` means "needs price", and the price this row needs is the one on
   // the day before a deal leaked — history the free quote tier does not carry at all, so the status
