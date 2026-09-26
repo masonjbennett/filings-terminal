@@ -50,8 +50,8 @@ export const CURRENCY_DENOMINATED = new Set(["revenue", "ebitda", "netIncome", "
 // shows FY2019 and FY2024 — so a note that names one would be quietly wrong about the other. The
 // column header marks each of them, which is where a reader looks anyway. Marking the affected growth
 // CELLS instead, the way a split-rebased figure is marked, is the way to name them and is not built.
-const WEEKS53_FULL = "Shown as reported, not adjusted \u2014 every year here is a real fiscal year. One of them has 53 weeks instead of 52, marked in its column header: the week a company adds every five or six years so that its year keeps ending on the same weekday. That extra week adds about 1.9 points to the growth rate into it and takes about the same off the year after; a 3-year CAGR ending on it carries about 0.6.";
-const WEEKS53_SHORT = "A 53-week fiscal year is on this sheet, marked in its column header \u2014 see the note on Revenue growth, YoY.";
+const WEEKS53_FULL = "Shown as reported, not adjusted \u2014 every year here is a real fiscal year. One of them has 53 weeks instead of 52, marked in its column header: the week a company adds every five or six years so that its year keeps ending on the same weekday. The rates it moves are marked on the cell \u2014 +wk carries that extra week, about 1.9 points on a yearly rate and about 0.6 on a 3-year CAGR; \u2212wk is measured from it and gives up about as much. A rate with a 53-week year at both ends is not marked, because the two cancel.";
+const WEEKS53_SHORT = "Cells marked +wk or \u2212wk are moved by a 53-week fiscal year \u2014 see the note on Revenue growth, YoY.";
 
 // Rule 31's note, shared by the five rows a split can rebase. A function of the column, so it names
 // the filer's own factor and the filing that first carried the new basis; it reads the meta of

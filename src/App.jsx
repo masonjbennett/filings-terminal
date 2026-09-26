@@ -94,6 +94,14 @@ const secFilingUrl = (cik, accn) =>
 // 303px; the insurance notes took Progressive's to 503px and pushed three year columns off the right
 // edge of an 8-year sheet. Wrapping inside a fixed measure caps the damage for any note ever added,
 // not just the ones that exist today, which is why this is shared rather than written per note.
+// What a 53-week mark on a growth cell means, in the tooltip. A growth row is computed, so it
+// carries no tag and had no tooltip at all before this — the mark is the only thing on those cells
+// with anything to explain.
+const WEEK53_TIP = {
+  "+wk": "this rate's newest year has 53 weeks against 52 in the year it is measured from, so it carries about an extra week of trading — roughly 1.9 points on a yearly rate",
+  "−wk": "this rate is measured from a 53-week year, so it is about a week of trading short by comparison — roughly 1.9 points on a yearly rate",
+};
+
 const NOTE_STYLE = { fontSize: 9, color: "#8a8072", fontStyle: "italic", marginTop: 2, whiteSpace: "normal", maxWidth: 290, lineHeight: 1.4 };
 
 // One stylesheet instead of ~1,300 pairs of inline hover handlers — the sheet is 168 lines by 8
@@ -443,6 +451,14 @@ export default function App() {
           // own down there. Only when it is not USD, for the same reason the page keeps quiet then.
           ...(grid.ccy && grid.ccy !== "USD"
             ? [[{ v: `All figures in ${grid.ccy}, as filed — not converted to USD`, s: XF.MUTED }]] : []),
+          // Rule 41 travels with the file for the currency row's own reason: a workbook leaves the
+          // page behind, gets renamed and lands in somebody's model, and the banner that said these
+          // figures are not the newest word does not go with it. Same claim as the page, in one cell
+          // — the heading, never the contents, and the link so the reader can open what this file
+          // has not. Gated on the same freshness check the banner uses, so a workbook downloaded from
+          // a sheet showing no banner never carries the sentence either.
+          ...(grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10))
+            ? [[{ v: `A later filing exists that no figure in this workbook reads: an 8-K carrying Item 2.02 (SEC's heading for Results of Operations and Financial Condition) filed ${grid.announced.annFiled}, after the Form ${grid.announced.form} filed ${grid.announced.filed} for the period ended ${grid.announced.period}, which is the newest periodic report these figures come from. An item number is selected on a filing's cover page and says nothing about what the document contains. ${secFilingUrl(data.cik, grid.announced.annAccn)}`, s: XF.MUTED }]] : []),
           [],
           [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
           // A 53-week year travels with the file, on the row that names the period, because the
@@ -1607,7 +1623,7 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           // provenance. Those keep the ƒ marker and stay plain text.
           const url = shown != null && x.m.accn ? secFilingUrl(cik, x.m.accn) : null;
           return <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
-            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : ""}>
+            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : (x.m.week53 ? WEEK53_TIP[x.m.week53] : "")}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
               /* Rule 40's refusal is the one blank on this page that is a DECISION about a column
@@ -1620,6 +1636,10 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
                 tooltip, because a phone has no hover and the header says every figure is as filed. The
                 marker is what was done to this number; the row's note says why and names the split. */}
             {x.m.status === "split-adjusted" && <span style={{ fontSize: 8, fontFamily: MONO, color: C.bronze, marginLeft: 4, letterSpacing: .3 }}>{x.m.splitMark}</span>}
+            {/* A 53-week year moves this rate — same marker treatment as a split-rebased figure, and
+                for the same reason: a phone has no hover, and the row's note cannot name which of
+                eight columns it means. */}
+            {x.m.week53 && <span style={{ fontSize: 8, fontFamily: MONO, color: C.bronze, marginLeft: 4, letterSpacing: .3 }}>{x.m.week53}</span>}
           </td>;
         })}
       </tr>;

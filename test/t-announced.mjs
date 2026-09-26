@@ -276,7 +276,30 @@ const K = (filed, period, accn, items = "2.02,9.01") => ({ form: "8-K", filed, p
   ok(app.includes("filed no quarterly report since the year end"), "and the paragraph reads the same way");
 }
 
-// ── Block 14 — the corpus. 180 real payloads, none of which carry `items` ───────────────────────
+// ── Block 14 — the workbook carries the caveat off the page ─────────────────────────────────────
+// A workbook leaves the page behind, gets renamed and lands in somebody's model, and the banner does
+// not go with it. Verified once by inflating a real download: the sentence is on all three sheets of
+// AutoZone's workbook with its real dates and the EDGAR link. These assertions are what keep it there.
+{
+  const app = src("src/App.jsx");
+  const from = app.indexOf("A later filing exists that no figure in this workbook reads");
+  ok(from > 0, "the workbook carries the rule 41 caveat");
+  const row = app.slice(Math.max(0, from - 700), from + 800);
+  ok(/announcedIsCurrent\(grid\.announced/.test(row),
+    "gated on the same freshness check as the banner, so a sheet showing no banner exports no sentence");
+  ok(row.includes("Item 2.02 (SEC's heading for Results of Operations and Financial Condition)"),
+    "and names the heading in the file exactly as the page names it");
+  ok(row.includes("says nothing about what the document contains"), "with the cover-page disclaimer");
+  ok(row.includes("secFilingUrl(data.cik"), "and the EDGAR link, since a workbook has nothing to click");
+  for (const phrase of ["earnings", "press release", "non-GAAP", "reconciliation", "latest results"])
+    ok(!row.toLowerCase().includes(phrase.toLowerCase()), `the workbook sentence never says "${phrase}"`);
+  // The freeze row count is COUNTED, not written down — the currency row taught that lesson once
+  // already. This sentence is a conditional header row too, so the same reasoning has to hold.
+  const head = app.indexOf("const headerRows = rows.length");
+  ok(head > from, "and it sits above the counted freeze, so the frozen header adapts to it");
+}
+
+// ── Block 15 — the corpus. 180 real payloads, none of which carry `items` ───────────────────────
 // The cache predates this feature, so every fixture exercises the pre-`items` path — which is worth
 // asserting on its own: a payload from before the field existed must fail closed rather than throw,
 // and that is exactly what a browser holding a cached payload will hand this code on the day it

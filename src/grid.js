@@ -208,6 +208,16 @@ function fillCol(facts, sections, industry, get, scopeOf, pinned, align, r40) {
 
 // Growth lines need the PRIOR column, which sits to the LEFT. Getting this index backwards would
 // invert every growth rate silently — the number would still look plausible.
+// Which growth rows a 53-week year can move, and how far back each one reaches. DERIVED from the
+// two tables that actually compute those rows rather than restated here: a year-on-year rate looks
+// one column back, a CAGR looks n back, and a growth row added to either table is covered by this
+// the day it is added. `test/t-week53.mjs` binds it the other way too — every row carrying the
+// 53-week note in template.js must appear here, or the note would describe marks that never render.
+export const WEEK53_BACK = Object.entries({
+  ...Object.fromEntries(Object.keys(YOY).map(k => [k, 1])),
+  ...Object.fromEntries(Object.entries(CAGRS).map(([k, [, n]]) => [k, n])),
+});
+
 function crossColumn(cols) {
   // A 53-week year anywhere on the sheet is a fact about every growth rate on it — the rates into and
   // out of that year carry the extra week, and a CAGR ending on it carries a slice of it. Set on every
@@ -243,6 +253,34 @@ function crossColumn(cols) {
       c.v[k] = !span && a != null && b != null && a > 0 && b > 0 ? Math.pow(a / b, 1 / n) - 1 : null;
       if (c.meta[k] && c.meta[k].status === "not-applicable") continue;
       c.meta[k] = { status: "computed" };
+    }
+
+    // ── Which growth CELLS the extra week actually moves ─────────────────────────────────────────
+    // The note beside these rows says what a 53-week year does to a rate. This says WHICH rates, on
+    // the cell itself, the way rule 31 marks a figure rebased after a split — because a reader should
+    // not have to work out from prose which two columns of eight are affected, in which direction.
+    // It is also the only honest way to name them: a note is handed one column by the renderer, and a
+    // sheet can carry two 53-week years, so prose can name one and be wrong about the other.
+    //
+    // ONE rule covers all five rows. A growth cell at column i compares i against i−n, where n is the
+    // row's own lookback. A 53-week year in the ENDPOINT puts roughly an extra week of trading in the
+    // numerator (about +1.9 points on a yearly rate, that over n on a CAGR); in the BASE it does the
+    // same to the denominator and the rate falls by about as much.
+    //
+    // They CANCEL when both ends are 53-week years, and that is not hypothetical: AutoZone's FY2019
+    // and FY2024 are exactly five apart, so its 5-year CAGR ending FY2024 has the extra week at both
+    // ends and is not moved at all. A mark there would be wrong on the filer this was written for.
+    //
+    // Set AFTER both loops above, which assign `c.meta[k]` wholesale and would otherwise drop it.
+    // Gated on the value: a blank cell, a refused one, or a row this industry does not have has
+    // nothing to mark, and a marker floating beside an em dash says the sheet moved a number it never
+    // printed. The key rides in `meta`, not in `v`, so it is not a cell and the full-diff's
+    // [value, status, tag, form, accession] is untouched.
+    for (const [k, back] of WEEK53_BACK) {
+      if (c.v[k] == null) continue;
+      const base = cols[i - back];
+      const net = (c.period && c.period.weeks53 ? 1 : 0) - (base && base.period && base.period.weeks53 ? 1 : 0);
+      if (net) c.meta[k] = { ...c.meta[k], week53: net > 0 ? "+wk" : "−wk" };
     }
   });
 }

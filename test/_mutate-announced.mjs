@@ -39,6 +39,12 @@ const MUTS = [
   ["src/App.jsx", "the freshness ceiling is not consulted at the render",
     "{grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10)) && (() => {",
     "{grid.announced && (() => {"],
+  ["src/App.jsx", "the workbook caveat is not gated on freshness",
+    "...(grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10))\n            ? [[{ v: `A later filing exists that no figure in this workbook reads",
+    "...(grid.announced\n            ? [[{ v: `A later filing exists that no figure in this workbook reads"],
+  ["src/App.jsx", "the workbook caveat describes the document",
+    "an 8-K carrying Item 2.02 (SEC's heading for Results of Operations and Financial Condition)",
+    "an earnings release (Item 2.02)"],
   ["src/App.jsx", "the comps paragraph says nothing filed since again",
     "filed no quarterly report since the year end", "nothing filed since the year end"],
 ];

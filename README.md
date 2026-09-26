@@ -1784,10 +1784,37 @@ week is the whole sign** — Kroger's FY2024 revenue grew 1.20% as printed and s
 Lowe's +0.84% / −1.06%, J&J +0.64% / −1.26%, General Mills and Target the same shape; 57 CAGR cells
 end on one and move by about 0.6 points. Nothing is adjusted and nothing is blanked, because both years
 are real and the filer's own 10-K reports the rate with the extra week in it. The column is marked under
-its header, the five growth rows carry one note, a comps column says "53-week window", and the period
-row of both workbooks and the TSV carries "(53 weeks)". Measured column lengths are 363, 364, 365 and
+its header, a comps column says "53-week window", and the period row of both workbooks and the TSV
+carries "(53 weeks)". Measured column lengths are 363, 364, 365 and
 370 days and nothing else (LTM windows 364–366 and 371), so 369 is a boundary with nothing near it on
 either side, not a judgement. `test/t-calendar.mjs`, 18 assertions, 4 of 4 mutations caught.
+
+**And since Sep 26 2026 the affected CELLS say so themselves, because the note could not.** The five
+growth rows all printed the same 300-character paragraph, so a reader on AutoZone's Ratios tab met it
+five times down one screen, and read five times a caveat becomes furniture. Worse, it could not name
+the years it was about: the renderer hands a `flagNote` ONE column, and a sheet can carry two 53-week
+years, so prose naming one would be quietly wrong about the other. Both problems have the same answer.
+The explanation now sits once, on the first growth row a reader reaches, and the other four say the
+fact and point at it; and every rate the extra week moves carries **`+wk` or `−wk` on the cell**, the
+treatment rule 31 already gives a figure rebased after a split, with a tooltip — which those cells had
+never had, being computed and so carrying no tag.
+
+**One rule marks all five rows, and it is derived rather than restated.** A growth cell at column i
+compares i against i−n, where n is that row's own lookback — 1 for a year-on-year rate, 3 and 5 for the
+CAGRs — read out of `YOY` and `CAGRS` in extract.js, so a growth row added to either table is covered
+the day it is added and `t-week53` fails if a row carrying the note is missing from the table. A long
+year in the ENDPOINT marks `+wk`, in the BASE `−wk`, and **they cancel when both ends are long**: that
+is not hypothetical, because AutoZone's FY2019 and FY2024 are exactly five apart, so its 5-year CAGR
+ending FY2024 has the extra week at both ends and is not moved at all. A long year sitting mid-window
+marks nothing either — a CAGR only knows its endpoints. The mark rides in `meta`, never in `v`, so
+`full-diff.mjs`'s [value, status, tag, form, accession] is untouched and a 53-week filer shows **0
+values changed**; and it is gated on the cell having a value, because a marker floating beside an em
+dash claims the sheet moved a number it never printed. `test/t-week53.mjs`, **975 assertions** — the
+corpus block checks every cell of every cached filer with a 53-week year against the rule recomputed
+independently — and **12 of 12 mutations caught**. Two of its own assertions were wrong on the first
+run and both were the test, not the engine: a mark expected on a CAGR whose window merely CONTAINS a
+long year, and a note assertion searching template.js's source for a minus sign the source writes as a
+`\u2212` escape, which was passing for a reason unconnected to what the page says.
 
 ## Layout
 
