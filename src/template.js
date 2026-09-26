@@ -642,9 +642,9 @@ export const SECTIONS = [
   { k: "cashTaxRate", label: "Cash tax rate", how: "computed", formula: "taxesPaid / pretax" },
   { k: "currentTaxRate", label: "Current tax rate", how: "computed", formula: "(tax - deferredTax) / pretax", note: "Current tax expense — the accrual less the deferred line — over pre-tax income; the cash rate above is what was paid" },
   { k: "netDebtBridge", label: "Net debt (equity bridge)", how: "computed", formula: "netDebt" },
-  // My EA student reconstruction discounted a separate NOL/tax-asset stream, mirroring the
-  // Goldman fairness opinion. Carryforwards ARE tagged, so that input can be fetched rather
-  // than hunted.
+  // My EA student reconstruction, graduate coursework rather than deal-team work, discounted a
+  // separate NOL/tax-asset stream, mirroring the Goldman fairness opinion. Carryforwards ARE
+  // tagged, so that input can be fetched rather than hunted.
   { k: "nol", label: "NOL carryforwards", how: "fetched", tags: ["OperatingLossCarryforwards","DeferredTaxAssetsOperatingLossCarryforwards"] },
   { k: "taxCredits", label: "Tax credit carryforwards", how: "fetched", tags: ["TaxCreditCarryforwardAmount","DeferredTaxAssetsTaxCreditCarryforwards"] },
   { k: "wacc", label: "WACC", how: "manual", note: "Beta, ERP and cost of debt are judgement — never auto-filled" },
