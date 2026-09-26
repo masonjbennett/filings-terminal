@@ -1,9 +1,18 @@
-# Filings Terminal — filings.masonjbennett.com
+# Filings Terminal
+
+**[Open the live tool →](https://filings.masonjbennett.com)** ·
+[Apple's sheet](https://filings.masonjbennett.com/?t=AAPL) ·
+[What's priced into Apple — reverse DCF](https://filings.masonjbennett.com/?t=AAPL&tab=valuation)
 
 Pulls reported financials straight from SEC EDGAR into a model-ready sheet. Every figure is the
 value the company filed, traceable to the accession number it came from. **No AI anywhere in the
 data path** — nothing is estimated, inferred or written by a model, which is the whole point: a
 number on this page can be defended in an interview.
+
+That claim is about the **runtime**, not the authorship: the application code was written with an
+AI coding assistant, which is why the commits carry a co-author. What is mine is the rule register
+below — which filings were read, which identity decides a column, and which columns are refused
+rather than printed short.
 
 Separate Vercel project from the main site on purpose. `mason-bennett-dashboard` sits at Vercel
 Hobby's 12-function cap, and the recruiting front door should not be able to break because a filing
@@ -3210,7 +3219,9 @@ default network allowlist, so every fetch comes back 403 from the agent proxy. T
 explicitly rather than printing 161 identical failures. Either allow the host on the environment, or
 build the cache from a local session and copy it in.
 
-## Next
+## Known limits and open questions
+
+These are measured gaps, not planned features — each names what would settle it.
 
 Rewritten Sep 13 2026 after a pass over the previous 0–11: items 0, 2, 3 and 11 shipped (rules 30 and 31,
 the calendar, the comps workbook), 1 is recorded in rule 15, 7 and 8 were already answered in rules 15/16
