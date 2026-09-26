@@ -357,7 +357,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     would settle the verdict (companyfacts carries `DeferredFinanceCostsNet`; the payload does not) but
     would still leave the sum gross of costs; the exact figure needs the *net* non-current tag to
     outrank the gross one for this filer, which is rule 11's trap exactly. Left as filed, 2.2% high,
-    and recorded here rather than on the Next list, because what would fix it is known and is the
+    and recorded here rather than on the open-questions list, because what would fix it is known and is the
     thing the list says not to do.
 
     Measured across all 167: **12 filers are exposed** (the long-term row filled from a tag that could
@@ -1429,7 +1429,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     195 appeared, 0 vanished, 0 sources moved**, 4 flags, +4 concept switches. All 66 changed values are
     MPLX's and NGL's debt-to-capital, invested capital and ROIC, which had printed **debt-to-capital of
     exactly 1.000 on 24 columns** because `sum()` read the blank equity as zero — fixed by the equity, and
-    the formula stays open for the next filer with debt and no equity (Next item 2). The frame, rebuilt the
+    the formula stays open for the next filer with debt and no equity (open question 2). The frame, rebuilt the
     same way: OppFi alone — 5 changed, 5 appeared, 2 vanished, 1 source moved. The sweep's `bs-not-foot`
     goes **19 → 8 on the cache and 2 → 1 on the frame**, and no column that closed is opened. Named costs:
     NGL's equity row switches from partners' capital to the all-in figure at FY2021 (its NCI is 2.6–4.2%),
@@ -1538,7 +1538,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     sheet printed $3.41m against a face of $15,682k + $6,862k current and $3,406k non-current. The trigger
     is ROW CONSISTENCY, not data quality — **196 cache columns on 40 filers meet the identical condition**
     and are left printing because their filer never closed an identity, several of them worse (RLX FY2023
-    $0 against $157m, Repligen FY2022 $0 against $284.6m). Blanking those is a larger decision (Next item 10).
+    $0 against $157m, Repligen FY2022 $0 against $284.6m). Blanking those is a larger decision (open question 10).
 
     **The note on a corrected column prints TWO figures and does not conflate them**: the amount the filer
     tags under that concept, and the amount the total gains — the closing total less every leg the sheet
@@ -1572,7 +1572,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     applies exactly this sanity test to a witness ("large enough to hold the long-term leg and the largest
     current debt figure"); the containment test has no equivalent. **Recorded, not fixed**: a magnitude
     test on the convention path changes the diff and needs a measurement of its own, and it belongs with
-    the reclassification test Next item 10 already names.
+    the reclassification test open question 10 already names.
 
     **This form is variant D gated at filer level, and the gate is not a reclassification test.** Of its 23
     cache columns, D — "where the long-term leg is non-current and the filer tags `DebtCurrent` above the
@@ -1581,7 +1581,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     `DebtCurrent` of $11,373m is the GROSS before the paper it intends to refinance is reclassified into
     long-term debt ($11,373 − $1,548 = $9,825m), and the only thing keeping D off it is which of two tags
     its long-term leg happened to resolve. **That risk applies to this rule unchanged at any filer outside
-    the six it reaches**, and settling it needs a reclassification test nobody has built — Next item 10.
+    the six it reaches**, and settling it needs a reclassification test nobody has built — open question 10.
 
     **Twenty concepts were added to `api/facts.js`'s KEEP**: the thirteen current spellings, six whole-debt
     witnesses, and `CapitalLeaseObligationsCurrent`, which no row asks for and guard (2) cannot work
@@ -1767,7 +1767,7 @@ year, cascading newest-to-oldest so a fix cannot create the next collision — a
 stays printed underneath, which is what actually disambiguates. On J&J and Kenvue the cascade lands
 on each company's own naming.
 
-**Two more things the calendar had to learn, both from the Next list rather than a frame.** "Deepest
+**Two more things the calendar had to learn, both from the open-questions list rather than a frame.** "Deepest
 without a hole" (rule 6) had an upper bound on the gap between periods and no lower one, so a gap of
 minus 273 days counted as adjacent. Amazon files `NetIncomeLoss` for the trailing twelve months to
 *every* quarter end, in every 10-Q — 74 annual-length periods overlapping by nine months — and that
@@ -2896,7 +2896,7 @@ filing that states the year. Of the two that do not,
 Trutankless's FY2019 10-K/A tagged its loss from operations positive and the next 10-K corrected it, and AIOS's
 FY2024 is a discontinued-operations re-presentation — a continuing loss of $9.95m in the newer 20-F beside the
 $340m of consolidated revenue the older one reported with $3.58m of operating income. The ratio is exact over
-the figures that column holds; the column's basis is a different question (Next item 7), and so is whether a
+the figures that column holds; the column's basis is a different question (open question 7), and so is whether a
 sheet should print a leverage multiple over a loss at all — it now prints n/m (rule 39). The sort is not a
 verdict on the page.
 
