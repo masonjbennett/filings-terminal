@@ -47,7 +47,11 @@
 // TWO LIMITS worth knowing. (1) A boundary catches what its CHILDREN throw while rendering. JSX
 // written inline in App()'s own return runs in App's render, above every boundary inside that
 // return, so only the root boundary in main.jsx is above it — which is why the root boundary's
-// fallback is a page rather than a line. (2) It does not catch event handlers, timers or rejected
+// fallback is a page rather than a line. On Sep 27 2026 the sheet moved out of App into
+// `CompanySheet` for exactly this reason (481 lines; App's body 774 -> 295), so what is left above
+// the card boundaries is the masthead, the search box and the fetches — none of which formats a
+// payload. Keep it that way: anything added to App()'s own return that reads fetched data is
+// unprotected by everything except the root. (2) It does not catch event handlers, timers or rejected
 // promises; those never unmounted anything, so they were never this problem.
 import { Component, createElement } from "react";
 

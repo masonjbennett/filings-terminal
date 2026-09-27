@@ -121,10 +121,6 @@ export default function App() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [sections, setSections] = useState(null); // rendered-statement links for the newest 10-K
-  const [copied, setCopied] = useState("");
-  // How far in the sticky label column ends, but ONLY while the sheet is scrolled — the x at which a
-  // clipped cell needs to be marked. 0 means "nothing is hidden, draw nothing". See `syncEdge`.
-  const [edge, setEdge] = useState(0);
   const [tab, setTab] = useState("statements");
   const [quote, setQuote] = useState(null);
   const [quoteNote, setQuoteNote] = useState("");
@@ -134,7 +130,6 @@ export default function App() {
   // the same instruction — the way back is a button, not a re-typed list.
   const [solo, setSolo] = useState(null);
   const [segs, setSegs] = useState(null);      // { loading } | { err } | payload from /api/segments
-  const scroller = useRef(null);
 
   useEffect(() => { fetch("/tickers.json").then(r => r.json()).then(rows => setTickers(applyTickerFixes(rows))).catch(() => setErr("couldn't load the company list")); }, []);
 
@@ -330,6 +325,105 @@ export default function App() {
     if (row) load(row[0], row[1], row[2]);
     else setErr(`no filer with the ticker "${s}" — try the search box`);
   }, [tickers]);
+
+
+  const S = {
+    page: { background: C.paper, minHeight: "100vh", color: C.body, fontFamily: SANS, fontSize: 15 },
+    wrap: { maxWidth: 1180, margin: "0 auto", padding: "0 24px 80px" },
+    label: { fontSize: 9, fontFamily: MONO, letterSpacing: 2, textTransform: "uppercase", color: C.faint },
+  };
+
+  return <div style={S.page}>
+    <style>{CELL_CSS}</style>
+    <div style={{ height: 6, background: C.ink }} /><div style={{ height: 2, background: C.teal }} />
+    <div style={S.wrap}>
+      <header style={{ padding: "26px 0 20px", borderBottom: `1px solid ${C.hair}`, marginBottom: 22 }}>
+        <div style={{ ...S.label, color: C.teal, marginBottom: 8 }}>masonjbennett.com · Filings Terminal</div>
+        <h1 style={{ font: `400 34px/1.1 ${SERIF}`, color: C.ink, letterSpacing: "-.015em", margin: "0 0 8px" }}>Reported financials, straight from EDGAR</h1>
+        <p style={{ fontSize: 13, color: C.mute, maxWidth: 620, lineHeight: 1.6, margin: 0 }}>
+          Every figure below is the value the company filed with the SEC, traceable to the accession number it came from.
+          Nothing is estimated and nothing is written by a model.
+        </p>
+      </header>
+
+      {/* ── Search ── */}
+      <div style={{ position: "relative", marginBottom: 22 }}>
+        {/* Ticker leads, and the examples follow the same order. It is what the search actually
+            privileges — an exact ticker hit is ranked first — and it is the unambiguous input:
+            "Apple" matches three filers, AAPL matches one. */}
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Ticker or company name — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
+          style={{ width: "100%", background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "13px 16px", fontSize: 15, fontFamily: MONO, color: C.ink2, outline: "none" }} />
+        {hits.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 34px rgba(64,52,32,.13)" }}>
+          {/* With a comps set open the search box ADDS rather than replaces: having built a set, the
+              next thing anyone types is another name for it, and swapping the whole page out for a
+              single sheet would throw the set away without asking. */}
+          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => (solo ? openSolo(tic) : comps.length ? addComp(tic) : load(cik, tic, title))}
+            style={{ display: "flex", gap: 12, alignItems: "baseline", width: "100%", padding: "10px 15px", background: "none", border: "none", borderBottom: `1px solid ${C.hair2}`, cursor: "pointer", textAlign: "left", fontFamily: SANS }}
+            onMouseEnter={e => e.currentTarget.style.background = "#0d6d5608"} onMouseLeave={e => e.currentTarget.style.background = "none"}>
+            <span style={{ font: `600 12px ${MONO}`, color: C.teal, minWidth: 62 }}>{tic}</span>
+            <span style={{ fontSize: 13.5, color: C.ink2 }}>{title}</span>
+          </button>)}
+        </div>}
+      </div>
+
+      {err && <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12 }}>{err}</p>}
+      {busy && <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12 }}>Reading EDGAR…</p>}
+
+      {/* The comps table is its own render tree over N companies' grids, so one bad set member
+          must not take the page. Its Remove and Clear controls live INSIDE it, so a failure here
+          also removes the only way to edit the set — which is why the fallback carries a Clear of
+          its own, built from state this component does not own and cannot have corrupted. */}
+      {comps.length > 0 && !solo && <Boundary name="The comps table" resetKey={comps.map(c => c.ticker).join(",")}
+        fallback={<p style={{ fontSize: 8.5, color: C.claret, fontFamily: MONO, letterSpacing: .5, textTransform: "uppercase" }}>
+          The comps table could not be rendered — the gap here is this tool&rsquo;s, not the filers&rsquo;.{" "}
+          <button onClick={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }}
+            style={{ background: "none", border: "none", padding: 0, color: C.teal, font: `8.5px ${MONO}`, letterSpacing: .5, textTransform: "uppercase", cursor: "pointer" }}>clear the set</button>
+        </p>}>
+        <CompsTable comps={comps} S={S} onOpen={openSolo}
+          onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
+          onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />
+      </Boundary>}
+
+      {/* The way back out of a sheet opened from a set. Above the company name rather than beside it,
+          because it is a change of view and not another action on this company. */}
+      {solo && comps.length > 0 && <button onClick={() => { setSolo(null); setUrl(); }}
+        style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", marginBottom: 12, color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>
+        ← Back to the set of {comps.length}</button>}
+
+      {/* The sheet below the boundary, not inside App's own render — see CompanySheet. A failure
+          here costs this company and leaves the search box, which is the whole reason for the split. */}
+      {(!comps.length || solo) && data && <Boundary name="The company sheet" resetKey={co ? String(co.cik) : ""}
+        fallback={<p style={{ fontSize: 8.5, color: C.claret, fontFamily: MONO, letterSpacing: .5, textTransform: "uppercase", margin: "18px 0" }}>
+          This company&rsquo;s sheet could not be rendered — the gap here is this tool&rsquo;s, not the filer&rsquo;s. Search again above.
+        </p>}>
+        <CompanySheet data={data} quote={quote} quoteNote={quoteNote} sections={sections} co={co} tab={tab} setTab={setTab}
+          segs={segs} S={S} solo={solo} comps={comps} addComp={addComp} tickers={tickers} />
+      </Boundary>}
+    </div>
+  </div>;
+}
+
+// ── The company sheet ───────────────────────────────────────────────────────────────────────────
+// Extracted from App() on Sep 27 2026 so that `buildGrid` runs BELOW an error boundary. It used to
+// sit in a useMemo inside App's own render — 663 lines of grid.js over an arbitrary SEC payload —
+// where no boundary placed anywhere in the returned JSX could catch it, and only the root boundary
+// in main.jsx was above it. The root boundary firing costs the whole page; this one costs the sheet
+// and leaves the masthead, the standfirst and a WORKING SEARCH BOX, which is the difference between
+// "this company did not render" and "the site is broken".
+//
+// Everything that reads the grid moved with it — the scroll effect, syncEdge, sectionLink, kindFor,
+// downloadWorkbook and copyTsv, plus the `edge`, `copied` and `scroller` state they own. App keeps
+// what is about the SEARCH rather than the sheet: the ticker list, the query, the fetches, the comps
+// set. That split is why the search box survives a failure here.
+//
+// The grid used to be tested by App (`data && grid && <>`); it is tested here instead, so the null
+// return below is that same guard in its new home rather than a new behaviour.
+function CompanySheet({ data, quote, quoteNote, sections, co, tab, setTab, segs, S, solo, comps, addComp, tickers }) {
+  const [copied, setCopied] = useState("");
+  // How far in the sticky label column ends, but ONLY while the sheet is scrolled — the x at which a
+  // clipped cell needs to be marked. 0 means "nothing is hidden, draw nothing". See `syncEdge`.
+  const [edge, setEdge] = useState(0);
+  const scroller = useRef(null);
 
   // ── Build the grid ───────────────────────────────────────────────────────────────────────────
   // SIC decides the shape of the sheet. Everything downstream — which sections exist, which lines
@@ -551,70 +645,9 @@ export default function App() {
       .catch(() => setCopied("Clipboard blocked by the browser"));
   };
 
-  const S = {
-    page: { background: C.paper, minHeight: "100vh", color: C.body, fontFamily: SANS, fontSize: 15 },
-    wrap: { maxWidth: 1180, margin: "0 auto", padding: "0 24px 80px" },
-    label: { fontSize: 9, fontFamily: MONO, letterSpacing: 2, textTransform: "uppercase", color: C.faint },
-  };
+  if (!grid) return null;
 
-  return <div style={S.page}>
-    <style>{CELL_CSS}</style>
-    <div style={{ height: 6, background: C.ink }} /><div style={{ height: 2, background: C.teal }} />
-    <div style={S.wrap}>
-      <header style={{ padding: "26px 0 20px", borderBottom: `1px solid ${C.hair}`, marginBottom: 22 }}>
-        <div style={{ ...S.label, color: C.teal, marginBottom: 8 }}>masonjbennett.com · Filings Terminal</div>
-        <h1 style={{ font: `400 34px/1.1 ${SERIF}`, color: C.ink, letterSpacing: "-.015em", margin: "0 0 8px" }}>Reported financials, straight from EDGAR</h1>
-        <p style={{ fontSize: 13, color: C.mute, maxWidth: 620, lineHeight: 1.6, margin: 0 }}>
-          Every figure below is the value the company filed with the SEC, traceable to the accession number it came from.
-          Nothing is estimated and nothing is written by a model.
-        </p>
-      </header>
-
-      {/* ── Search ── */}
-      <div style={{ position: "relative", marginBottom: 22 }}>
-        {/* Ticker leads, and the examples follow the same order. It is what the search actually
-            privileges — an exact ticker hit is ranked first — and it is the unambiguous input:
-            "Apple" matches three filers, AAPL matches one. */}
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder={tickers ? "Ticker or company name — try AAPL, or Apple" : "Loading company list…"} disabled={!tickers}
-          style={{ width: "100%", background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "13px 16px", fontSize: 15, fontFamily: MONO, color: C.ink2, outline: "none" }} />
-        {hits.length > 0 && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 34px rgba(64,52,32,.13)" }}>
-          {/* With a comps set open the search box ADDS rather than replaces: having built a set, the
-              next thing anyone types is another name for it, and swapping the whole page out for a
-              single sheet would throw the set away without asking. */}
-          {hits.map(([cik, tic, title]) => <button key={cik + tic} onClick={() => (solo ? openSolo(tic) : comps.length ? addComp(tic) : load(cik, tic, title))}
-            style={{ display: "flex", gap: 12, alignItems: "baseline", width: "100%", padding: "10px 15px", background: "none", border: "none", borderBottom: `1px solid ${C.hair2}`, cursor: "pointer", textAlign: "left", fontFamily: SANS }}
-            onMouseEnter={e => e.currentTarget.style.background = "#0d6d5608"} onMouseLeave={e => e.currentTarget.style.background = "none"}>
-            <span style={{ font: `600 12px ${MONO}`, color: C.teal, minWidth: 62 }}>{tic}</span>
-            <span style={{ fontSize: 13.5, color: C.ink2 }}>{title}</span>
-          </button>)}
-        </div>}
-      </div>
-
-      {err && <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12 }}>{err}</p>}
-      {busy && <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12 }}>Reading EDGAR…</p>}
-
-      {/* The comps table is its own render tree over N companies' grids, so one bad set member
-          must not take the page. Its Remove and Clear controls live INSIDE it, so a failure here
-          also removes the only way to edit the set — which is why the fallback carries a Clear of
-          its own, built from state this component does not own and cannot have corrupted. */}
-      {comps.length > 0 && !solo && <Boundary name="The comps table" resetKey={comps.map(c => c.ticker).join(",")}
-        fallback={<p style={{ fontSize: 8.5, color: C.claret, fontFamily: MONO, letterSpacing: .5, textTransform: "uppercase" }}>
-          The comps table could not be rendered — the gap here is this tool&rsquo;s, not the filers&rsquo;.{" "}
-          <button onClick={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }}
-            style={{ background: "none", border: "none", padding: 0, color: C.teal, font: `8.5px ${MONO}`, letterSpacing: .5, textTransform: "uppercase", cursor: "pointer" }}>clear the set</button>
-        </p>}>
-        <CompsTable comps={comps} S={S} onOpen={openSolo}
-          onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
-          onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />
-      </Boundary>}
-
-      {/* The way back out of a sheet opened from a set. Above the company name rather than beside it,
-          because it is a change of view and not another action on this company. */}
-      {solo && comps.length > 0 && <button onClick={() => { setSolo(null); setUrl(); }}
-        style={{ background: "none", border: `1px solid ${C.hair}`, borderRadius: 8, padding: "6px 12px", marginBottom: 12, color: C.teal, font: `600 10px ${MONO}`, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}>
-        ← Back to the set of {comps.length}</button>}
-
-      {(!comps.length || solo) && data && grid && <>
+  return <>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
           <h2 style={{ font: `400 26px/1.2 ${SERIF}`, color: C.ink, margin: 0 }}>{data.name}</h2>
           <span style={{ font: `600 12px ${MONO}`, color: C.teal }}>{(data.tickers || []).join(" · ")}</span>
@@ -883,9 +916,7 @@ export default function App() {
           <span><b style={{ color: C.faint }}>n/a</b> — this filer has never reported it</span>
           <span><b style={{ color: C.teal }}>judgement</b> — never auto-filled</span>
         </div>
-      </>}
-    </div>
-  </div>;
+  </>;
 }
 
 // One price divided into one year, so it reads as one block. Says out loud which year it divided

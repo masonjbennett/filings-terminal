@@ -104,7 +104,7 @@ const src = f => readFileSync(join(root, f), "utf8");
 // MUTATION: unwrapping any one of the five fails this block by name.
 {
   const app = src("src/App.jsx");
-  const COMPONENTS = ["CompsTable", "ValuationCard", "PricedIn", "SegmentTables", "SectionRows"];
+  const COMPONENTS = ["CompsTable", "CompanySheet", "ValuationCard", "PricedIn", "SegmentTables", "SectionRows"];
   for (const name of COMPONENTS) {
     const at = app.indexOf(`<${name}`);
     ok(at > 0, `${name} is rendered in App.jsx`);
@@ -119,6 +119,27 @@ const src = f => readFileSync(join(root, f), "utf8");
   eq([...new Set(rendered)].sort().join(" "), COMPONENTS.slice().sort().join(" "),
     "and the list is every component App.jsx renders — a new one fails this until it is added and wrapped");
   ok(app.includes(`import { Boundary } from "./boundary.js";`), "App.jsx imports the boundary");
+}
+
+// ── Block 5b — the grid is built BELOW a boundary, which is the point of CompanySheet ────────────
+// `buildGrid` used to run in a useMemo inside App's own render, where no boundary in the returned
+// JSX could catch it — only the root boundary was above it, and the root firing costs the whole
+// page. It moved into CompanySheet on Sep 27 2026 so a failure there costs the sheet and leaves the
+// masthead and a working search box. This assertion is that move, pinned.
+// MUTATION: moving the sheet's `const grid = useMemo(...)` back above App's return fails here.
+{
+  const app = src("src/App.jsx");
+  const sheetAt = app.indexOf("function CompanySheet(");
+  const gridAt = app.indexOf("const grid = useMemo(() => buildGrid(");
+  ok(sheetAt > 0, "CompanySheet exists");
+  ok(gridAt > sheetAt, "and the sheet's grid is built INSIDE it, below a boundary — not in App's own render");
+
+  // App may still call buildGrid for a comps set member; that one is not the sheet's and is not in
+  // App's render path. Anything ELSE would put an unprotected grid build back in App.
+  const appBody = app.slice(app.indexOf("export default function App"), sheetAt);
+  const calls = (appBody.match(/buildGrid\(/g) || []).length;
+  eq(calls, 1, "App calls buildGrid exactly once — for a comps member, inside addComp, not in its render");
+  ok(/grid: buildGrid\(d, quote\)/.test(appBody), "and that one call is the comps member's own grid");
 }
 
 // ── Block 6 — the two fallbacks that are not the default notice ─────────────────────────────────

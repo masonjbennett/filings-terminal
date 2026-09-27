@@ -3215,6 +3215,27 @@ because a `<div>` inside `<tbody>` is invalid markup; the comps fallback carries
 because Remove and Clear live *inside* the component it replaces. The valuation card carries a
 `resetKey` since it does not unmount on a tab change; the tab-scoped ones re-arm by unmounting.
 
+**The sheet was lifted out of App() the next day (Sep 27 2026), and that is what makes the boundary
+worth having.** `buildGrid` used to run in a `useMemo` inside App's own render — 663 lines of grid.js
+over an arbitrary SEC payload — where no boundary placed anywhere in the returned JSX could catch it.
+Only the root was above it, and the root firing costs the whole page. `CompanySheet` now owns the
+grid and everything that reads it: the scroll effect, `syncEdge`, `sectionLink`, `kindFor`,
+`downloadWorkbook`, `copyTsv`, and the `edge`, `copied` and `scroller` state they need. **481 lines
+moved; App's own body went from 774 lines to 295.** App keeps what is about the SEARCH rather than
+the sheet — the ticker list, the query, the fetches, the comps set — which is precisely why the
+search box survives a failure in the sheet.
+
+The move was verified by FINGERPRINT rather than by reading: the rendered page was hashed before and
+after for three tabs, and all three match exactly — statements `e68a6f7b` / 11,585 chars / 93 rows,
+ratios `b774687c` / 5,368 / 41, valuation `3a53f76b` / 3,884 — with the download (15,461 bytes), the
+copy feedback, the empty-grid path and the comps view all re-checked by hand. A missing binding would
+have shown as a throw, not as a subtle difference, which is what makes a hash an adequate oracle here.
+Then `CompanySheet` was made to throw on purpose: the sheet notice appeared, the root boundary stayed
+silent, and the masthead, the standfirst and a WORKING SEARCH BOX all survived — the difference
+between "this company did not render" and "the site is broken". `t-boundary` pins the move itself: the
+sheet's grid must be built below a boundary, and App may call `buildGrid` exactly once, for a comps
+set member inside `addComp`, which is not in its render path.
+
 **Verified in a browser, which is the one thing the suite cannot do** — that React actually routes a
 child's throw to the boundary is React's contract, not this code's. A component made to throw: the
 agate line appeared in its place, the sheet still rendered its 93 rows, the search box stayed live
