@@ -208,8 +208,14 @@ const K = (filed, period, accn, items = "2.02,9.01") => ({ form: "8-K", filed, p
   // banner reads drifts. That is the shape of assertion that passes for the wrong reason.
   ok(src("src/grid.js").includes(`const PERIODIC = ${PAT};`),
     "grid.js's PERIODIC const carries the same pattern, character for character");
-  ok((src("src/grid.js").match(/\^\(10-K\|10-Q\|20-F\|40-F\)/g) || []).length === 2,
-    "and grid.js still carries exactly two copies of it — a third would be a place to drift");
+  // ONE copy now, not two. It was two — the PERIODIC const and an inline literal in
+  // `newestFiledDate` — and this assertion was written to stop a third appearing. On Sep 26 2026
+  // the shape gate rewrote `newestFiledDate` to read PERIODIC, so the inline copy is gone and the
+  // drift it guarded against is now structurally impossible inside this file. The assertion stays,
+  // pinned one lower: a second literal reappearing means someone has written the pattern out again
+  // instead of using the const, which is exactly how it drifted from extract.js the first time.
+  ok((src("src/grid.js").match(/\^\(10-K\|10-Q\|20-F\|40-F\)/g) || []).length === 1,
+    "and grid.js carries exactly ONE copy of it — the const — so nothing in this file can drift from it");
   ok(src("api/facts.js").includes("/^(10-K|10-Q|20-F|40-F)T?(\\/A)?$|^8-K$/"),
     "api/facts.js carries it with the 8-K alternative — the rows this feature reads");
   ok(src("api/facts.js").includes("/^(10-K|10-Q|20-F|40-F)T?(\\/A)?$/"),

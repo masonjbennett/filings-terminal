@@ -470,6 +470,21 @@ export const announcedIsCurrent = (ann, today) =>
 
 export function buildGrid(data, quote, limit = 8) {
   if (!data) return null;
+  // ── The one shape gate this engine measurably needs ──────────────────────────────────────────
+  // Driving this function over all 180 cached payloads throws zero times. Mutating them the way a
+  // cache actually goes bad — 21 kinds over 40 filers each: facts missing, facts null, a unit array
+  // replaced by a string, a fact row nulled, an end date truncated, a value turned into a string or
+  // NaN, the whole payload null — throws on exactly TWO, and both are this field: a `filings` array
+  // of nulls (`f.form` on null) and a `filings` that is a string (`.filter` is not a function).
+  // Everything else already degrades to an empty grid or a blank cell, because rule 5's discipline
+  // forced this engine to handle absent data everywhere.
+  //
+  // So the whole measured throw surface is one field read three times, and normalising it once here
+  // closes all of it. `announcedSince` below carries the same guard internally and does not need
+  // this, but reads the normalised list anyway so there is one definition of what a filing row is.
+  // A gate rather than a boundary because at this point the kind of blank owed to the reader is
+  // still known: no filings means no staleness claim, which is exactly what an empty list produces.
+  const filings = Array.isArray(data.filings) ? data.filings.filter(f => f && typeof f === "object") : [];
   const industry = INDUSTRY(data.sicCode);
   const sections = sectionsFor(industry);
   // Rule 31 runs on the raw payload and everything below reads the rebased copy — annual columns,
@@ -486,7 +501,7 @@ export function buildGrid(data, quote, limit = 8) {
   const periods = desc.slice().reverse();
   // Computed before the empty-grid return, not after it: a filer with no annual XBRL periods still
   // has a filing list, and "a later filing exists" is the one thing such a page can honestly say.
-  const announced = announcedSince(data.filings);
+  const announced = announcedSince(filings);
   if (!periods.length) return { industry, sections, periods: [], rows: [], empty: true, announced };
 
   // The overlap rule in `annualPeriods` made the calendar honest; it did not make it CONTINUOUS. A
@@ -567,8 +582,8 @@ export function buildGrid(data, quote, limit = 8) {
   // against. Taken from the filing list the payload already carries rather than from a clock, so the
   // answer is deterministic: a cached payload builds the same sheet tomorrow as it does today, and a
   // test can assert it without freezing time.
-  const newestFiledDate = (data.filings || [])
-    .filter(f => /^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(f.form)).map(f => f.filed).sort().pop() || null;
+  const newestFiledDate = filings
+    .filter(f => PERIODIC.test(f.form)).map(f => f.filed).sort().pop() || null;
   const latestOpts = line => (line.mustBeCurrent ? { mustBeCurrent: true, notBefore: newestFiledDate } : undefined);
 
   // One annual column, built to order — the same call twice where rule 40 has something to say about
@@ -649,7 +664,7 @@ export function buildGrid(data, quote, limit = 8) {
   // an annual report exists for a period these figures do not cover.
   // `T` before `/A`, matching `periodic()` in extract.js — written the other way round this rejected
   // `10-KT/A`, an amended transition report, which is the one form that carries both provisions.
-  const annual = (data.filings || []).filter(f => /^(10-K|20-F|40-F)T?(\/A)?$/.test(f.form) && f.period);
+  const annual = filings.filter(f => /^(10-K|20-F|40-F)T?(\/A)?$/.test(f.form) && f.period);
   const newestReport = annual.reduce((a, f) => (!a || f.period > a.period ? f : a), null);
   const behind = newestReport && cols.length && newestReport.period > cols[cols.length - 1].period.end
     ? { period: newestReport.period, form: newestReport.form, accn: newestReport.accn } : null;

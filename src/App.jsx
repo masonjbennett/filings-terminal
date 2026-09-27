@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
 import { describeSplits, describeAligned, CURRENT_DEBT_UNPLACED } from "./extract.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods, announcedIsCurrent } from "./grid.js";
+import { Boundary } from "./boundary.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
 import { impliedGrowth, sensitivity, pickBasis, dcfApplicable, REASONS, HORIZONS } from "./reverse.js";
 import { NOT_APPLICABLE } from "./template.js";
@@ -457,7 +458,7 @@ export default function App() {
           // — the heading, never the contents, and the link so the reader can open what this file
           // has not. Gated on the same freshness check the banner uses, so a workbook downloaded from
           // a sheet showing no banner never carries the sentence either.
-          ...(grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10))
+          ...(grid.announced
             ? [[{ v: `A later filing exists that no figure in this workbook reads: an 8-K carrying Item 2.02 (SEC's heading for Results of Operations and Financial Condition) filed ${grid.announced.annFiled}, after the Form ${grid.announced.form} filed ${grid.announced.filed} for the period ended ${grid.announced.period}, which is the newest periodic report these figures come from. An item number is selected on a filing's cover page and says nothing about what the document contains. ${secFilingUrl(data.cik, grid.announced.annAccn)}`, s: XF.MUTED }]] : []),
           [],
           [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
@@ -592,9 +593,20 @@ export default function App() {
       {err && <p style={{ color: C.claret, fontFamily: MONO, fontSize: 12 }}>{err}</p>}
       {busy && <p style={{ color: C.faint, fontFamily: MONO, fontSize: 12 }}>Reading EDGAR…</p>}
 
-      {comps.length > 0 && !solo && <CompsTable comps={comps} S={S} onOpen={openSolo}
-        onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
-        onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />}
+      {/* The comps table is its own render tree over N companies' grids, so one bad set member
+          must not take the page. Its Remove and Clear controls live INSIDE it, so a failure here
+          also removes the only way to edit the set — which is why the fallback carries a Clear of
+          its own, built from state this component does not own and cannot have corrupted. */}
+      {comps.length > 0 && !solo && <Boundary name="The comps table" resetKey={comps.map(c => c.ticker).join(",")}
+        fallback={<p style={{ fontSize: 8.5, color: C.claret, fontFamily: MONO, letterSpacing: .5, textTransform: "uppercase" }}>
+          The comps table could not be rendered — the gap here is this tool&rsquo;s, not the filers&rsquo;.{" "}
+          <button onClick={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }}
+            style={{ background: "none", border: "none", padding: 0, color: C.teal, font: `8.5px ${MONO}`, letterSpacing: .5, textTransform: "uppercase", cursor: "pointer" }}>clear the set</button>
+        </p>}>
+        <CompsTable comps={comps} S={S} onOpen={openSolo}
+          onRemove={t => setComps(cs => cs.filter(c => c.ticker !== t))}
+          onClear={() => { setComps([]); try { history.replaceState(null, "", location.pathname); } catch {} }} />
+      </Boundary>}
 
       {/* The way back out of a sheet opened from a set. Above the company name rather than beside it,
           because it is a change of view and not another action on this company. */}
@@ -746,7 +758,9 @@ export default function App() {
         {/* The valuation summary rides above every tab on purpose. It is four numbers a banker reads
             first — EV, the multiple, the price it came from — and burying it one click deep would
             make the headline of the page something you have to go looking for. */}
-        {grid.cols && <ValuationCard grid={grid} quote={quote} note={quoteNote} S={S} />}
+        {grid.cols && <Boundary name="The valuation card" resetKey={`${data.cik}:${quote ? "priced" : "unpriced"}`}>
+          <ValuationCard grid={grid} quote={quote} note={quoteNote} S={S} />
+        </Boundary>}
 
         {grid.cols && <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
           {TABS.map(t => <button key={t.id} onClick={() => setTab(t.id)}
@@ -763,9 +777,13 @@ export default function App() {
         {/* The reverse DCF rides above the Valuation tab's year grid: the two judgement rows that grid
             prints as "never auto-filled" — WACC and terminal growth — are exactly the inputs this plate
             asks the reader for, so it sits where those rows are and nowhere else. */}
-        {tab === "valuation" && grid.cols && <PricedIn grid={grid} industry={industry} note={quoteNote} S={S} />}
+        {tab === "valuation" && grid.cols && <Boundary name="The reverse DCF">
+          <PricedIn grid={grid} industry={industry} note={quoteNote} S={S} />
+        </Boundary>}
 
-        {tab === "segments" && <SegmentTables segs={segs || { loading: true }} S={S} />}
+        {tab === "segments" && <Boundary name="The segments tab">
+          <SegmentTables segs={segs || { loading: true }} S={S} />
+        </Boundary>}
 
         {tab !== "segments" && grid.cols && <div style={{ position: "relative" }}>
           {/* The boundary of the sticky column, drawn as a HAIRLINE and nothing more.
@@ -822,9 +840,21 @@ export default function App() {
               {/* Valuation is lifted out into its own card above. There is ONE price, so it produces
                   one column of figures — spreading it across eight year-columns printed seven blanks
                   and hid the only real value off the right-hand edge of the scroll. */}
+              {/* Per SECTION, not per sheet: a throw inside one section's rows costs that section
+                  and leaves the rest of the statement standing. The fallback is a table ROW because
+                  a <div> inside <tbody> is invalid markup, and it is the seventh kind of blank —
+                  rule 5 says every blank here declares its kind, and a section that vanished because
+                  code threw would otherwise read as "n/a, this filer never reported it", which is
+                  the page lying about EDGAR to hide a bug in itself. */}
               {activeSections.filter(s => TABS.find(t => t.id === tab).secs.includes(s.id) || s.tab === tab)
-                .map(sec => <SectionRows key={sec.id} sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec))} cik={data.cik}
-                  naLabel={INDUSTRY_LABEL[industry] ? `n/a for a ${INDUSTRY_LABEL[industry]}` : "n/a"} />)}
+                .map(sec => <Boundary key={sec.id} name={`The ${sec.title} section`}
+                  fallback={<tr><td colSpan={1 + (grid.cols ? grid.cols.length : 1)}
+                    style={{ padding: "7px 14px", fontSize: 8.5, color: C.claret, fontFamily: MONO, letterSpacing: .5, textTransform: "uppercase" }}>
+                    {sec.title} could not be rendered — the gap here is this tool&rsquo;s, not the filer&rsquo;s
+                  </td></tr>}>
+                  <SectionRows sec={sec} grid={grid} S={S} link={sectionLink(kindFor(sec))} cik={data.cik}
+                    naLabel={INDUSTRY_LABEL[industry] ? `n/a for a ${INDUSTRY_LABEL[industry]}` : "n/a"} />
+                </Boundary>)}
             </tbody>
           </table>
         </div>

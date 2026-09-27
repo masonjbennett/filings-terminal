@@ -3157,6 +3157,92 @@ check being wrong, one is a measured rejection, and one is a hard limit of the d
   above; the mark turned out to cover 13 filers rather than Colgate alone, McKesson's 21,614% ROE among
   them.
 
+## The error boundary, and the one shape gate that made it mostly unnecessary
+
+Until Sep 26 2026 `src/main.jsx` rendered `<App />` bare. One throw while rendering unmounted the
+entire tree, and because payloads are cached at Vercel's edge for up to 30 hours, the white page
+could outlive the bad data for every reader who looked that ticker up. The sibling dashboard had
+already been taken down live by exactly this — a malformed quotes cache, through `prices.find` in
+its status bar — and got `src/boundary.js` on Sep 20. This is the same fix, measured for this repo
+rather than copied.
+
+**The measurement came first, and it moved the design.** Driving the shipping `buildGrid` over all
+180 cached payloads throws **zero** times. Mutating those payloads the way a cache actually goes bad
+— 21 kinds over 40 filers each: facts missing, facts null, facts replaced by an array or a string, a
+unit array replaced by a string, a fact row nulled, an end date truncated to `2026-0`, a value turned
+into a string or into NaN, the whole payload null — throws on exactly **two of 21**, and both are the
+same field read without a guard: a `filings` array of nulls (`f.form` on null) and a `filings` that
+is a string (`.filter` is not a function), at `newestFiledDate` and at the `behind` filter.
+Everything else already degrades to an empty grid or a blank cell, because rule 5's discipline forced
+this engine to handle absent data everywhere — `announcedSince` does not throw at all, since it
+already carries the guard.
+
+So the whole measured throw surface is **one field, read three times**, and normalising it once at
+the top of `buildGrid` closes all of it. Re-running the same harness afterwards: **0 of 21**. A gate
+rather than a boundary, because at that point the kind of blank owed to the reader is still known —
+no filings means no staleness claim, which is exactly what an empty list produces.
+
+**The boundary is therefore not the answer to a known defect. It is the answer to the unforeseen
+one** — the next formatter, the next API that changes a field's type, the next card. Which is why
+the sweep in `test/t-boundary.mjs` matters more than the boundary itself: it fails the run if a
+component is rendered outside one, and its list of components is asserted to BE every component
+App.jsx renders, so a new card fails the suite until it is wrapped.
+
+**A failed block says so, and that is a decision against silence.** Rendering nothing satisfies the
+letter of fail-closed and breaks its purpose here, because of rule 5: every blank on this sheet
+declares its kind — not tagged, n/a, n/m, judgement, needs price, refused — so a reader can tell "go
+hunt this in the 10-K" from "this does not exist for this filer". A section that vanished because
+code threw is the one blank with no kind, and a reader who has learned this page's grammar reads it
+as the nearest kind they know: *n/a, this filer never reported it*. That is the page lying about
+EDGAR to hide a bug in itself. So there is a **seventh kind of blank** — one agate line, JetBrains
+Mono 8.5px, claret, no box and no border, in the register the existing status tokens already use:
+*… could not be rendered — the gap here is this tool's, not the filer's*. It asserts nothing about a
+filing: no figure, no date, no form, no tag, no accession. The error MESSAGE never reaches the page;
+the console always gets it with the block's name, because minified React calls the component `_a`.
+
+There is no owner-only channel, and that is forced rather than chosen: this repo has no
+localStorage, sessionStorage or IndexedDB anywhere in `src/`, `api/` or `public/`, and adding the
+first persistent client-side state to carry a debug flag is a worse trade than reading the console.
+
+**Six boundaries.** The root in main.jsx, whose fallback is a PAGE rather than a line because
+rendering nothing at the root *is* the white page — masthead, the same claim about whose fault it
+is, and a way back to `/` with no query string, which matters because the poison is keyed to
+`?t=TICKER` through a shared edge cache, so `/` is a different cache key rather than a hopeful
+reload. Then the comps table, the valuation card, the reverse DCF, the segments tab, and one **per
+section** inside the sheet — per section, not per sheet, so a throw in one section's rows costs that
+section and leaves the rest of the statement standing. The sections' fallback is a table `<tr>`,
+because a `<div>` inside `<tbody>` is invalid markup; the comps fallback carries its own Clear,
+because Remove and Clear live *inside* the component it replaces. The valuation card carries a
+`resetKey` since it does not unmount on a tab change; the tab-scoped ones re-arm by unmounting.
+
+**Verified in a browser, which is the one thing the suite cannot do** — that React actually routes a
+child's throw to the boundary is React's contract, not this code's. A component made to throw: the
+agate line appeared in its place, the sheet still rendered its 93 rows, the search box stayed live
+and the root boundary correctly stayed silent. App itself made to throw: the last-resort page instead
+of a white one. Both reverted, App.jsx byte-identical afterwards. Redo that check by hand if React's
+major version ever moves. `test/t-boundary.mjs`, **51 assertions**, and `test/_mutate-boundary.mjs`.
+
+## CI
+
+`.github/workflows/test.yml` runs `npm test` on every push and pull request to `main`. There was no
+`.github/` directory at all before Sep 26 2026: 22 suites ran only when a person typed the command,
+which is the same shape of gap as a warning nobody reads.
+
+Tests only, not the build — Vercel runs `npm run build` itself to deploy, so a broken build already
+fails there. And **not blocking**: Vercel builds from the same push independently, so a red suite
+reports after a deploy has gone out. Making it blocking means calling `npm test` from the `build`
+script, which hands one wrong assertion the power to stop a deploy to a live recruiting artifact. If
+blocking is wanted, branch protection on pull requests is the place, and it is a repository setting.
+
+**What the green check does not cover, measured both ways.** 13 of the suites gate a block on the
+fixture cache, which is gitignored and is a live throttled pull against SEC, so the runner never has
+it: **3,427 assertions with the cache, 2,109 without — a 38% drop, and every suite still reports as
+passing**, so it is invisible in the summary line. 84% of the loss is two suites, t-week53 975 → 54
+and t-announced 288 → 105, which are precisely the blocks that drive real EDGAR payloads through
+`buildGrid`. Building the cache in CI would trade that for a live SEC dependency on every push under
+a fair-access User-Agent carrying a real email, from GitHub's IPs. Worse. Rebuild locally and re-run
+before trusting any change to extraction logic.
+
 ## Deploying
 
 Vercel project → this repo. One environment variable: `FINNHUB_KEY` (same value as the main site;
