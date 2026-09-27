@@ -1,0 +1,108 @@
+# Runs `npm test` on every push and pull request, because until now nothing did.
+#
+# This repo had no `.github/` directory at all — not the sibling dashboard's situation before Sep 20
+# 2026, where a suite existed and nobody had wired it up, but a full blank: 22 suites and 3,427
+# assertions that ran only when a person remembered to type the command. A gate nobody runs and a
+# warning nobody reads fail identically. Both look like coverage in a summary and neither stops
+# anything.
+#
+# Adapted from mason-bennett-dashboard/.github/workflows/test.yml, with the things that are not true
+# here corrected (measured 2026-09-26): this repo is PUBLIC, its default branch is `main` rather than
+# `master`, its `build` script is a plain `vite build` with nothing chained into it, and its real
+# coverage depends on a fixture cache this runner will never have.
+#
+# WHY TESTS ONLY, AND NOT THE BUILD. Vercel runs `npm run build` itself on every push — that is how
+# it deploys filings.masonjbennett.com — so a broken build already fails there and the previous
+# deployment stays up. Running it again here would spend time to learn the same thing twice. The
+# dashboard's version of that argument leans partly on its build running scripts/routes.mjs's
+# rewrite assertions; that half does not transfer, because nothing is chained into `vite build`
+# here. The redundancy argument stands without it.
+#
+# WHAT THIS DOES NOT DO: it does not block the deploy, and that is deliberate. Vercel builds from
+# the same push independently of this workflow, so a red suite here reports AFTER a deploy has
+# already gone out. Making it blocking means calling `npm test` from the `build` script, which hands
+# one wrong or flaky assertion the power to stop a deploy to a live recruiting artifact. Same call
+# the dashboard made, for the same reason.
+#
+#   If blocking IS wanted, the place for it is branch protection on pull requests — a required
+#   status check on PRs to `main` — not the build script. That is a repository setting rather than a
+#   line in this file, so it is Mason's to turn on. It costs nothing on direct pushes, which is how
+#   he works, and it is worth more here than on the dashboard because this repo is public and can
+#   take a PR from someone who has never read the README.
+#
+# ── WHAT THIS JOB ACTUALLY PROVES — read this before trusting the green check ────────────────────
+#
+# test/run.mjs discovers and runs every test/t-*.mjs regardless; it has no notion of skipping a
+# suite, and it refuses a green run over zero suites. But 13 of the 22 suites gate an internal block
+# on test/_fixtures.mjs's `haveFixtures()`, which looks for a cache built by
+# `node scripts/build-fixtures.mjs` — a live, throttled pull of 161 filers against SEC's
+# companyfacts API, deliberately manual and resumable. `fixtures/` is gitignored, so this runner
+# never has it and no step below builds one.
+#
+# Measured on this machine, 2026-09-26, by running the suite twice with FILINGS_FIXTURES pointed at
+# an empty directory and then at the local cache:
+#
+#   with the cache      3,427 assertions, 22/22 suites, ~90s
+#   without it          2,109 assertions, 22/22 suites, ~3s      (−38%)
+#
+# Every suite still reports as passing without the cache — none is skipped wholesale — so the drop
+# is invisible in the summary line. 84% of it is two suites: t-week53 975 → 54 and t-announced
+# 288 → 105. Those are exactly the blocks that drive REAL EDGAR payloads through buildGrid, which is
+# what checks this site's actual promise that every figure traces to a real accession number. This
+# badge does not cover that, on any push, ever, as configured.
+#
+# Building the cache in CI instead would trade that gap for a live SEC dependency on every push —
+# rate limits, minutes, flakiness, and a fair-access User-Agent carrying Mason's email running from
+# GitHub's IPs — which is worse. So: rebuild the cache locally and re-run before trusting any change
+# to extraction logic. A green check here means the engine's logic still holds against synthetic
+# fixtures, not that it still holds against EDGAR.
+#
+# NO LIVE DEPENDENCIES. No suite in test/ calls fetch() — the only match is a comment in
+# t-assets.mjs describing what that suite scans for — and none reads the clock. Nothing here should
+# be flaky on that account.
+#
+# NOT RUN HERE, on purpose: test/_mutate-announced.mjs and test/_mutate-week53.mjs. run.mjs's
+# `t-*.mjs` filter excludes them by construction. They reintroduce real defects into the shipping
+# source and require the matching suite to go red, and a `find` that no longer matches is an ERROR
+# in them, which is how they catch a refactor. Wiring them into every push would make an ordinary
+# rename a red build on a repo where the rename is usually correct. Run them by hand after touching
+# what they anchor into.
+#
+# `npm ci` is here because it is correct, not because anything needs it yet: no suite currently
+# imports a bare package name, so today the run would survive without node_modules. That changes the
+# moment a suite parses App.jsx — esbuild and rollup arrive bundled inside vite, as they do on the
+# dashboard — and a step that is already right costs 27 seconds.
+#
+# This repo is PUBLIC, so these minutes are free rather than billed against the account. That does
+# not change the argument above, which is about redundant signal rather than cost.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # The fixture-less run this job will always see takes ~3s and `npm ci` about 27s. Ten minutes is
+    # a backstop against a genuinely hung run rather than a budget for the common case, and it still
+    # covers a full run against a local cache (~90s) if one is ever wired in here.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # The LTS the sibling repo pins, supported to 2028-04-30, and the version this project is
+          # developed on (v24.15.0). package.json declares no "engines" field, so nothing else here
+          # pins one.
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+
+      # test/run.mjs discovers every test/t-*.mjs and exits non-zero if any suite fails, so a new
+      # suite is in this job the moment it is committed — nothing to add here when one is written.
+      - run: npm test
