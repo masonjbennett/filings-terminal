@@ -458,7 +458,7 @@ export default function App() {
           // — the heading, never the contents, and the link so the reader can open what this file
           // has not. Gated on the same freshness check the banner uses, so a workbook downloaded from
           // a sheet showing no banner never carries the sentence either.
-          ...(grid.announced
+          ...(grid.announced && announcedIsCurrent(grid.announced, new Date().toISOString().slice(0, 10))
             ? [[{ v: `A later filing exists that no figure in this workbook reads: an 8-K carrying Item 2.02 (SEC's heading for Results of Operations and Financial Condition) filed ${grid.announced.annFiled}, after the Form ${grid.announced.form} filed ${grid.announced.filed} for the period ended ${grid.announced.period}, which is the newest periodic report these figures come from. An item number is selected on a filing's cover page and says nothing about what the document contains. ${secFilingUrl(data.cik, grid.announced.annAccn)}`, s: XF.MUTED }]] : []),
           [],
           [{ v: "Line item", s: XF.BOLD }, ...grid.cols.map(c => ({ v: `FY${c.period.fy}`, s: XF.BOLD }))],
