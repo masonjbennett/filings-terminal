@@ -251,6 +251,201 @@ function descaled(matches, winner) {
     && accns(m.val).size >= 2);
   return rival || winner;
 }
+
+// ── Rule 17's second clause: a filing can carry the right figure under the wrong YEAR ───────────
+// The clause above is about scale; this one is about the date, and its structure is the same: the
+// newest figure is outvoted, it has a recognisable shape, and the corroborated earlier figure is
+// preferred. iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures,
+// and rule 2 took the newest filing, so the FY2020 column printed FY2021's company on nineteen rows:
+// revenue $64,702,018 where every earlier filing says $44,910,006.
+//
+// One filing's facts at one EXACT period — the accession, the start and the end, so an instant and a
+// duration ending the same day are different contexts — are set aside when either test holds.
+//   - Every cell of it that all earlier filings contradict carries the figure an earlier filing gave
+//     the year BESIDE it, on at least two distinct tags with a non-zero figure. A zero counts against
+//     and never toward: a zero on both sides of a year is no evidence of a date. Being outvoted is
+//     ordinary — 3,336 cells across the measured populations, 3,290 of them landing nowhere near a
+//     neighbour, because a restatement moves a year to a new figure — so the test is EVERY, not some:
+//     a context with 17 outvoted cells of which 2 land is a restatement with a coincidence in it.
+//   - Or it is a DURATION whose filing carries no revenue, operating income, net income or cash-flow
+//     total, besides the figure's own tag, for any period of two months to a year ending on that
+//     date. The filing does not present the year, so the figure is a note, a schedule or a mis-dated
+//     column. Altria's deferred tax showed the next year's figure in each of FY2018-FY2020 (FY2020
+//     −$1,160m where the presenting filings say −$164m), and Interactive Brokers filed an amortization
+//     schedule for 2018-2020 in a 10-K filed in March 2018. A 10-Q is not stray for being a 10-Q:
+//     Axon's Q3-2024 revision table carries the full-year totals and ties on every line.
+// An instant is never set aside by the second test, which fires on 1,521 instant contexts; instants
+// enter only through the first. The two tests never fire on the same context (0 of 1,580).
+//
+// These functions only RECOGNISE. The stand-down itself — rebuild without the contexts, repeat while
+// the new pick is itself stray, mark what moved — is `buildGrid` in grid.js, because it needs whole
+// columns and the template's sections, and grid.js imports this file rather than the other way round.
+// On the 171 cached filers with a sheet: 44 contexts recognised on 26 filers, 33 more set aside by
+// the repeat, and at most 5 builds of one sheet (Eaton, iQSTEL).
+export const SET_ASIDE = "set-aside";
+export const STRAY_MIN = 60;
+// The rows whose tags are the totals a filing presents a period with. Their TEMPLATE tags, so a tag
+// added to one of these rows reaches the test without a second list to keep in step.
+export const STRAY_ANCHORS = ["revenue", "ebit", "netIncome", "cfo", "cfi", "cff"];
+const REPORTED_STATUS = new Set(["reported", "split-adjusted"]);
+export const contextKey = (accn, start, end) => `${accn}|${start || ""}..${end}`;
+// The context a cell was read from: null for anything no single filing supplied (derived, LTM, blank).
+export const contextOf = m => (m && REPORTED_STATUS.has(m.status) && m.accn ? contextKey(m.accn, m.start, m.end) : null);
+
+// Every anchor fact at a duration of STRAY_MIN days to a year, as filing|end → the tags it carries
+// there. Built once per sheet: scanning the facts per cell cost 70% of a whole build on every filer.
+// `span` is `days` over a fact, and a caller may pass one that remembers each date it has parsed.
+export function anchorIndex(facts, anchorTags, span = f => days(f.start, f.end)) {
+  const at = new Map();
+  for (const tag of anchorTags || []) {
+    const def = facts && facts[tag];
+    if (!def || typeof def !== "object") continue;
+    for (const arr of Object.values(def.units || {})) {
+      if (!Array.isArray(arr)) continue;
+      for (const f of arr) {
+        if (!f || !f.start || !periodic(f.form)) continue;
+        const d = span(f);
+        if (!(d >= STRAY_MIN && d <= ANNUAL_MAX)) continue;
+        const key = `${f.accn}|${f.end}`;
+        let s = at.get(key);
+        if (!s) at.set(key, (s = new Set()));
+        s.add(tag);
+      }
+    }
+  }
+  return at;
+}
+// A duration cell is stray when its own filing carries no anchor total for a period ending on its
+// date under any tag but the cell's own: a filing carrying only revenue does not present revenue.
+export const strayDuration = (index, m) => {
+  const s = index.get(`${m.accn}|${m.end}`);
+  return !s || (s.size === 1 && s.has(m.tag));
+};
+
+// `cols` are the sheet's annual columns as built; `facts` the split-adjusted facts they were read
+// from; `rows` every template line in section order as {k, tags, instant, latest, fetched}. Returns
+// the contexts to set aside (key → {why, accn, form, filed, start, end, A}) and, for every context
+// with an outvoted cell, the counts the first test decided on.
+export function misdatedContexts(cols, facts, rows) {
+  facts = facts || {};
+  const rowOf = new Map(), byK = {}, lines = [];
+  for (const l of rows || []) {
+    rowOf.set(l.k, l);                       // last wins, as a row's shape is read elsewhere
+    if (!byK[l.k]) byK[l.k] = l;             // first wins, as the anchors' tags are
+    if (l.fetched && !l.latest) lines.push(l);
+  }
+  // Date parsing is most of what this costs, and a payload repeats the same few hundred dates across
+  // thousands of facts: each is parsed once per call. Same arithmetic as `days`.
+  const parsed = new Map();
+  const epoch = x => { let t = parsed.get(x); if (t === undefined) parsed.set(x, (t = +new Date(x))); return t; };
+  const span = f => Math.round((epoch(f.end) - epoch(f.start)) / 86400000);
+  const anchors = [...new Set(STRAY_ANCHORS.flatMap(k => (byK[k] && byK[k].tags) || []))];
+  const index = anchorIndex(facts, anchors, span);
+  // One tag and unit's periodic facts at an annual duration (or at an instant), by end date — built
+  // on first use, so a sheet pays only for the tags its cells were read under, and holding only the
+  // columns' own end dates, which are the only dates it is ever asked about.
+  const colEnds = new Set((cols || []).map(c => c && c.period && c.period.end));
+  const histOf = new Map();
+  const hist = (tag, unit, instant) => {
+    const key = `${tag}|${unit}|${instant ? "I" : "D"}`;
+    let h = histOf.get(key);
+    if (h) return h;
+    histOf.set(key, (h = new Map()));
+    const arr = facts[tag] && facts[tag].units && facts[tag].units[unit];
+    if (Array.isArray(arr)) for (const f of arr) {
+      if (!f || !f.end || !colEnds.has(f.end) || !periodic(f.form)) continue;
+      if (instant ? f.start : !(f.start && span(f) >= ANNUAL_MIN && span(f) <= ANNUAL_MAX)) continue;
+      let xs = h.get(f.end);
+      if (!xs) h.set(f.end, (xs = []));
+      xs.push(f);
+    }
+    return h;
+  };
+  // A context is opened only by a cell that counts toward a test. Its form and filing date are its
+  // accession's, so which of its cells opens it changes nothing.
+  const ctxs = new Map();
+  const ctxOf = m => {
+    const key = contextKey(m.accn, m.start, m.end);
+    let c = ctxs.get(key);
+    if (!c) ctxs.set(key, (c = { key, accn: m.accn, form: m.form, filed: m.filed, start: m.start || "", end: m.end, duration: !!m.start, A: 0, AC: 0, nz: new Set(), stray: false }));
+    return c;
+  };
+  (cols || []).forEach((col, i) => {
+    if (!col || !col.period || col.period.ltm) return;
+    const p = col.period, v = col.v || {}, meta = col.meta || {};
+    const nbrs = [cols[i - 1], cols[i + 1]].filter(n => n && n.period);
+    // The first test: outvoted, and landing on a neighbour.
+    if (nbrs.length) for (const [k, val] of Object.entries(v)) {
+      const r = rowOf.get(k) || {};
+      if (r.latest || typeof val !== "number") continue;
+      const m = meta[k] || {};
+      if (!REPORTED_STATUS.has(m.status) || !m.tag || !m.unit || !m.accn) continue;
+      const h = hist(m.tag, m.unit, r.instant);
+      const earlier = (h.get(p.end) || []).filter(f => f.accn !== m.accn && f.filed && m.filed && f.filed < m.filed);
+      if (!earlier.length || !earlier.every(f => f.val !== val)) continue;
+      const c = ctxOf(m);
+      c.A++;
+      if (nbrs.some(n => (h.get(n.period.end) || []).some(f => f.filed && f.filed < m.filed && f.val === val))) {
+        c.AC++;
+        if (val !== 0) c.nz.add(m.tag);
+      }
+    }
+    // The second test, on the fetched rows' duration cells.
+    for (const l of lines) {
+      const m = meta[l.k] || {};
+      if (!REPORTED_STATUS.has(m.status) || !m.accn || v[l.k] == null) continue;
+      if (m.start && strayDuration(index, m)) ctxOf(m).stray = true;
+    }
+  });
+  const found = new Map(), outvoted = [];
+  for (const c of ctxs.values()) {
+    const convicted = c.A > 0 && c.AC === c.A && c.nz.size >= 2;
+    if (c.A) outvoted.push({ key: c.key, A: c.A, AC: c.AC, nz: c.nz.size, convicted });
+    if (convicted || (c.duration && c.stray)) found.set(c.key, { why: convicted ? "purity" : "stray", accn: c.accn, form: c.form, filed: c.filed, start: c.start, end: c.end, A: c.A });
+  }
+  return { found, outvoted, anchors, index };
+}
+
+// The payload's facts without the given contexts. Only the tag and unit arrays that lose a fact are
+// copied; everything else is shared, so the payload itself is never touched.
+export function withoutContexts(facts, keys) {
+  if (!facts || typeof facts !== "object" || !keys || !keys.size) return facts;
+  const accns = new Set([...keys.keys()].map(k => String(k).split("|")[0]));
+  const gone = f => f && accns.has(String(f.accn)) && keys.has(contextKey(f.accn, f.start, f.end));
+  const out = {};
+  for (const [tag, def] of Object.entries(facts)) {
+    let units = null;
+    if (def && typeof def === "object" && def.units && typeof def.units === "object") {
+      for (const [u, arr] of Object.entries(def.units)) {
+        if (!Array.isArray(arr) || !arr.some(gone)) continue;
+        units = units || { ...def.units };
+        units[u] = arr.filter(f => !gone(f));
+      }
+    }
+    out[tag] = units ? { ...def, units } : def;
+  }
+  return out;
+}
+
+// How many periodic filings carry a fact under these tags for this period in this currency — what a
+// blank left by a set-aside filing owes the reader when the rest of the line is filed in another one.
+export function filingsInCurrency(facts, tags, period, ccy) {
+  const accns = new Set(), wantDuration = !!period.start;
+  for (const tag of tags || []) {
+    const def = facts && facts[tag];
+    if (!def || typeof def !== "object") continue;
+    for (const [unit, arr] of Object.entries(def.units || {})) {
+      if (currencyOf(unit) !== ccy || !Array.isArray(arr)) continue;
+      for (const f of arr) {
+        if (!f || f.end !== period.end || wantDuration !== isDuration(f) || !periodic(f.form)) continue;
+        if (wantDuration) { const d = days(f.start, f.end); if (d < ANNUAL_MIN || d > ANNUAL_MAX) continue; }
+        accns.add(f.accn);
+      }
+    }
+  }
+  return accns.size;
+}
+
 // The periodic reports, their transition-period variants and their amendments — the filings that ARE
 // the financial statements. Everything else is supplementary, and this engine does not read it.
 const periodic = form => (/^(10-K|10-Q|20-F|40-F)T?(\/A)?$/.test(String(form)) ? 1 : 0);

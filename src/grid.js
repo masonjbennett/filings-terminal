@@ -9,7 +9,7 @@
 // and both callers import it.
 
 import { SECTIONS, INDUSTRY, NOT_APPLICABLE, OVERLAY_SECTIONS, PERIOD_TAGS, PERIOD_TAGS_FALLBACK } from "./template.js";
-import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, LEV_ROWS, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS, currentDebtOutside, CURRENT_DEBT_UNPLACED } from "./extract.js";
+import { annualPeriods, pickFact, latestFact, ltmWindows, pickLtm, reportingCurrency, tagsByRun, tagsByIdentity, hasInterim, debtScope, dupCurrentDebt, thinEquity, LEV_ROWS, changeInWorkingCapital, promoteWorkingCapital, NONCURRENT_DEBT, splitEvents, applySplits, alignBalanceSheet, fillMezzanine, BS_LEGS, CAPEX_IMMATERIAL_INDUSTRIES, DERIVED, DERIVED_BY_INDUSTRY, DERIVED_PRICED, PRICED_NEEDS_SHARES, YOY, CAGRS, currentDebtOutside, CURRENT_DEBT_UNPLACED, SET_ASIDE, contextOf, strayDuration, misdatedContexts, withoutContexts, filingsInCurrency } from "./extract.js";
 
 // The rows rule 31 can rebase — the note on each keys off `v.splitAdjusted`.
 const SPLIT_ROWS = ["epsBasic", "epsDil", "dps", "wasoBasic", "wasoDil"];
@@ -468,7 +468,9 @@ export const ANNOUNCED_MAX_AGE = 120;
 export const announcedIsCurrent = (ann, today) =>
   !!(ann && ISODATE.test(String(today)) && dayGap(ann.annEvent, today) <= ANNOUNCED_MAX_AGE);
 
-export function buildGrid(data, quote, limit = 8) {
+// One sheet, built from the payload exactly as given. `buildGrid` below is what every caller uses: it
+// builds this, and builds it again from fewer facts where rule 17's second clause sets a filing aside.
+export function buildSheet(data, quote, limit = 8) {
   if (!data) return null;
   // ── The one shape gate this engine measurably needs ──────────────────────────────────────────
   // Driving this function over all 180 cached payloads throws zero times. Mutating them the way a
@@ -675,4 +677,194 @@ export function buildGrid(data, quote, limit = 8) {
     : carry ? { period: { ...last.period, ltm: true, through: last.period.end, fyEnd: last.period.end }, v: { ...last.v }, meta: { ...last.meta } }
     : null;
   return { industry, sections, periods, cols, ltmCols, ltm: newestLtm, ltmStitched: ltmCols.length > 0, behind, announced, ccy, splits };
+}
+
+// ── Rule 17's second clause: the stand-down ──────────────────────────────────────────────────────
+// The recognisers are in extract.js, beside the first clause. This is the remedy, and it is "build the
+// sheet again without those facts" rather than a patch to the cells expected to move, so every other
+// rule — the calendar, splits (31), the run pins (21, 23, 33), rule 2, preferNonZero (24), the
+// mezzanine and balance-sheet passes (38, 32), the LTM stitch and its restated basis (37), rule 40,
+// every derived and priced row — reads the reduced payload by construction, the way it reads any
+// payload. A second engine that knew which cells to fix would have to know all of that.
+//
+// Recognition runs ONCE, on the sheet as first built. Then the repeat: rule 2 picks again without the
+// set-aside contexts, and where a fetched line's annual cell now comes from another duration the
+// second test marks, that filing is set aside too, until nothing is added. JPMorgan's FY2020
+// impairment zero is in three 10-Qs and no 10-K, so setting aside the newest only hands the cell to
+// the next. On the cache the repeat adds 33 contexts to the 44 recognised; 145 of 171 filers build once.
+//
+// It fails closed four ways. The repeat never sets aside a filing that presents the year, because it
+// adds only stray durations. A header that moves — a column or an LTM window appearing or going, the
+// LTM carried instead of stitched, the currency, a split — returns the sheet as first built, with
+// `standDown.skipped` naming the first field that moved. Nothing per cell is comparable across a new
+// calendar, and a set-aside comparative can be a split's only witness (rule 31), the way restated
+// comparatives witness NVIDIA's: built without it, every share row of every column loses its rebasing,
+// far beyond the cells set aside (0 of 171 on the cache).
+// A repeat still adding at STAND_DOWN_CAP builds stops there and marks only what the last build left
+// out (the most the cache needs is 4). And any throw returns the sheet as first built, with a
+// console warning: a payload shaped worse than the cache must never become a lost page.
+export const STAND_DOWN_CAP = 12;
+// The blank kinds (rule 5) a set-aside cell replaces. The line WAS read for that year, from the filing
+// now set aside, so "not tagged" would send a reader to look for a figure that is filed.
+const BLANK_KINDS = new Set(["untagged-this-period", "never-tagged", "other-currency"]);
+const REPORTED = new Set(["reported", "split-adjusted"]);
+
+const linesOf = sections => {
+  const rows = [];
+  for (const sec of sections || []) for (const l of sec.lines || [])
+    rows.push({ k: l.k, tags: l.tags, instant: isInstant(sec, l), latest: !!l.latest, fetched: l.how === "fetched" && Array.isArray(l.tags) });
+  return rows;
+};
+// What the recognisers decide for a sheet as first built — on the same split-adjusted facts it read.
+export function recogniseMisdated(data, g0) {
+  const facts = applySplits((data && data.facts) || {}, g0.splits);
+  const rows = linesOf(g0.sections);
+  return { ...misdatedContexts(g0.cols, facts, rows), rows };
+}
+// The header every cell is read under, in the order a difference is named: the calendar (each
+// column's period and whether it is broken, each LTM window and its basis, and whether the LTM is
+// stitched or carried), then a newer annual report the figures do not cover, what is announced since,
+// the sheet's currency, and the split events (31).
+const HEADER = ["calendar", "behind", "announced", "ccy", "splits"];
+const headerOf = g => (!g || g.empty || !Array.isArray(g.cols) ? { calendar: "empty" } : {
+  calendar: g.cols.map(c => `${c.period.fy}:${c.period.start || ""}..${c.period.end}${c.period.broken ? "!" : ""}`).join()
+    + "|" + (g.ltmCols || []).map(c => `${c.period.end}[${c.period.basis}]`).join()
+    + "|" + (g.ltm ? `${g.ltm.period.end}${g.ltmStitched ? "" : "(carry)"}` : "-"),
+  behind: JSON.stringify(g.behind ?? null), announced: JSON.stringify(g.announced ?? null),
+  ccy: String(g.ccy ?? ""), splits: JSON.stringify(g.splits ?? null) });
+const headerMoved = (a, b) => HEADER.find(f => a[f] !== b[f]) || null;
+
+// Recognise, rebuild, repeat; returns the final sheet and what a later call needs to redo only the
+// last build (`entry`).
+function standDown(data, quote, limit, g0) {
+  const { found, outvoted, index, rows } = recogniseMisdated(data, g0);
+  const recognised = [...found.keys()];
+  if (!found.size) return { g: g0, entry: { reduced: null, summary: { recognised, setAside: [], builds: 1, capped: false, outvoted } } };
+  const lineKeys = new Set(rows.filter(l => l.fetched && !l.latest).map(l => l.k));
+  const col0 = new Map(g0.cols.map(c => [c.period.end, c]));
+  const R = new Map(found), chains = new Map();
+  let g = null, reduced = null, builds = 1, capped = false;
+  for (let it = 0; it < STAND_DOWN_CAP; it++) {
+    reduced = { ...data, facts: withoutContexts(data.facts, R) };
+    g = buildSheet(reduced, quote, limit);
+    builds++;
+    const adds = new Map(), moves = [];
+    for (const c of g && !g.empty ? g.cols : []) {
+      const c0 = col0.get(c.period.end);
+      for (const [k, m] of Object.entries(c.meta || {})) {
+        if (!m || !REPORTED.has(m.status) || typeof c.v[k] !== "number" || !m.start) continue;
+        const s = contextOf(m);
+        if (!s || s === (c0 ? contextOf(c0.meta[k]) : null) || R.has(s)) continue;
+        if (!strayDuration(index, m) || !lineKeys.has(k)) continue;
+        if (!adds.has(s)) adds.set(s, { why: "repeat", accn: m.accn, form: m.form, filed: m.filed, start: m.start, end: m.end, A: 0 });
+        moves.push([`${c.period.end}|${k}`, { key: s, value: c.v[k] }]);
+      }
+    }
+    if (!adds.size) break;
+    if (it === STAND_DOWN_CAP - 1) { capped = true; break; }   // `g` was built without R, and only R is marked
+    for (const [s, x] of adds) R.set(s, x);
+    for (const [ck, x] of moves) chains.set(ck, [...(chains.get(ck) || []), x]);
+  }
+  const summary = { recognised, setAside: [...R].map(([key, x]) => ({ key, ...x })), builds, capped, outvoted };
+  const header = headerOf(g0), moved = headerMoved(header, headerOf(g));
+  if (moved)
+    return { g: g0, entry: { reduced: null, summary: { ...summary, setAside: [], skipped: moved } } };
+
+  // What each marked cell will say: the filing set aside for it, then every filing the repeat set
+  // aside after it, each with the figure it carried there.
+  const byK = {};
+  for (const l of rows) if (!byK[l.k]) byK[l.k] = l;
+  const ctx = (key, value) => { const x = R.get(key); return { why: x.why, form: x.form, filed: x.filed, accn: x.accn, start: x.start, end: x.end, value, A: x.A }; };
+  const cells = [];
+  for (const c0 of g0.cols) for (const [k, m0] of Object.entries(c0.meta || {})) {
+    const s0 = contextOf(m0);
+    if (!s0 || !R.has(s0) || typeof c0.v[k] !== "number") continue;
+    const end = c0.period.end, row = byK[k] || {};
+    cells.push({ end, k, v0: c0.v[k], unit: m0.unit, tags: row.tags, period: row.instant ? { end } : { start: c0.period.start, end },
+      ctxs: [ctx(s0, c0.v[k]), ...(chains.get(`${end}|${k}`) || []).map(x => ctx(x.key, x.value))] });
+  }
+  const keys = [...new Set(cells.map(x => x.k))];
+  const ltm0 = new Map((g0.ltmCols || []).map(L => [L.period.end, new Map(keys.map(k => [k, L.v[k] ?? null]))]));
+  const entry = { reduced, header, cells, ltm0, ccyCounts: new Map(), summary };
+  markSetAside(g, entry);
+  return { g, entry };
+}
+
+// The marks live in `meta`, never in `v`, where the full-diff would count them as cells. A cell
+// re-sourced at the same figure carries only its new source; one that moved keeps its new status and
+// gains the mark; one left blank becomes a blank of its own kind.
+function markSetAside(g, entry) {
+  const byEnd = new Map(g.cols.map(c => [c.period.end, c]));
+  for (const x of entry.cells) {
+    const c = byEnd.get(x.end);
+    if (!c) continue;
+    const cur = c.meta[x.k] || {}, v = c.v[x.k];
+    if (v === x.v0 && REPORTED.has(cur.status)) continue;
+    const mark = { ctxs: x.ctxs.map(o => ({ ...o })), unit: x.unit };
+    if (v == null && BLANK_KINDS.has(cur.status)) {
+      // BetterLife's FY2012 net income is filed by three other filings, in USD, on a CAD sheet: the
+      // blank's old kind was true and the new one must not say less.
+      if (cur.status === "other-currency") {
+        const ck = `${x.end}|${x.k}|${cur.ccy}`;
+        if (!entry.ccyCounts.has(ck)) entry.ccyCounts.set(ck, filingsInCurrency(entry.reduced.facts, x.tags, x.period, cur.ccy));
+        mark.otherCcy = cur.ccy;
+        mark.otherCcyFilings = entry.ccyCounts.get(ck);
+      }
+      c.meta[x.k] = { status: SET_ASIDE, setAside: mark };
+    } else c.meta[x.k] = { ...cur, setAside: mark };
+  }
+  // A trailing twelve months inherits the mark of the fiscal year it builds on, where its own figure
+  // moved with it: Johnson & Johnson's LTM acquisitions, JPMorgan's LTM-to-June-2023 impairment.
+  for (const L of g.ltmCols || []) {
+    const fy = byEnd.get(L.period.fyEnd), L0 = entry.ltm0.get(L.period.end);
+    if (!fy || !L0) continue;
+    for (const [k, v0] of L0) {
+      const fm = fy.meta[k];
+      if (!fm || !fm.setAside || (L.v[k] ?? null) === v0) continue;
+      const mark = { ...fm.setAside, ctxs: fm.setAside.ctxs.map(o => ({ ...o })), via: "fy", fy: fy.period.fy };
+      const cur = L.meta[k] || {};
+      L.meta[k] = L.v[k] == null && BLANK_KINDS.has(cur.status) ? { status: SET_ASIDE, setAside: mark } : { ...cur, setAside: mark };
+    }
+  }
+  // A carried LTM (no interim on file) is a copy of the newest year, made inside buildSheet before
+  // any of the above, so it takes the marked cells again.
+  if (g.ltm && !g.ltmStitched && g.cols.length) {
+    const last = g.cols[g.cols.length - 1];
+    for (const k of Object.keys(last.meta)) if (last.meta[k] && last.meta[k].setAside) g.ltm.meta[k] = last.meta[k];
+  }
+}
+
+const standDownWarning = e => console.warn("rule 17 stand-down (mis-dated contexts) failed; the sheet is shown as first built", e);
+
+// Keyed on the payload object. App builds a sheet once with no quote and again when the price lands,
+// and a comps set builds each member: with the recognition, the repeat and the marks remembered, a new
+// quote costs one build of the reduced payload, which is what the sheet is — not up to five.
+const standDowns = new WeakMap();
+
+export function buildGrid(data, quote, limit = 8) {
+  const memo = data && typeof data === "object" ? standDowns.get(data) : null;
+  const known = memo && memo.get(limit);
+  if (known) {
+    if (known.reduced) {
+      try {
+        const g = buildSheet(known.reduced, quote, limit);
+        if (!headerMoved(known.header, headerOf(g))) { markSetAside(g, known); g.standDown = known.summary; return g; }
+      } catch (e) { standDownWarning(e); }
+    }
+    const g = buildSheet(data, quote, limit);
+    if (g && !g.empty) g.standDown = known.reduced ? { ...known.summary, setAside: [], skipped: "error" } : known.summary;
+    return g;
+  }
+  const g0 = buildSheet(data, quote, limit);
+  if (!g0 || g0.empty || !Array.isArray(g0.cols) || !data || typeof data !== "object") return g0;
+  let out;
+  try { out = standDown(data, quote, limit, g0); }
+  catch (e) {
+    standDownWarning(e);
+    out = { g: g0, entry: { reduced: null, summary: { recognised: [], setAside: [], builds: 1, capped: false, outvoted: [], skipped: "error" } } };
+  }
+  if (!memo) standDowns.set(data, new Map([[limit, out.entry]]));
+  else memo.set(limit, out.entry);
+  out.g.standDown = out.entry.summary;
+  return out.g;
 }
