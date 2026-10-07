@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { SECTIONS, INDUSTRY, INDUSTRY_LABEL, COMPS_ROWS, COMPS_MEDIAN, EQUITY_DENOMINATED, CURRENCY_DENOMINATED } from "./template.js";
-import { describeSplits, describeAligned, CURRENT_DEBT_UNPLACED } from "./extract.js";
+import { describeSplits, describeAligned, describeSetAside, setAsideTip, SET_ASIDE_NOTE, CURRENT_DEBT_UNPLACED, SET_ASIDE } from "./extract.js";
 import { buildGrid, sectionsFor, hasAnnualPeriods, announcedIsCurrent } from "./grid.js";
 import { Boundary } from "./boundary.js";
 import { applyTickerFixes, PREDECESSOR } from "./tickerFixes.js";
@@ -575,6 +575,9 @@ function CompanySheet({ data, quote, quoteNote, sections, co, tab, setTab, segs,
           if (sec.id === "sh" && grid.splits && grid.splits.length) rows.push([{ v: `Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`, s: XF.MUTED }]);
           // Rule 32, the same way: which columns' balance-sheet totals were read from one filing, and which.
           if (sec.id === "bs" && describeAligned(grid.cols)) rows.push([{ v: describeAligned(grid.cols), s: XF.MUTED }]);
+          // Rule 17's second clause, per section: which cells a set-aside filing is no longer read for.
+          const saLine = describeSetAside(grid.cols, sec.lines, display);
+          if (saLine) rows.push([{ v: saLine, s: XF.MUTED }]);
           // Said on its own row, because a spreadsheet has no tooltip and no card header to carry it:
           // these are today's price against the newest year, not a time series. In column A, not
           // beside the title — a year column has to stay numeric all the way down, or the first
@@ -641,6 +644,9 @@ function CompanySheet({ data, quote, quoteNote, sections, co, tab, setTab, segs,
     // Rule 31 travels with the paste too: a trailing line, since a TSV has no cell marker either.
     if (grid.splits && grid.splits.length) out.push(`Per-share figures and share counts filed before the ${describeSplits(grid.splits)} are shown on today's share basis; the filings carry them as reported.`);
     if (describeAligned(grid.cols)) out.push(describeAligned(grid.cols));
+    // Rule 17's second clause, over the copied tab's lines only.
+    const saLine = describeSetAside(grid.cols, secs.flatMap(s => s.lines), display);
+    if (saLine) out.push(saLine);
     navigator.clipboard.writeText(out.join("\n")).then(() => { setCopied("Copied — paste into Excel"); setTimeout(() => setCopied(""), 3000); })
       .catch(() => setCopied("Clipboard blocked by the browser"));
   };
@@ -913,6 +919,7 @@ function CompanySheet({ data, quote, quoteNote, sections, co, tab, setTab, segs,
           <span><b style={{ color: C.bronze }}>÷K · ×K</b> — a filed figure carried to today's share basis after a split; the link opens the filing that shows it as reported</span>
           <span><b style={{ color: C.navy }}>computed</b> — derived here</span>
           <span><b style={{ color: C.bronze }}>not tagged</b> — disclosed but untagged; use the section link</span>
+          <span><b style={{ color: C.bronze }}>set aside</b> — on a cell: a filing that does not present this year, or that dates another year's figures to it, is not read for it; the cell's tooltip and the row's note name it</span>
           <span><b style={{ color: C.faint }}>n/a</b> — this filer has never reported it</span>
           <span><b style={{ color: C.teal }}>judgement</b> — never auto-filled</span>
         </div>
@@ -976,6 +983,11 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
   const GAP = {
     "no-interim": (tic, lines) => `${tic} reports ${lines} only in its annual filing, so there is no comparable twelve months`,
     "restated-basis": (tic, lines) => `${tic} has re-presented its prior year without the annual figure catching up, so stitching ${lines} would mix two bases`,
+    // Rule 17: a twelve months whose fiscal-year leg was set aside. Only on the twelve-months basis, like
+    // the two above: on the fiscal-year basis this sentence would be untrue, and that basis has no
+    // sentence for a blank (a known gap). On the cached filers the one set-aside twelve months,
+    // JPMorgan's to June 2023, is not the headline this table reads, so only a synthetic reaches it.
+    ...(basis === "ltm" ? { [SET_ASIDE]: (tic, lines) => `${tic}'s ${lines} for the fiscal year this twelve months builds on comes only from a filing set aside for that year, so there is nothing to stitch` } : {}),
   };
   const gaps = {};
   for (const c of ready) for (const g of COMPS_ROWS) for (const r of g.rows) {
@@ -1578,6 +1590,7 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
     {sec.lines.map(line => {
       const cells = grid.cols.map(c => ({ v: c.v[line.k], m: c.meta[line.k] || {} }));
       const has = cells.some(x => x.v != null);
+      const saNote = SET_ASIDE_NOTE(grid.cols, line.k, display);
       // A value that arrived outranks every label. This used to test `how` first, so a valuation
       // line read "needs price" forever — including when the price had arrived and the multiple was
       // printed in the cell beside the label, which reads as a broken deployment rather than a
@@ -1619,6 +1632,7 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
         : cells[0] && cells[0].m.status === "not-applicable" ? naLabel
         : ccyBlocked ? `reported in ${ccyBlocked}`
         : ccyOther ? `filed in ${ccyOther}`
+        : cells.some(x => x.m.status === SET_ASIDE) ? "set aside"
         : coverBad ? coverBad
         : noShares ? "no share count"
         : wcPartial ? "partly tagged"
@@ -1638,8 +1652,9 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
               populates through FY2023 and stops exactly at the column the valuation block divides
               into, so a row-wide test would stay silent on the filers it matters most for. Never
               shown where NOT_APPLICABLE did the blanking — a bank's EBIT is already saying "n/a for
-              a bank", which is a different and better answer. */}
-          {newestBlank && line.blankNote && <div style={NOTE_STYLE}>{line.blankNote}</div>}
+              a bank", which is a different and better answer. Nor where the newest cell was set aside under rule 17:
+              five rows carry a blank note whose reason would be untrue there. */}
+          {newestBlank && line.blankNote && newest.m.status !== SET_ASIDE && <div style={NOTE_STYLE}>{line.blankNote}</div>}
           {/* And its opposite: a note for a row that IS populated, but from a tag that does not mean
               what the label says. A mortgage REIT's "Total revenue" is its interest income and a
               BDC's is its investment income, because neither files a revenue concept at all. Keyed
@@ -1675,6 +1690,11 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
             for (const c of grid.cols) if (c.v[k] || (c.meta[line.k] || {})[k]) hit = c;
             return hit ? <div key={k} style={NOTE_STYLE}>{typeof text === "function" ? text(hit) : text}</div> : null;
           })}
+          {/* Rule 17's second clause: which column's figure is not read from a filing that does not
+              present the year, or that dates another year's figures to it. Any column, like a flag
+              note, and on any row, because the mark falls wherever that filing's figure was; keyed to
+              the cell's `meta`, never to `v`, for the reason above. */}
+          {saNote && <div style={NOTE_STYLE}>{saNote}</div>}
         </td>
         {cells.map((x, i) => {
           const shown = display(line.k, x.v, x.m.unit);
@@ -1683,16 +1703,22 @@ function SectionRows({ sec, grid, S, link, naLabel = "n/a", cik }) {
           // linking it would be the one dishonest thing on a page whose whole argument is
           // provenance. Those keep the ƒ marker and stay plain text.
           const url = shown != null && x.m.accn ? secFilingUrl(cik, x.m.accn) : null;
+          // Rule 17's second clause: a cell set aside says why in its tooltip, the whole reason on a blank, and
+          // ahead of the ordinary source on a figure read from another filing instead, the way `displaced` does.
+          const src = x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : null;
           return <td key={i} style={{ padding: "7px 14px", textAlign: "right", fontFamily: MONO, fontSize: 13, color: x.v == null ? C.hair : C.ink2, whiteSpace: "nowrap" }}
-            title={x.m.tag ? `${x.m.status === "split-adjusted" ? `filed as ${x.m.filedValue}; shown ${x.m.splitMark} on today's share basis after a split — ` : ""}${x.m.displaced ? `read from the ${x.m.form} filed ${x.m.filed}, the newest filing presenting the whole balance sheet at this date; the newest filing for this line alone (${x.m.displaced.form} filed ${x.m.displaced.filed}) carries ${x.m.displaced.value === x.v ? "the same figure" : display(line.k, x.m.displaced.value, x.m.unit)} — ` : ""}${x.m.tag} · ${x.m.form} filed ${x.m.filed}${url ? " — click to open this filing on sec.gov" : ""}` : (x.m.week53 ? WEEK53_TIP[x.m.week53] : "")}>
+            title={x.m.setAside ? setAsideTip(x.m.setAside, { k: line.k, fy: grid.cols[i].period.fy, fmt: display, ccy: grid.ccy, source: x.v == null ? null : src || "" })
+              : src || (x.m.week53 ? WEEK53_TIP[x.m.week53] : "")}>
             {url
               ? <a className="srcnum" href={url} target="_blank" rel="noopener noreferrer">{shown}</a>
               /* Rule 40's refusal is the one blank on this page that is a DECISION about a column
                  rather than an absence, and it sits beside seven columns that print a figure — so an
                  em dash would read as "nothing filed here". It says the word, in the colour the row
-                 labels use for a blank that has a reason, and the row's note names the column. */
+                 labels use for a blank that has a reason, and the row's note names the column. A cell
+                 set aside under rule 17 is a decision of the same kind, and says its word the same way. */
               : (shown || (x.m.status === "not-meaningful" ? "n/m"
-                : x.m.status === CURRENT_DEBT_UNPLACED ? <span style={{ fontSize: 10, color: C.bronze, letterSpacing: .4 }}>refused</span> : "—"))}
+                : x.m.status === CURRENT_DEBT_UNPLACED ? <span style={{ fontSize: 10, color: C.bronze, letterSpacing: .4 }}>refused</span>
+                : x.m.status === SET_ASIDE ? <span style={{ fontSize: 10, color: C.bronze, letterSpacing: .4 }}>set aside</span> : "—"))}
             {/* Rule 31: a figure carried to today's share basis is marked ON THE CELL, not only in the
                 tooltip, because a phone has no hover and the header says every figure is as filed. The
                 marker is what was done to this number; the row's note says why and names the split. */}

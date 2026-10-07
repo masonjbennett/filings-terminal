@@ -1755,6 +1755,89 @@ export const describeAligned = cols => {
   return `Balance-sheet totals in ${hit.map(one).join("; ")} are all taken from that one filing — the newest presenting the whole balance sheet at the date — because taken each from its own newest filing they did not close; every figure is as filed there.`;
 };
 
+// Rule 17's second clause: a filing set aside for a year it does not present, or for a year it dates
+// another year's figures to. Every public sentence about it is here (the cell's tooltip, the row's
+// note, and the words of the workbook and TSV sentence that `describeSetAside` below groups), beside
+// rule 32's, so the suite can call each one. Figures print through the caller's `display(k, v, unit)`, as the
+// cell does. The mark is the cell's `meta.setAside`, { ctxs, unit, otherCcy?, otherCcyFilings?, via? },
+// never a key in `v`: ctxs[0] is the filing the cell was read from before, the rest the earlier
+// filings set aside after it (iQSTEL's FY2019 debt issued has four).
+const SET_ASIDE_WORDS = {
+  filing: o => `the ${o.form} filed ${o.filed}`,
+  // An instant context is named by its date (Schlumberger's, Chevron's), a duration by the fiscal year.
+  year: (o, fy) => (o.start ? `FY${fy}` : o.end),
+  what: o => (o.why === "purity" ? "dates another year's figures to it" : "does not present the year"),
+  // The workbook and TSV sentence: one item per column and set-aside filing, so iQSTEL's nineteen rows
+  // in one 10-K are one item, not nineteen.
+  line: (label, there, here, otherCcy) => `${label} ${there} there, ${here == null ? "blank" : here} here${here == null && otherCcy ? ` (filed in ${otherCcy} only)` : ""}`,
+  item: (y, filing, what, n, lines) => `${y}, ${filing} (${what}${n ? `; ${n} earlier ${n === 1 ? "filing" : "filings"} also set aside` : ""}): ${lines.join(", ")}.`,
+  sentence: items => "Set aside — a filing is not read for a year it does not present (no revenue, operating income, net income or cash-flow "
+    + "total for a period ending that date besides the figure itself), or for a year it dates another year's figures to. "
+    + items.join(" ") + " Each cell shows the filing read instead, or is blank where none is left.",
+};
+const saCap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const saFmt = (fmt, k, unit) => v => (fmt && fmt(k, v, unit)) ?? String(v);
+// One clause per set-aside filing, by the test that set it aside. The stray and the repeat say the
+// filing has no total for a period ending that date (JPMorgan's zero impairments in 10-Qs, Interactive
+// Brokers' 2018 10-K); "besides this figure" keeps it true where the figure is itself a total
+// (BetterLife's net income). The purity clause speaks of the FILING, so it stays true for a cell no
+// earlier filing witnessed (iQSTEL's FY2020 diluted EPS). Never "1 lines".
+const saClause = (o, fy, val) => {
+  const head = `${SET_ASIDE_WORDS.filing(o)} carries ${val(o.value)} for ${SET_ASIDE_WORDS.year(o, fy)}`;
+  if (o.why !== "purity") return `${head} but no revenue, operating income, net income or cash-flow total for any period of two months to a year ending ${o.end} besides this figure, so it does not present the year`;
+  const on = o.A === 2 ? "on both lines" : o.A === 1 ? "on the one line" : `on every one of the ${o.A} lines`;
+  return `${head}, but dates another year's figures to it: ${on} where earlier filings disagree with it, it carries the figure an earlier filing gave the year beside it`;
+};
+
+// The cell's tooltip. `source` is the cell's ordinary tooltip when it shows a figure read from another
+// filing instead, and null when it is blank. A blank's tail says what the reduced sheet found: nothing,
+// or the line filed only in another currency, which this sheet does not read. BetterLife's FY2012 net
+// income is carried by three filings in USD on a CAD sheet: its old blank said so, and the new one must
+// not say less. A trailing twelve months inherits its fiscal year's mark (`via: "fy"`) and names it.
+export const setAsideTip = (mark, { k, fy, fmt, ccy, source = null } = {}) => {
+  if (!mark || !mark.ctxs || !mark.ctxs.length) return "";
+  if (mark.via === "fy") return `The fiscal year this twelve months builds on (FY${mark.fy}): ` + setAsideTip({ ...mark, via: null }, { k, fy: mark.fy, fmt, ccy, source });
+  const val = saFmt(fmt, k, mark.unit), [first, ...rest] = mark.ctxs, y = SET_ASIDE_WORDS.year(first, fy);
+  const list = rest.map(o => `${SET_ASIDE_WORDS.filing(o)}, ${val(o.value)}`).join("; ");
+  if (source != null) return saCap(saClause(first, fy, val)) + (rest.length ? `; also set aside, as not presenting the year: ${list}` : "") + `, so it is not read here — ${source}`;
+  const n = mark.otherCcyFilings || 0;
+  const tail = mark.otherCcy
+    ? ` ${n} other ${n === 1 ? "filing carries" : "filings carry"} this line for ${y} in ${mark.otherCcy}, which this ${ccy || "USD"} sheet does not read, so the cell is left blank.`
+    : ` No other filing that is read carries this line for ${y}, so the cell is left blank.`;
+  return `Set aside. ${saCap(saClause(first, fy, val))}.` + (rest.length ? ` Also set aside, as not presenting the year: ${list}.` : "") + tail;
+};
+
+// The row's note, one sentence per marked column, because a phone has no hover and the mark can fall
+// on any row. Keyed to the cell's `meta`, like rule 40's two.
+export const SET_ASIDE_NOTE = (cols, k, fmt) => (cols || []).map(c => {
+  const m = (c.meta || {})[k], sa = m && m.setAside;
+  if (!sa || !sa.ctxs || !sa.ctxs.length) return "";
+  const val = saFmt(fmt, k, sa.unit), [first, ...rest] = sa.ctxs, n = rest.length;
+  const y = SET_ASIDE_WORDS.year(first, c.period.fy), F = SET_ASIDE_WORDS.filing(first), what = SET_ASIDE_WORDS.what(first);
+  if (c.v[k] != null) return `${y} is not read from ${F}, which ${what}; it carried ${val(first.value)}${m.form ? `, and the figure shown is from ${SET_ASIDE_WORDS.filing(m)}` : ""}.`;
+  const nf = sa.otherCcyFilings || 0;
+  return `${y} is set aside: ${F} ${what}`
+    + (n ? `, and the ${n} earlier ${n === 1 ? "filing that carries it does" : "filings that carry it do"} not present it either` : "")
+    + (sa.otherCcy ? `; the other ${nf === 1 ? "filing carries" : "filings carry"} it only in ${sa.otherCcy}.` : "; no other filing that is read carries it.");
+}).filter(Boolean).join(" ");
+
+// Rule 17's second clause travels with the file the same way: one sentence per section (the TSV's over
+// the copied tab), an item per column and set-aside filing. The words are the ones above; this
+// only groups. A blank cell stays empty, as every blank does, and the sentence carries the reason.
+export const describeSetAside = (cols, lines, fmt) => {
+  const W = SET_ASIDE_WORDS, groups = new Map();
+  for (const c of cols || []) for (const line of lines || []) {
+    const sa = ((c.meta || {})[line.k] || {}).setAside;
+    if (!sa || !sa.ctxs || !sa.ctxs.length) continue;
+    const first = sa.ctxs[0], key = `${c.period.end}|${first.accn}|${sa.ctxs.length}`;
+    if (!groups.has(key)) groups.set(key, { c, first, n: sa.ctxs.length - 1, lines: [] });
+    const val = v => (v == null ? null : (fmt && fmt(line.k, v, sa.unit)) ?? String(v));
+    groups.get(key).lines.push(W.line(line.label, val(first.value), val(c.v[line.k]), sa.otherCcy));
+  }
+  if (!groups.size) return "";
+  return W.sentence([...groups.values()].map(x => W.item(W.year(x.first, x.c.period.fy), W.filing(x.first), W.what(x.first), x.n, x.lines)));
+};
+
 // ── The change in working capital, as the FILER reported it ─────────────────────────────────────
 //
 // Rule 25. `chgNwc` was declared `how: "computed"` with the formula `nwc - nwc[-1]` and implemented
