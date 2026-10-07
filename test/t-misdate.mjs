@@ -297,10 +297,10 @@ S("S15", () => {
   ok(app.includes("x.m.status === SET_ASIDE ? <span") && app.includes(">set aside</span>"), "the blank cell says 'set aside'");
   ok(app.includes("x.m.setAside ? setAsideTip(x.m.setAside, {"), "every marked cell's tooltip is the set-aside one");
   ok(app.includes("<b style={{ color: C.bronze }}>set aside</b> — on a cell: a filing that does not present this year, or that dates another year's figures to it, is not read for it; the cell's tooltip and the row's note name it"), "the legend line, word for word");
-  ok(app.includes("SET_ASIDE_NOTE(grid.cols, line.k, display)"), "the row note is rendered");
+  ok(/const saNote = SET_ASIDE_NOTE\(grid\.cols, line\.k, display\);/.test(app) && app.includes("{saNote && <div style={NOTE_STYLE}>{saNote}</div>}"), "the row note is computed and rendered");
   ok(app.includes("newest.m.status !== SET_ASIDE"), "and the blank note, untrue there, is not");
-  ok(app.includes("describeSetAside(grid.cols, sec.lines, display)"), "the workbook carries the sentence per section");
-  ok(app.includes("describeSetAside(grid.cols, secs.flatMap(s => s.lines), display)"), "the TSV carries it over the copied tab");
+  ok(/const saLine = describeSetAside\(grid\.cols, sec\.lines, display\);\s*if \(saLine\) rows\.push\(\[\{ v: saLine, s: XF\.MUTED \}\]\);/.test(app), "the workbook carries the sentence per section");
+  ok(/const saLine = describeSetAside\(grid\.cols, secs\.flatMap\(s => s\.lines\), display\);\s*if \(saLine\) out\.push\(saLine\);/.test(app), "the TSV carries it over the copied tab");
   ok(/basis === "ltm" \? \{ \[SET_ASIDE\]: \(tic, lines\) =>/.test(app), "Comps explains a set-aside gap on the LTM basis");
 });
 
@@ -369,6 +369,45 @@ S("S19", () => {
   eq(s.ccy, "EUR", "S19: the sheet as first built reads EUR");
   eq([g.standDown.skipped, g.standDown.setAside, g.ccy], ["ccy", [], "EUR"], "S19: built without the strays it would read USD, so nothing is set aside: skipped 'ccy'");
   ok(isDeepStrictEqual(g.cols, s.cols), "S19: and the sheet is the one first built");
+});
+
+// ── S3 with no interim on file: the twelve months is the newest year carried, a copy made inside
+// buildSheet before any mark, so it takes the year's marks again ──────────────────────────────────
+S("S3, carried", () => {
+  const ks = [2020, 2021, 2022].map(y => tenK(y));
+  ks[0].d("impairment", FY(2020), 5 * M);
+  const qs = [["2023-05-03", "q1"], ["2023-08-03", "q2"], ["2023-11-03", "q3"]].map(([filed, accn]) => filing("10-Q", filed, accn).d("impairment", FY(2022), 0));
+  const g = build(payload(...ks, ...qs)), last = g.cols[g.cols.length - 1], m = last.meta.impairment || {};
+  eq([last.period.end, g.ltmStitched, m.status], ["2022-12-31", false, SET_ASIDE], "S3, carried: the newest year is set aside, and no twelve months is stitched");
+  ok(!!g.ltm && isDeepStrictEqual(g.ltm.meta.impairment, m), "S3, carried: the twelve months carried from it shows the same set-aside blank");
+});
+
+// ── S9 beside a stray: a filing is set aside for one context, its start and its end, never for every
+// fact it dates to that day, so the same 10-Q's year-end balance sheet is still read ───────────────
+S("S9, beside a stray", () => {
+  const fl = [2019, 2020, 2021].map(y => tenK(y).i("totalAssets", y + "-12-31", (y - 2000) * 100 * M).i("totalAssets", (y - 1) + "-12-31", (y - 2001) * 100 * M));
+  const q = filing("10-Q", "2022-05-10", "q1").own(Qtr(2022, 1)).i("totalAssets", "2022-03-31", 2250 * M).i("totalAssets", "2021-12-31", 2105 * M).d("deferredTax", FY(2021), -7 * M);
+  const g = build(payload(...fl, q)), c = colAt(g, "2021-12-31");
+  eq([c.meta.deferredTax.status, ctxsOf(c.meta.deferredTax).map(o => o.why)], [SET_ASIDE, ["stray"]], "S9, beside a stray: the 10-Q's annual deferred tax is set aside");
+  eq([c.v.totalAssets, c.meta.totalAssets.accn, !!c.meta.totalAssets.setAside], [2105 * M, "q1", false], "S9, beside a stray: its year-end total assets, another context, is still read from it");
+});
+
+// ── S20, one filing with two contexts ending the same day: the repeat asks whether a filing presents the
+// year of the PAYLOAD, never of the facts left once a context is set aside. The 10-Q's operating cash
+// flow, the only total it carries for 2021, is stray and goes with its context; its deferred tax is also
+// filed under a second context a day or two apart, which is read, and the payload's cash-flow total
+// keeps that filing from reading as stray. Four sheets, both orders of the two facts and a second
+// context either side, so whichever the first build reads, one of them reaches the repeat ────────────
+S("S20", () => {
+  const E = "2021-12-31", ks = [2020, 2021, 2022].map(y => tenK(y));
+  const runs = [["2021-01-02", false], ["2021-01-02", true], ["2020-12-31", false], ["2020-12-31", true]].map(([s2, flip]) => {
+    const q = filing("10-Q", "2023-05-03", "qb").own(Qtr(2023, 1)).d("cfo", FY(2021), 777 * M);
+    const two = [[FY(2021), -11 * M], [[s2, E], -13 * M]];
+    for (const [p, v] of flip ? two.reverse() : two) q.d("deferredTax", p, v);
+    return build(payload(...ks, q));
+  });
+  for (const g of runs) eq(g.standDown.setAside.map(x => x.key), ["qb|2021-01-01.." + E], "S20: only the stray context is set aside");
+  ok(runs.some(g => !!(colAt(g, E).meta.deferredTax || {}).setAside), "S20: and on at least one sheet the deferred tax moved to the second context, so the repeat tested it");
 });
 
 // ── The memo, and the payload, on a synthetic (CI has no cache) ─────────────────────────────────
