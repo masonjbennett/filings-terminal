@@ -143,8 +143,10 @@ Each was learned by probing real filings, and each fails **silently** if broken:
    dated the day the filing went out, so it matches no period end. Mark those `latest: true`.
 5. **A blank is not one thing.** *n/a for a bank* (does not exist for this filer type), *n/a* (never
    tagged), *not tagged* (disclosed but untagged — go look), *judgement* (never auto-filled),
-   *needs price*, and — since rule 20 — *filed in USD* (tagged for this period, in a currency this
-   sheet is not in). Only "not tagged" is worth hunting by hand; conflating them sends you chasing
+   *needs price*, *filed in USD* since rule 20 (tagged for this period, in a currency this sheet is
+   not in), and *set aside* since rule 17's second clause (tagged for this period only by filings that
+   do not present the year or that date another year's figures to it, and by no other filing that is
+   read). Only "not tagged" is worth hunting by hand; conflating them sends you chasing
    numbers that do not exist, or into a 20-F after a figure that is sitting there in the wrong unit.
 
 6. **The calendar is RECENT first, then deep, and it is per-industry.** Three failures, each of
@@ -448,6 +450,68 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     Uncorroborated, off by exactly a power of ten, and outvoted two to none. Anything short of all
     three leaves the sort exactly as it was. `full-diff.mjs` across the 167 already swept: **byte-identical
     to before the change** — 0 filers moved, 0 values changed, 0 source-form moves.
+
+    **Its second clause: a filing can carry the right figure under the wrong year.** iQSTEL's FY2022 10-K
+    heads its comparative column "Dec. 31, 2020" over 2021's figures, and rule 2 took the newest filing, so the
+    FY2020 column printed FY2021's figures on 21 rows — revenue $64,702,018 where every earlier filing says
+    $44,910,006. The structure is this rule's: the newest figure is outvoted, it has a recognisable shape —
+    *equal to the adjacent year* beside *an exact power of ten* — and the corroborated earlier figure is
+    preferred. One filing's facts at one exact period are set aside when either holds:
+    - **every** cell of it that all earlier filings contradict carries the figure an earlier filing gave the
+      year beside it, on at least two distinct lines with a non-zero figure (a zero counts against and never
+      toward: a zero on both sides of a year is no evidence of a date). Being outvoted is ordinary — 3,336
+      cells across the measured populations, 3,290 of them landing nowhere near a neighbour, because a
+      restatement moves a year to a new figure — and five contexts convict, each read against the filer's
+      rendered statements: iQSTEL FY2020, Schlumberger's FY2021 PP&E from a Q1-2023 note, Chevron's FY2021
+      option rollforward, Riot's FY2020 segment table, QXO's FY2018 option table;
+    - or it is a **duration** whose filing carries no revenue, operating income, net income or cash-flow
+      total besides that figure for any period of 60 days to a year ending on that date — the filing does
+      not present the year, so the figure is a note, a schedule or a mis-dated column. That reaches Altria's
+      deferred tax, where each of FY2018-FY2020 showed the next year's figure (FY2020 −$1,160m where the
+      presenting filings say −$164m), and an amortization schedule Interactive Brokers filed for 2018-2020
+      in a 10-K filed in March 2018.
+
+    An instant is never set aside by the second test, which fires on 1,521 instant contexts; instants enter
+    only through the first. A 10-Q's annual figure is not stray for being in a 10-Q: Axon's Q3-2024 revision
+    table ties on every line. The two tests never fire on the same context (0 of 1,580).
+
+    The remedy is to build the sheet again without those facts, so every other rule — the calendar, splits
+    (31), rule 2, the balance-sheet legs (32), the LTM stitch (37), every derived and priced row — reads the
+    reduced set the way it reads any payload. Rule 2 picks again; while the new pick comes from another
+    duration the second test marks, that filing is set aside too. On the cache 44 contexts on 26 filers are
+    recognised and the repeat adds 33, so 77 are set aside; 145 of 171 filers build once, and none needs
+    more than four rebuilds. When nothing is left the cell is blank, a blank of its own kind (rule 5), and
+    says **set aside**, in bronze, with a tooltip naming each filing and why, a row note naming the column, a
+    sentence in the workbook and the copied table, and, on the twelve-months basis, a line in Comps. A cell
+    that moved carries the same tooltip, note and sentence, the way rule 32 marks a moved leg; one re-sourced
+    at the same figure carries only its source; a twelve-months cell that moves with its fiscal year carries
+    that year's mark.
+
+    It fails closed four ways. The repeat never sets aside a filing that presents the year, because it adds
+    only stray durations. A sheet whose header would move — a column, an LTM window, the currency, a split —
+    is shown as first built, because nothing per cell is comparable across a new calendar, and a set-aside
+    comparative can be a split's only witness (rule 31): built without it, every share row of every column
+    would lose its rebasing (0 of 171 on the cache). A repeat still adding after 12 rebuilds stops there and
+    marks only what the last build left out (the cache never reaches it). And any error returns the sheet as
+    first built, with a console warning.
+
+    `full-diff.mjs` across the cache: **132 cells move on 26 filers** — 76 values change, 13 cells go blank,
+    43 are re-sourced at the same figure, 0 appear, and no calendar moves. In the classification the suite
+    pins, 43 are annual reported cells that change (32 to another filed figure, 11 to set aside), 31 are
+    annual cells re-sourced at the same figure, 12 are LTM cells re-sourced at the same figure, and 46 are
+    the derived and LTM cells that read them, with a 47th in the headline: Johnson & Johnson's LTM
+    acquisitions $3,305m → $3,346m, there and on its LTM column; JPMorgan's LTM-to-June-2023 impairment
+    0 → set aside. iQSTEL's 21 rows: 19 go back to the earlier filings' figures, and diluted EPS and
+    diluted shares are set aside, because only that filing
+    carries them. Its costs are named: Bank of America's FY2019 impairment ($2.1bn, true — the 10-K tags the
+    consolidated $2,072m under an equity-method concept the row does not fetch), JPMorgan's FY2020-FY2022
+    zeros, and BetterLife's FY2012 net income (1,417,734, which three filings tag in USD and the set-aside
+    one in CAD) go blank. It is a vote like the rest of this rule, not an identity like rule 32: it cannot
+    undo a restatement, since a convicted context has no cell that moved to a new figure, but nothing checks
+    what it restores, its precision rests on five convictions with none wrong, and a mis-dating in a year's
+    first filing has nothing to be outvoted by. `test/t-misdate.mjs`, **370 assertions** (95 without the
+    fixture cache), and **45 of 45 mutations caught** by `test/_mutate-misdate.mjs`, which runs 50 and
+    names the other 5 as equivalent, each with its reason.
 
 18. **A column is a fiscal YEAR, and fresh-start accounting files periods that are not.** The annual
     window was drawn at 300–400 days to sit safely outside 52–53 weeks, and nothing had ever landed in
@@ -3255,12 +3319,13 @@ reports after a deploy has gone out. Making it blocking means calling `npm test`
 script, which hands one wrong assertion the power to stop a deploy to a live recruiting artifact. If
 blocking is wanted, branch protection on pull requests is the place, and it is a repository setting.
 
-**What the green check does not cover, measured both ways.** 13 of the suites gate a block on the
+**What the green check does not cover, measured both ways.** 14 of the suites gate a block on the
 fixture cache, which is gitignored and is a live throttled pull against SEC, so the runner never has
-it: **3,427 assertions with the cache, 2,109 without — a 38% drop, and every suite still reports as
-passing**, so it is invisible in the summary line. 84% of the loss is two suites, t-week53 975 → 54
-and t-announced 288 → 105, which are precisely the blocks that drive real EDGAR payloads through
-`buildGrid`. Building the cache in CI would trade that for a live SEC dependency on every push under
+it: **3,854 assertions with the cache, 2,261 without — a 41% drop, and every suite still reports as
+passing**, so it is invisible in the summary line. 87% of the loss is three suites, t-week53
+975 → 54, t-misdate 370 → 95 and t-announced 288 → 105, which are precisely the blocks that drive
+real EDGAR payloads through `buildGrid`. Building the cache in CI would trade that for a live SEC
+dependency on every push under
 a fair-access User-Agent carrying a real email, from GitHub's IPs. Worse. Rebuild locally and re-run
 before trusting any change to extraction logic.
 
@@ -3500,11 +3565,24 @@ Chevron's long-term row losing to alternative order. What is left is below, with
 
 7. **Three column defects that reading item 5's 39 found, none of them a ratio problem (measured, open).**
    No sweep check fires on the first two after item 5, so this entry is their only record.
-   **iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures** (R4: revenue
-   $64,702,018, operating loss (2,983,916)), and rule 2 takes the newest filing, so the sheet prints FY2021's
-   figures in both FY2020 and FY2021; the FY2020 and FY2021 10-Ks carry 2020 as $44,910,006 and (3,212,015).
-   One identical adjacent column pair in 1,087 on the cache, none in 211 on the frame — a filer's
-   mislabelled context, which a newest-filing rule cannot see and a twin-column test could. **AIOS's FY2024
+   **iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures: shipped as rule
+   17's second clause, which sets a filing aside for a year it does not present or dates another year's
+   figures to. What is left:** it is measured on the cache's 171 sheets only. Riot FY2020, QXO FY2018, DH
+   FY2021 taxes paid, Monster FY2024 impairment, Lyft FY2022 ×2 and U-Haul FY2020 were measured on frames
+   whose payloads are no longer on disk, so their outcomes are unrun on today's engine. Residuals no
+   recogniser reaches: Chevron FY2022 (the other end of the rollforward; only a symmetric landing test
+   reaches it, and that raises the worst-case coincidence bound 60%), Watsco FY2018-19 (one landing per
+   context), BHIC FY2025 R&D (a 10-Q's mis-dated annual figure, kept because a 10-Q may present), CPIX
+   FY2018, TULP FY2018, RDNT FY2018-19, and U-Haul. Instants enter only through the first test; nine
+   instant columns on the cache whose balance sheet or PP&E foots only on the set-aside figure are unread
+   (AON FY2019, BAC FY2023, CI FY2020, FOUR FY2022-23, GE FY2022, KKR FY2021, LAZ FY2024, MLR FY2019). Bank
+   of America's FY2019 impairment needs `EquityMethodInvestmentOtherThanTemporaryImpairment` on the row,
+   which needs its own double-counting check against `AssetImpairmentCharges`. A forward-dated fact (a
+   period ending after the filing was filed) is a second, unswept idea. Warner Bros. Discovery FY2024
+   (9,100m → 9,147m) moved and is unread. On the FY basis Comps explains no blank, so a set-aside newest
+   year blanks there without a sentence. Any rule added later that reads these cells, a pre-tax trigger
+   among them, must run after the stand-down; since the stand-down rebuilds through `buildSheet`, a rule
+   written inside `buildSheet` already sees the reduced facts. **AIOS's FY2024
    takes revenue from the consolidated 2025 20-F ($340.2m) and EBIT from the 2026 20-F's discontinued-operations
    re-presentation ((9,953,175), no continuing revenue)** — rule 12's basis problem on an annual column, which
    rule 32 solved only for the balance sheet. **Bloomia's FY2020 pre-tax prints 0** where its FY2021 10-K's
