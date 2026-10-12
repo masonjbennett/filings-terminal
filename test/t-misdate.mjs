@@ -82,7 +82,7 @@ S("S1", () => {
   eq([c.v.deferredTax, m.status, m.accn], [-57 * M, "reported", "k2019"], "S1: FY2019 shows the presenting 10-K's −57, still reported");
   eq(ctxsOf(m), [{ form: "10-K", filed: "2023-02-20", why: "stray", value: -95 * M }], "S1: and carries a one-filing mark naming the 10-K it was read from before");
   eq(setAsideTip(m.setAside, { k: "deferredTax", fy: c.period.fy, fmt: null, ccy: g.ccy, source: "SRC" }),
-    STRAY("10-K", "2023-02-20", "-95000000", 2019, "2019-12-31") + ", so it is not read here — SRC", "S1: the moved cell's tooltip, word for word");
+    STRAY("10-K", "2023-02-20", "-95000000", 2019, "2019-12-31") + " and is not read here — SRC", "S1: the moved cell's tooltip, word for word, with one \"so\"");
   eq(SET_ASIDE_NOTE(g.cols, "deferredTax", null), "FY2019 is not read from the 10-K filed 2023-02-20, which does not present the year; it carried -95000000, and the figure shown is from the 10-K filed 2020-02-20.", "S1: the row note names the filing read instead");
   eq(g.standDown.builds, 2, "S1: one rebuild, and the repeat stops at the 10-K that presents the year");
 });

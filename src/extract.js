@@ -1799,7 +1799,9 @@ export const setAsideTip = (mark, { k, fy, fmt, ccy, source = null } = {}) => {
   if (mark.via === "fy") return `The fiscal year this twelve months builds on (FY${mark.fy}): ` + setAsideTip({ ...mark, via: null }, { k, fy: mark.fy, fmt, ccy, source });
   const val = saFmt(fmt, k, mark.unit), [first, ...rest] = mark.ctxs, y = SET_ASIDE_WORDS.year(first, fy);
   const list = rest.map(o => `${SET_ASIDE_WORDS.filing(o)}, ${val(o.value)}`).join("; ");
-  if (source != null) return saCap(saClause(first, fy, val)) + (rest.length ? `; also set aside, as not presenting the year: ${list}` : "") + `, so it is not read here — ${source}`;
+  // A stray clause already ends "so it does not present the year": straight after it, a second "so" would stutter.
+  const notRead = first.why !== "purity" && !rest.length ? " and is not read here" : ", so it is not read here";
+  if (source != null) return saCap(saClause(first, fy, val)) + (rest.length ? `; also set aside, as not presenting the year: ${list}` : "") + `${notRead} — ${source}`;
   const n = mark.otherCcyFilings || 0;
   const tail = mark.otherCcy
     ? ` ${n} other ${n === 1 ? "filing carries" : "filings carry"} this line for ${y} in ${mark.otherCcy}, which this ${ccy || "USD"} sheet does not read, so the cell is left blank.`

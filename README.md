@@ -3563,8 +3563,9 @@ Chevron's long-term row losing to alternative order. What is left is below, with
    capex concept printing a free cash flow the other four cannot have: rule 27's REIT paragraph has
    the reading, the population and the full-diff. Item 6 is closed.
 
-7. **Three column defects that reading item 5's 39 found, none of them a ratio problem (measured, open).**
-   No sweep check fires on the first two after item 5, so this entry is their only record.
+7. **Three column defects that reading item 5's 39 found, none of them a ratio problem (measured; the first
+   shipped as rule 17's second clause, the other two open).** No sweep check fires on AIOS's after item 5, so
+   this entry is its only record.
    **iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures: shipped as rule
    17's second clause, which sets a filing aside for a year it does not present or dates another year's
    figures to. What is left:** it is measured on the cache's 171 sheets only. Riot FY2020, QXO FY2018, DH
