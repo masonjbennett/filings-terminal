@@ -144,9 +144,9 @@ Each was learned by probing real filings, and each fails **silently** if broken:
 5. **A blank is not one thing.** *n/a for a bank* (does not exist for this filer type), *n/a* (never
    tagged), *not tagged* (disclosed but untagged — go look), *judgement* (never auto-filled),
    *needs price*, *filed in USD* since rule 20 (tagged for this period, in a currency this sheet is
-   not in), and *set aside* since rule 17's second clause (tagged for this period only by filings that
-   do not present the year or that date another year's figures to it, and by no other filing that is
-   read). Only "not tagged" is worth hunting by hand; conflating them sends you chasing
+   not in), and *set aside* since rule 17's second clause (no filing this sheet reads carries it for this
+   period once the filings that do not present the year, or that date another year's figures to it, are
+   set aside). Only "not tagged" is worth hunting by hand; conflating them sends you chasing
    numbers that do not exist, or into a 20-F after a figure that is sitting there in the wrong unit.
 
 6. **The calendar is RECENT first, then deep, and it is per-industry.** Three failures, each of
@@ -458,7 +458,7 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     *equal to the adjacent year* beside *an exact power of ten* — and the corroborated earlier figure is
     preferred. One filing's facts at one exact period are set aside when either holds:
     - **every** cell of it that all earlier filings contradict carries the figure an earlier filing gave the
-      year beside it, on at least two distinct lines with a non-zero figure (a zero counts against and never
+      year beside it, under at least two distinct tags with a non-zero figure (a zero counts against and never
       toward: a zero on both sides of a year is no evidence of a date). Being outvoted is ordinary — 3,336
       cells across the measured populations, 3,290 of them landing nowhere near a neighbour, because a
       restatement moves a year to a new figure — and five contexts convict, each read against the filer's
@@ -488,7 +488,8 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     that year's mark.
 
     It fails closed four ways. The repeat never sets aside a filing that presents the year, because it adds
-    only stray durations. A sheet whose header would move — a column, an LTM window, the currency, a split —
+    only stray durations. A sheet whose header would move — a column, an LTM window, either later-filing
+    banner, the currency, a split —
     is shown as first built, because nothing per cell is comparable across a new calendar, and a set-aside
     comparative can be a split's only witness (rule 31): built without it, every share row of every column
     would lose its rebasing (0 of 171 on the cache). A repeat still adding after 12 rebuilds stops there and
@@ -500,8 +501,8 @@ Each was learned by probing real filings, and each fails **silently** if broken:
     pins, 43 are annual reported cells that change (32 to another filed figure, 11 to set aside), 31 are
     annual cells re-sourced at the same figure, 12 are LTM cells re-sourced at the same figure, and 46 are
     the derived and LTM cells that read them, with a 47th in the headline: Johnson & Johnson's LTM
-    acquisitions $3,305m → $3,346m, there and on its LTM column; JPMorgan's LTM-to-June-2023 impairment
-    0 → set aside. iQSTEL's 21 rows: 19 go back to the earlier filings' figures, and diluted EPS and
+    acquisitions $3,305m → $3,346m, there and on its LTM column. Among the 46, JPMorgan's LTM-to-June-2023
+    impairment goes 0 → set aside. iQSTEL's 21 rows: 19 go back to the earlier filings' figures, and diluted EPS and
     diluted shares are set aside, because only that filing
     carries them. Its costs are named: Bank of America's FY2019 impairment ($2.1bn, true — the 10-K tags the
     consolidated $2,072m under an equity-method concept the row does not fetch), JPMorgan's FY2020-FY2022
@@ -3580,8 +3581,14 @@ Chevron's long-term row losing to alternative order. What is left is below, with
    of America's FY2019 impairment needs `EquityMethodInvestmentOtherThanTemporaryImpairment` on the row,
    which needs its own double-counting check against `AssetImpairmentCharges`. A forward-dated fact (a
    period ending after the filing was filed) is a second, unswept idea. Warner Bros. Discovery FY2024
-   (9,100m → 9,147m) moved and is unread. On the FY basis Comps explains no blank, so a set-aside newest
-   year blanks there without a sentence. Any rule added later that reads these cells, a pre-tax trigger
+   (9,100m → 9,147m) moved and is unread. Three shapes built as synthetics make a sheet worse, and none
+   changes a cached figure beyond BetterLife's: the second test reads totals only under the template's own
+   tags, so a filing that presents the year under other concepts is set aside as not presenting it; a
+   10-K/A that re-tags only its corrected line is set aside the same way, and the original's figure is
+   shown; and a restatement that happens to land on the prior year's figures on every line it changes
+   convicts under the first test. A twelve-months figure that moves with its fiscal year carries the mark
+   in the sheet's data, but only a blank one is explained on the page, in Comps. On the FY basis Comps
+   explains no blank, so a set-aside newest year blanks there without a sentence. Any rule added later that reads these cells, a pre-tax trigger
    among them, must run after the stand-down; since the stand-down rebuilds through `buildSheet`, a rule
    written inside `buildSheet` already sees the reduced facts. **AIOS's FY2024
    takes revenue from the consolidated 2025 20-F ($340.2m) and EBIT from the 2026 20-F's discontinued-operations

@@ -256,7 +256,7 @@ function descaled(matches, winner) {
 // The clause above is about scale; this one is about the date, and its structure is the same: the
 // newest figure is outvoted, it has a recognisable shape, and the corroborated earlier figure is
 // preferred. iQSTEL's FY2022 10-K heads its comparative column "Dec. 31, 2020" over 2021's figures,
-// and rule 2 took the newest filing, so the FY2020 column printed FY2021's company on nineteen rows:
+// and rule 2 took the newest filing, so the FY2020 column printed FY2021's figures on nineteen rows:
 // revenue $64,702,018 where every earlier filing says $44,910,006.
 //
 // One filing's facts at one EXACT period — the accession, the start and the end, so an instant and a
@@ -1767,8 +1767,8 @@ const SET_ASIDE_WORDS = {
   // An instant context is named by its date (Schlumberger's, Chevron's), a duration by the fiscal year.
   year: (o, fy) => (o.start ? `FY${fy}` : o.end),
   what: o => (o.why === "purity" ? "dates another year's figures to it" : "does not present the year"),
-  // The workbook and TSV sentence: one item per column and set-aside filing, so iQSTEL's nineteen rows
-  // in one 10-K are one item, not nineteen.
+  // The workbook and TSV sentence: one item per column and set-aside filing, so iQSTEL's 21 rows from
+  // one 10-K are one item in each section's sentence, not 21.
   line: (label, there, here, otherCcy) => `${label} ${there} there, ${here == null ? "blank" : here} here${here == null && otherCcy ? ` (filed in ${otherCcy} only)` : ""}`,
   item: (y, filing, what, n, lines) => `${y}, ${filing} (${what}${n ? `; ${n} earlier ${n === 1 ? "filing" : "filings"} also set aside` : ""}): ${lines.join(", ")}.`,
   sentence: items => "Set aside — a filing is not read for a year it does not present (no revenue, operating income, net income or cash-flow "
@@ -1799,9 +1799,14 @@ export const setAsideTip = (mark, { k, fy, fmt, ccy, source = null } = {}) => {
   if (mark.via === "fy") return `The fiscal year this twelve months builds on (FY${mark.fy}): ` + setAsideTip({ ...mark, via: null }, { k, fy: mark.fy, fmt, ccy, source });
   const val = saFmt(fmt, k, mark.unit), [first, ...rest] = mark.ctxs, y = SET_ASIDE_WORDS.year(first, fy);
   const list = rest.map(o => `${SET_ASIDE_WORDS.filing(o)}, ${val(o.value)}`).join("; ");
-  // A stray clause already ends "so it does not present the year": straight after it, a second "so" would stutter.
-  const notRead = first.why !== "purity" && !rest.length ? " and is not read here" : ", so it is not read here";
-  if (source != null) return saCap(saClause(first, fy, val)) + (rest.length ? `; also set aside, as not presenting the year: ${list}` : "") + `${notRead} — ${source}`;
+  // A stray clause already ends "so it does not present the year": straight after it a second "so" would
+  // stutter, and after a list of further filings an "it" would read as the last one named (Digital
+  // Realty's FY2018 lease revenue, three 10-Qs).
+  if (source != null) {
+    const clause = saCap(saClause(first, fy, val));
+    if (rest.length) return `${clause}; also set aside, as not presenting the year: ${list}. None is read here — ${source}`;
+    return clause + (first.why === "purity" ? ", so it is not read here" : " and is not read here") + ` — ${source}`;
+  }
   const n = mark.otherCcyFilings || 0;
   const tail = mark.otherCcy
     ? ` ${n} other ${n === 1 ? "filing carries" : "filings carry"} this line for ${y} in ${mark.otherCcy}, which this ${ccy || "USD"} sheet does not read, so the cell is left blank.`

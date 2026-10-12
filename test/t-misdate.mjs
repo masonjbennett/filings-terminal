@@ -83,6 +83,10 @@ S("S1", () => {
   eq(ctxsOf(m), [{ form: "10-K", filed: "2023-02-20", why: "stray", value: -95 * M }], "S1: and carries a one-filing mark naming the 10-K it was read from before");
   eq(setAsideTip(m.setAside, { k: "deferredTax", fy: c.period.fy, fmt: null, ccy: g.ccy, source: "SRC" }),
     STRAY("10-K", "2023-02-20", "-95000000", 2019, "2019-12-31") + " and is not read here — SRC", "S1: the moved cell's tooltip, word for word, with one \"so\"");
+  const ctx = (why, filed, value) => ({ why, form: "10-Q", filed, accn: `q-${filed}`, start: "2018-01-01", end: "2018-12-31", value, A: 0 });
+  eq(setAsideTip({ ctxs: [ctx("stray", "2019-11-08", 3), ctx("repeat", "2019-08-07", 3), ctx("repeat", "2019-05-10", 3)], unit: "USD" }, { k: "revenue", fy: 2018, fmt: null, ccy: "USD", source: "SRC" }),
+    STRAY("10-Q", "2019-11-08", "3", 2018, "2018-12-31") + "; also set aside, as not presenting the year: the 10-Q filed 2019-08-07, 3; the 10-Q filed 2019-05-10, 3. None is read here — SRC",
+    "S1: a moved cell after more than one set-aside filing closes the list before the source, with no second \"so\" and no \"it\"");
   eq(SET_ASIDE_NOTE(g.cols, "deferredTax", null), "FY2019 is not read from the 10-K filed 2023-02-20, which does not present the year; it carried -95000000, and the figure shown is from the 10-K filed 2020-02-20.", "S1: the row note names the filing read instead");
   eq(g.standDown.builds, 2, "S1: one rebuild, and the repeat stops at the 10-K that presents the year");
 });

@@ -695,7 +695,8 @@ export function buildSheet(data, quote, limit = 8) {
 //
 // It fails closed four ways. The repeat never sets aside a filing that presents the year, because it
 // adds only stray durations. A header that moves — a column or an LTM window appearing or going, the
-// LTM carried instead of stitched, the currency, a split — returns the sheet as first built, with
+// LTM carried instead of stitched, either later-filing banner, the currency, a split — returns the sheet
+// as first built, with
 // `standDown.skipped` naming the first field that moved. Nothing per cell is comparable across a new
 // calendar, and a set-aside comparative can be a split's only witness (rule 31), the way restated
 // comparatives witness NVIDIA's: built without it, every share row of every column loses its rebasing,

@@ -146,7 +146,7 @@ const MUTS = [
   [APP, "the workbook sentence is gone", "if (saLine) rows.push([{ v: saLine, s: XF.MUTED }]);", ""],
   [APP, "the copied sheet's sentence is gone", "if (saLine) out.push(saLine);", ""],
   [APP, "Comps' gap entry is gone",
-    "...(basis === \"ltm\" ? { [SET_ASIDE]: (tic, lines) => `${tic}'s ${lines} for the fiscal year this twelve months builds on comes only from a filing set aside for that year, so there is nothing to stitch` } : {}),", ""],
+    "...(basis === \"ltm\" ? { [SET_ASIDE]: (tic, lines) => `${tic}'s ${lines} for the fiscal year its twelve months rests on came only from a filing set aside for that year, so there is nothing to read` } : {}),", ""],
   [EX, "the tooltip loses \"besides this figure\"",
     "ending ${o.end} besides this figure, so it does not present the year", "ending ${o.end}, so it does not present the year"],
   [EX, "the row's note drops the column",

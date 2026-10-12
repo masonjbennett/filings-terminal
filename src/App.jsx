@@ -987,7 +987,8 @@ function CompsTable({ comps, S, onRemove, onClear, onOpen }) {
     // the two above: on the fiscal-year basis this sentence would be untrue, and that basis has no
     // sentence for a blank (a known gap). On the cached filers the one set-aside twelve months,
     // JPMorgan's to June 2023, is not the headline this table reads, so only a synthetic reaches it.
-    ...(basis === "ltm" ? { [SET_ASIDE]: (tic, lines) => `${tic}'s ${lines} for the fiscal year this twelve months builds on comes only from a filing set aside for that year, so there is nothing to stitch` } : {}),
+    // "Rests on" and "came" hold for a carried twelve months (no interim on file) and for any number of lines.
+    ...(basis === "ltm" ? { [SET_ASIDE]: (tic, lines) => `${tic}'s ${lines} for the fiscal year its twelve months rests on came only from a filing set aside for that year, so there is nothing to read` } : {}),
   };
   const gaps = {};
   for (const c of ready) for (const g of COMPS_ROWS) for (const r of g.rows) {

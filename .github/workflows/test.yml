@@ -33,7 +33,8 @@
 # ── WHAT THIS JOB ACTUALLY PROVES — read this before trusting the green check ────────────────────
 #
 # test/run.mjs discovers and runs every test/t-*.mjs regardless; it has no notion of skipping a
-# suite, and it refuses a green run over zero suites. But 13 of the 22 suites gate an internal block
+# suite, and it refuses a green run over zero suites. But most suites (13 of 22 on 2026-09-26, 14 of
+# 24 since rule 17's second clause; the README's CI paragraph keeps the current count) gate an internal block
 # on test/_fixtures.mjs's `haveFixtures()`, which looks for a cache built by
 # `node scripts/build-fixtures.mjs` — a live, throttled pull of 161 filers against SEC's
 # companyfacts API, deliberately manual and resumable. `fixtures/` is gitignored, so this runner
